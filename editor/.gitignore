@@ -9,3 +9,4 @@ out
 # whisper.cpp local build (rebuild with cmake)
 whisper.cpp/
 cmake.log
+models/
