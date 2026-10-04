@@ -4,8 +4,8 @@
 # Uso:   scripts/transcribe.sh public/mi-video.mp4 [modelo=small] [idioma=es]
 # Salida: public/<nombre>.captions.json
 #
-# Requisitos: whisper.cpp compilado en editor/whisper.cpp (ver README) y el modelo ggml
-# en editor/models/ggml-<modelo>.bin (descargable con scripts/get-model.sh o subido a mano).
+# Requisitos: whisper.cpp compilado en editor/whisper.cpp y el modelo ggml en
+# editor/models/ggml-<modelo>.bin. Ambos se preparan con: npm run setup:whisper [modelo]
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -20,8 +20,8 @@ NAME="$(basename "${INPUT%.*}")"
 WAV="$(mktemp --suffix=.wav)"
 OUT_BASE="$(mktemp -u)"
 
-[ -x "$CLI" ] || { echo "Falta $CLI: compila whisper.cpp primero." >&2; exit 1; }
-[ -f "$MODEL_FILE" ] || { echo "Falta el modelo $MODEL_FILE" >&2; exit 1; }
+[ -x "$CLI" ] || { echo "Falta $CLI: ejecuta primero 'npm run setup:whisper'." >&2; exit 1; }
+[ -f "$MODEL_FILE" ] || { echo "Falta el modelo $MODEL_FILE: ejecuta 'npm run setup:whisper -- $MODEL'." >&2; exit 1; }
 
 ffmpeg -v error -y -i "$INPUT" -vn -ac 1 -ar 16000 -c:a pcm_s16le "$WAV"
 
