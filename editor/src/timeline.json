@@ -1,0 +1,143 @@
+{
+  "fps": 30,
+  "bpm": 120,
+  "scenes": [
+    {
+      "id": "hook",
+      "duration": 105
+    },
+    {
+      "id": "question",
+      "duration": 105
+    },
+    {
+      "id": "reveal",
+      "duration": 165
+    },
+    {
+      "id": "how",
+      "duration": 270
+    },
+    {
+      "id": "results",
+      "duration": 165
+    },
+    {
+      "id": "features",
+      "duration": 180
+    },
+    {
+      "id": "cta",
+      "duration": 180
+    }
+  ],
+  "joins": [
+    {
+      "type": "transition",
+      "kind": "pushCut",
+      "duration": 15
+    },
+    {
+      "type": "overlay",
+      "kind": "lightLeak",
+      "duration": 30
+    },
+    {
+      "type": "transition",
+      "kind": "whipPan",
+      "duration": 15
+    },
+    {
+      "type": "transition",
+      "kind": "iris",
+      "duration": 15
+    },
+    {
+      "type": "transition",
+      "kind": "zoomPunch",
+      "duration": 15
+    },
+    {
+      "type": "overlay",
+      "kind": "lightLeak",
+      "duration": 30
+    }
+  ],
+  "cues": {
+    "hook": {
+      "words": [
+        4,
+        12,
+        22,
+        30,
+        54,
+        62,
+        70,
+        78
+      ],
+      "glitch": 50,
+      "strike": 88
+    },
+    "question": {
+      "words": [
+        0,
+        8,
+        16,
+        26
+      ],
+      "highlight": 34,
+      "clockStart": 10,
+      "riserStart": 60
+    },
+    "reveal": {
+      "impact": 0,
+      "cardLand": 26,
+      "shine": 48,
+      "title": 58,
+      "subtitle": 92
+    },
+    "how": {
+      "phoneIn": 4,
+      "tap": 44,
+      "sheet": 56,
+      "open": 90,
+      "stars": [
+        112,
+        120,
+        128,
+        136,
+        144
+      ],
+      "send": 186,
+      "check": 194,
+      "confetti": 200,
+      "steps": [
+        0,
+        90,
+        180
+      ]
+    },
+    "results": {
+      "countStart": 12,
+      "countEnd": 84,
+      "notifs": [
+        40,
+        72,
+        104
+      ],
+      "barsStart": 18
+    },
+    "features": {
+      "segment": 54,
+      "overlap": 12
+    },
+    "cta": {
+      "impact": 0,
+      "spinEnd": 60,
+      "headline": 30,
+      "button": 74,
+      "chime": 120,
+      "fadeOut": 160
+    }
+  }
+}
