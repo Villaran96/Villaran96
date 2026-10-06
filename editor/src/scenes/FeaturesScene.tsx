@@ -12,7 +12,7 @@ import {
   useVideoConfig,
   type InteractivitySchema,
 } from "remotion";
-import { PopWord } from "../components/Fx";
+import { MaskLine } from "../components/Typo";
 import { EASE_IN_OUT, progress } from "../components/motion";
 import { SANS, SERIF } from "../fonts";
 import { COLORS, cues } from "../theme";
@@ -77,10 +77,10 @@ const FeatureSlide: React.FC<SlideProps> = ({ index, title, accent, icon, color,
         />
       </svg>
       <div style={{ marginTop: 70, fontFamily: SANS, fontWeight: 900, fontSize: 140, color: ink, letterSpacing: -4, lineHeight: 1 }}>
-        <PopWord at={4}>{title}</PopWord>
+        <MaskLine at={4}>{title}</MaskLine>
       </div>
       <div style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 110, color: ink, opacity: 0.9, lineHeight: 1.1 }}>
-        <PopWord at={10}>{accent}</PopWord>
+        <MaskLine at={10}>{accent}</MaskLine>
       </div>
     </AbsoluteFill>
   );

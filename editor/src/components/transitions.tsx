@@ -72,3 +72,46 @@ export const zoomPunch = (props: ZoomProps = { flash: true }): TransitionPresent
   component: ZoomPunchComponent,
   props,
 });
+
+type CropProps = { radius: number };
+
+// "Recorte": la escena saliente se recorta en una tarjeta redondeada y se aleja,
+// descubriendo debajo la entrante, que asienta su escala.
+const CropOutComponent: React.FC<TransitionPresentationComponentProps<CropProps>> = ({
+  children,
+  presentationDirection,
+  presentationProgress,
+  passedProps,
+}) => {
+  const p = presentationProgress;
+  if (presentationDirection === "exiting") {
+    const crop = interpolate(p, [0, 0.55], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const away = interpolate(p, [0.35, 1], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    return (
+      <AbsoluteFill style={{ zIndex: 1 }}>
+        <AbsoluteFill
+          style={{
+            clipPath: `inset(${crop * 12}% ${crop * 9}% round ${crop * passedProps.radius}px)`,
+            scale: String(1 - crop * 0.08 - away * 0.25),
+            translate: `0 ${away * -70}%`,
+            rotate: `${away * -6}deg`,
+            opacity: interpolate(p, [0.8, 1], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+            filter: `drop-shadow(0 40px 60px rgba(0,0,0,${0.6 * crop}))`,
+          }}
+        >
+          {children}
+        </AbsoluteFill>
+      </AbsoluteFill>
+    );
+  }
+  return (
+    <AbsoluteFill style={{ scale: String(interpolate(p, [0, 1], [1.12, 1])), filter: `brightness(${interpolate(p, [0, 1], [0.55, 1])})` }}>
+      {children}
+    </AbsoluteFill>
+  );
+};
+
+export const cropOut = (props: CropProps = { radius: 60 }): TransitionPresentation<CropProps> => ({
+  component: CropOutComponent,
+  props,
+});

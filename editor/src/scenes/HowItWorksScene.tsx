@@ -9,12 +9,13 @@ import {
   useVideoConfig,
   type InteractivitySchema,
 } from "remotion";
-import { BurstStar, Confetti, Particles, Ripples } from "../components/Fx";
+import { BurstStar, Confetti, Particles } from "../components/Fx";
 import { EASE_IN_OUT, EASE_OUT, progress, shake } from "../components/motion";
-import { CardShadow, NfcCard } from "../components/NfcCard";
 import { Phone, PHONE_H, PHONE_W } from "../components/Phone";
 import { SANS, SERIF } from "../fonts";
 import { COLORS, cues } from "../theme";
+import { projectToScreen, TableCard, tableCardPoint } from "../three/TableCard";
+import { SPOTS } from "../three/stage";
 
 type Props = {
   readonly step1: string;
@@ -194,14 +195,13 @@ const SuccessScreen: React.FC = () => {
 
 const HowItWorksSceneInner: React.FC<Props> = ({ step1, step2, step3, businessName, reviewText, frontImage, style }) => {
   const frame = useCurrentFrame();
-  const { fps, width } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
 
   // Paso 1: el móvil baja hasta la tarjeta y "toca".
   const descend = spring({ frame: frame - c.phoneIn, fps, config: { damping: 18, stiffness: 90 } });
   const tapDip = frame >= c.tap - 6 ? Math.sin(progress(frame, c.tap - 6, c.tap + 8, EASE_IN_OUT) * Math.PI) * 60 : 0;
   // Paso 2: la cámara se acerca al móvil y la tarjeta se desenfoca (profundidad de campo).
   const focus = progress(frame, c.open - 6, c.open + 16, EASE_IN_OUT);
-  const phoneY = interpolate(descend, [0, 1], [-1300, 640]) + tapDip + focus * 50;
   const phoneScale = 0.82 + focus * 0.32;
   const phoneRot = interpolate(descend, [0, 1], [-18, -6]) * (1 - focus);
   const haptic = shake(frame, c.tap, 10, "haptic");
@@ -210,40 +210,47 @@ const HowItWorksSceneInner: React.FC<Props> = ({ step1, step2, step3, businessNa
   const successIn = progress(frame, c.check - 6, c.check + 2);
   const cardOut = focus;
 
-  const tapX = width / 2;
-  const tapY = 1300;
+  // Dónde cae el chip NFC de la tarjeta 3D en pantalla: el móvil toca exactamente ahí.
+  const rz = interpolate(frame, [0, 270], [-0.12, 0.08]);
+  const tapPoint = projectToScreen(tableCardPoint(SPOTS.nfc, rz), width, height);
+  const tapX = tapPoint.x;
+  const tapY = tapPoint.y;
+  // El móvil se posa con su parte baja sobre el chip; en el paso 2 sube al centro del encuadre.
+  const restY = tapY - 650;
+  const phoneY = interpolate(descend, [0, 1], [-1300, restY]) * (1 - focus) + 690 * focus + tapDip;
+  const phoneX = tapX * (1 - focus) + (width / 2) * focus;
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.night, background: `radial-gradient(circle at 50% 70%, #1a2a55 0%, ${COLORS.night} 65%)`, ...style }}>
       <Particles count={28} seed="how" />
 
-      {/* Tarjeta tumbada sobre la "mesa" */}
-      <AbsoluteFill
+      {/* Mesa de madera 3D con la tarjeta tumbada; se desenfoca al pasar el foco al móvil */}
+      <TableCard
+        image={frontImage}
+        rz={rz}
+        rippleAt={c.tap}
+        style={{ filter: cardOut > 0.01 ? `blur(${cardOut * 14}px) brightness(${1 - cardOut * 0.35})` : undefined, scale: String(1 + cardOut * 0.06) }}
+      />
+      {/* Sombra del móvil sobre la mesa: se concentra al acercarse al chip */}
+      <div
         style={{
-          perspective: 1600,
-          top: 560,
-          opacity: 1 - cardOut * 0.7,
-          filter: `blur(${cardOut * 16}px)`,
-          translate: `0 ${cardOut * 160}px`,
+          position: "absolute",
+          left: tapX - 260,
+          top: tapY - 70,
+          width: 520,
+          height: 140,
+          borderRadius: "50%",
+          background: "rgba(0,0,0,0.6)",
+          filter: `blur(${40 - descend * 18 + (tapDip / 60) * -10}px)`,
+          opacity: descend * (1 - cardOut) * 0.8,
         }}
-      >
-        <CardShadow lift={0.05} y={170} width={700} />
-        {/* Giro muy lento sobre la mesa: da volumen sin distraer del móvil */}
-        <NfcCard
-          rotateX={58}
-          rotateZ={interpolate(frame, [0, 270], [-7, 5])}
-          scale={0.92}
-          frontImage={frontImage}
-          shine={progress(frame, c.tap, c.tap + 30)}
-        />
-      </AbsoluteFill>
+      />
 
-      <Ripples at={c.tap} x={tapX} y={tapY} />
 
       <div
         style={{
           position: "absolute",
-          left: width / 2 - PHONE_W / 2,
+          left: phoneX - PHONE_W / 2,
           top: phoneY - PHONE_H / 2 + 400,
           width: PHONE_W,
           height: PHONE_H,

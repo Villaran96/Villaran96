@@ -35,7 +35,7 @@ def at(scene, local):
     return (starts[scene] + local) / FPS
 
 
-DROP = starts["reveal"] / FPS  # 6.5 s: la rejilla de compases se alinea con el drop
+DROP = starts["film"] / FPS  # 6.5 s: la rejilla de compases se alinea con el drop
 END_GROOVE = at("cta", C["cta"]["fadeOut"])
 
 music = np.zeros((N, 2), np.float32)
@@ -219,7 +219,7 @@ rs = at("question", C["question"]["riserStart"])
 place(music, rs, riser(DROP - rs), 0.6, rev=0.3)
 
 # Groove principal del drop al final, con un tramo "breakdown" (más íntimo) durante los detalles macro.
-BREAK0 = at("details", 0) + 0.4
+BREAK0 = at("film", 180) - 0.05  # el tramo íntimo empieza con los planos macro
 BREAK1 = starts["photo"] / FPS
 sidechain = np.ones(N, np.float32)
 bar_t = DROP
@@ -271,7 +271,7 @@ place(music, at("cta", 0), pad([note(n) for n in [57, 60, 64, 69, 76]], (TOTAL_F
 music *= sidechain[:, None]
 
 # ---------- EFECTOS ----------
-h, q, rv, hw, rs_, ft, ct = (C[k] for k in ("hook", "question", "reveal", "how", "results", "features", "cta"))
+h, q, fm, hw, rs_, ft, ct = (C[k] for k in ("hook", "question", "film", "how", "results", "features", "cta"))
 
 for i, w in enumerate(h["words"]):
     place(sfx, at("hook", w), pop(700 + i * 40, 250), 0.35, pan=(-0.2 if i % 2 else 0.2))
@@ -285,27 +285,28 @@ for i, w in enumerate(q["words"]):
     place(sfx, at("question", w), pop(800 + i * 60, 300), 0.32)
 place(sfx, at("question", q["highlight"]), whoosh(0.25), 0.4, pan=-0.3)
 
-place(sfx, at("reveal", rv["impact"]), impact(), 0.9, rev=0.4)
-place(sfx, at("reveal", rv["impact"]), whoosh(rv["turnEnd"] / FPS, up=True), 0.5, pan=-0.3)
+# Revelación 3D: golpe, foco que se enciende, giro de la tarjeta, brillo y título.
+place(sfx, at("film", fm["impact"]), impact(), 0.9, rev=0.4)
+for k, d in enumerate([0.03, 0.09, 0.16]):
+    place(sfx, at("film", 0) + d, tick(900 + k * 150, 0.03), 0.25)  # parpadeo del foco
+place(sfx, at("film", fm["impact"]), whoosh(fm["turnEnd"] / FPS, up=True), 0.5, pan=-0.3)
 for k, f in enumerate([2093, 2637, 3136, 4186]):
-    place(sfx, at("reveal", rv["turnEnd"] - 10) + k * 0.05, bell(f, 0.9), 0.08, pan=-0.5 + k * 0.33, rev=0.6)
-for k in range(10):
-    place(sfx, at("reveal", rv["title"] + k * 2), tick(1800 + k * 60, 0.02), 0.12)
-place(sfx, at("reveal", rv["subtitle"]), whoosh(0.3), 0.3)
-for k, f in enumerate([3136, 4186]):
-    place(sfx, at("reveal", 128) + k * 0.06, bell(f, 0.8), 0.06, pan=0.4 - k * 0.6, rev=0.6)
+    place(sfx, at("film", fm["turnEnd"] - 10) + k * 0.05, bell(f, 0.9), 0.08, pan=-0.5 + k * 0.33, rev=0.6)
+place(sfx, at("film", fm["title"]), whoosh(0.35), 0.3)
+place(sfx, at("film", fm["subtitle"]), pop(600, 240, 0.1), 0.2)
+place(sfx, at("film", fm["titleOut"]), whoosh(0.3, up=False), 0.25)
 
-# Detalles: cada movimiento de cámara es un "swoosh" suave; cada llegada, un brillo.
-dt = C["details"]
-moves = [(15, dt["stops"][0]["arrive"])] + [(dt["stops"][i]["leave"], dt["stops"][i + 1]["arrive"]) for i in range(3)] + [(dt["stops"][3]["leave"], 330)]
-for i, (a, b) in enumerate(moves):
-    place(sfx, at("details", a), whoosh((b - a) / FPS, up=i % 2 == 0), 0.32, pan=(-0.4 if i % 2 else 0.4), rev=0.3)
-for i, st in enumerate(dt["stops"]):
-    place(sfx, at("details", st["arrive"]), bell(note(88 + [0, 3, 7, 12][i]), 0.9), 0.07, rev=0.6)
-    place(sfx, at("details", st["arrive"] - 4), pop(500, 220, 0.1), 0.18)
-place(sfx, at("details", dt["ripples"]), bell(1318.5, 1.3), 0.26, rev=0.5)
-place(sfx, at("details", dt["ripples"]) + 0.09, bell(1975.5, 1.1), 0.18, rev=0.5)
-place(sfx, at("details", dt["stops"][3]["arrive"]), bell(note(100), 1.2, partials=((1, 1), (2.0, 0.5), (3.01, 0.25))), 0.08, rev=0.7)
+# Macros: entrada continua al primer detalle y un golpe suave en cada corte de cámara.
+place(sfx, at("film", 180), whoosh(2.0, up=True), 0.28, rev=0.3)
+for i, cut in enumerate(fm["cuts"]):
+    place(sfx, at("film", cut) - 0.18, whoosh(0.22), 0.3, pan=(-0.5 if i % 2 else 0.5))
+    place(sfx, at("film", cut), thud(), 0.45)
+    place(sfx, at("film", cut), bell(note(88 + [3, 7, 12, 15][i]), 0.9), 0.06, rev=0.6)
+for i, (a, _) in enumerate(fm["supers"]):
+    place(sfx, at("film", a), pop(520 + i * 40, 220, 0.1), 0.2)
+place(sfx, at("film", fm["ripples"]), bell(1318.5, 1.3), 0.26, rev=0.5)
+place(sfx, at("film", fm["ripples"]) + 0.09, bell(1975.5, 1.1), 0.18, rev=0.5)
+place(sfx, at("film", fm["heroLine"]), pop(700, 260), 0.28)
 
 # Foto real: golpe de vuelta al groove + "obturador" al aparecer la etiqueta.
 ph = C["photo"]
@@ -357,6 +358,7 @@ for k in range(4):
 
 place(sfx, at("cta", ct["impact"]), impact(), 0.8, rev=0.4)
 place(sfx, at("cta", 0), whoosh(ct["spinEnd"] / FPS, up=False), 0.4)
+place(sfx, at("cta", 30), thud(), 0.5)  # la tarjeta aterriza
 place(sfx, at("cta", ct["logo"]), bell(note(84), 1.0), 0.1, rev=0.5)
 place(sfx, at("cta", ct["headline"]), pop(700, 260), 0.3)
 place(sfx, at("cta", ct["headline"] + 8), pop(820, 300), 0.3)

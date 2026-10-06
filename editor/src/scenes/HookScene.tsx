@@ -11,6 +11,7 @@ import { GlitchText, Particles, PopWord } from "../components/Fx";
 import { progress, shake } from "../components/motion";
 import { SANS, SERIF } from "../fonts";
 import { COLORS, cues } from "../theme";
+import { CardField } from "../three/CardField";
 
 type Props = {
   readonly line1: string;
@@ -46,6 +47,8 @@ const HookSceneInner: React.FC<Props> = ({ line1, line2, style }) => {
         ...style,
       }}
     >
+      {/* Tarjetas flotando fuera de foco: profundidad de cine detrás del texto */}
+      <CardField style={{ filter: "blur(7px) brightness(0.5) saturate(0.85)", opacity: interpolate(frame, [0, 18], [0, 1], { extrapolateRight: "clamp" }) }} />
       <Particles count={30} seed="hook" />
       <AbsoluteFill
         style={{

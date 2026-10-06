@@ -12,9 +12,11 @@ import {
   useVideoConfig,
   type InteractivitySchema,
 } from "remotion";
-import { Particles, PopWord } from "../components/Fx";
+import { Particles } from "../components/Fx";
 import { EASE_IN_OUT, float, progress } from "../components/motion";
-import { CardShadow, NfcCard } from "../components/NfcCard";
+import { MaskLine } from "../components/Typo";
+import { CameraRig, CardModel, GL_PROPS, StudioEnvironment, StudioFloor, StudioLights } from "../three/stage";
+import { ThreeCanvas } from "@remotion/three";
 import { SANS, SERIF } from "../fonts";
 import { COLORS, cues } from "../theme";
 
@@ -29,21 +31,21 @@ type Props = {
 };
 
 const c = cues.cta;
+const FLOOR = -0.5;
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
 const CtaSceneInner: React.FC<Props> = ({ headline, headlineAccent, cta, small, logo, frontImage, style }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
 
-  // Un único giro de 360° con entrada y salida suaves; luego un vaivén lento.
-  const spinAt = (fr: number) => interpolate(progress(fr, 0, c.spinEnd, EASE_IN_OUT), [0, 1], [-360, 0]);
-  const sway = frame > c.spinEnd ? Math.sin((frame - c.spinEnd) / 26) * 9 * progress(frame, c.spinEnd, c.spinEnd + 30) : 0;
+  // La tarjeta baja girando una vuelta completa, aterriza con un rebote suave y luego se mece.
+  const spinAt = (fr: number) => interpolate(progress(fr, 0, c.spinEnd, EASE_IN_OUT), [0, 1], [-Math.PI * 2, 0]);
+  const sway = frame > c.spinEnd ? Math.sin((frame - c.spinEnd) / 26) * 0.16 * progress(frame, c.spinEnd, c.spinEnd + 30) : 0;
   const rotY = spinAt(frame) + sway;
-  const spinBlur = Math.min(2.5, Math.abs(spinAt(frame) - spinAt(Math.max(0, frame - 1))) * 0.16);
-  const rotX = interpolate(progress(frame, 0, c.spinEnd, EASE_IN_OUT), [0, 1], [20, 8]);
-  const rise = spring({ frame, fps, config: { damping: 18, stiffness: 80 } });
+  const spinBlur = Math.min(2.2, Math.abs(spinAt(frame) - spinAt(Math.max(0, frame - 1))) * 9);
+  const land = spring({ frame, fps, config: { damping: 12, stiffness: 70 } });
+  const cardY = interpolate(land, [0, 1], [1.5, 0]);
   const f = float(frame, "cta", 6);
-  const shineCycle = frame > c.spinEnd ? ((frame - c.spinEnd) % 60) / 50 : interpolate(frame, [c.spinEnd - 24, c.spinEnd], [0, 1], clamp);
   const logoIn = spring({ frame: frame - c.logo, fps, config: { damping: 16, stiffness: 140 } });
 
   const button = spring({ frame: frame - c.button, fps, config: { damping: 11, stiffness: 160 } });
@@ -51,7 +53,7 @@ const CtaSceneInner: React.FC<Props> = ({ headline, headlineAccent, cta, small, 
   const btnShine = frame > c.button ? (((frame - c.button) % 45) / 45) * 260 - 80 : -80;
   const smallIn = progress(frame, c.button + 10, c.button + 24);
   const arrowBob = Math.sin(frame / 5) * 8;
-  const fade = interpolate(frame, [c.fadeOut, 180], [0, 1], clamp);
+  const fade = interpolate(frame, [c.fadeOut, 210], [0, 1], clamp);
   const sparkle = progress(frame, c.chime, c.chime + 22);
 
   return (
@@ -65,20 +67,23 @@ const CtaSceneInner: React.FC<Props> = ({ headline, headlineAccent, cta, small, 
       <AbsoluteFill style={{ background: "radial-gradient(ellipse 70% 40% at 50% 30%, rgba(255,197,49,0.28), transparent 70%)" }} />
       <Particles count={44} seed="cta" color="255,215,120" />
 
-      <AbsoluteFill style={{ perspective: 2000, top: -380 }}>
-        <CardShadow lift={0.3 + f.y * 0.01} y={330} />
-        <div style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d", translate: `${f.x}px ${(1 - rise) * 500 + f.y}px`, filter: spinBlur > 0.2 ? `blur(${spinBlur}px)` : undefined }}>
-          <NfcCard rotateX={rotX + f.r * 0.5} rotateY={rotY} rotateZ={-3} scale={0.5 + rise * 0.4} shine={shineCycle} frontImage={frontImage} />
-        </div>
+      <AbsoluteFill style={{ filter: spinBlur > 0.2 ? `blur(${spinBlur}px)` : undefined }}>
+        <ThreeCanvas width={width} height={height} shadows gl={GL_PROPS}>
+          <CameraRig position={[f.x * 0.002, 0.45, 6.3]} target={[0, -0.8, 0]} fov={30} />
+          <StudioEnvironment intensity={1.1} />
+          <StudioLights rimAngle={frame / 30} rim={1.1} keyIntensity={2.6} />
+          <StudioFloor y={FLOOR} shadowOpacity={0.5 * land} />
+          <CardModel image={frontImage} position={[0, cardY + 0.004, 0]} rotation={[0.02, rotY, 0]} reflection={{ floorY: FLOOR, opacity: 0.32, fade: 0.5 }} />
+        </ThreeCanvas>
       </AbsoluteFill>
 
       <AbsoluteFill style={{ alignItems: "center", justifyContent: "flex-end", paddingBottom: 420, textAlign: "center" }}>
-        <div style={{ fontFamily: SANS, fontWeight: 900, fontSize: 120, color: "white", letterSpacing: -3, lineHeight: 1 }}>
-          <PopWord at={c.headline}>{headline}</PopWord>
-        </div>
-        <div style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 118, color: COLORS.gold, lineHeight: 1.1 }}>
-          <PopWord at={c.headline + 8}>{headlineAccent}</PopWord>
-        </div>
+        <MaskLine at={c.headline}>
+          <div style={{ fontFamily: SANS, fontWeight: 900, fontSize: 120, color: "white", letterSpacing: -3, lineHeight: 1 }}>{headline}</div>
+        </MaskLine>
+        <MaskLine at={c.headline + 8}>
+          <div style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 118, color: COLORS.gold, lineHeight: 1.1 }}>{headlineAccent}</div>
+        </MaskLine>
         <div style={{ position: "relative", marginTop: 60 }}>
           <div
             style={{

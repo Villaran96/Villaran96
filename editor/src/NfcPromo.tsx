@@ -1,22 +1,19 @@
 import { Audio } from "@remotion/media";
 import { linearTiming, TransitionSeries } from "@remotion/transitions";
-import { fade } from "@remotion/transitions/fade";
 import { iris } from "@remotion/transitions/iris";
 import { pushCut } from "@remotion/transitions/push-cut";
-import { slide } from "@remotion/transitions/slide";
 import type React from "react";
 import { AbsoluteFill, staticFile, useVideoConfig } from "remotion";
 import { FilmLook, LightLeakOverlay } from "./components/Fx";
-import { whipPan, zoomPunch } from "./components/transitions";
+import { cropOut, whipPan, zoomPunch } from "./components/transitions";
 import { CtaScene } from "./scenes/CtaScene";
-import { DetailsScene } from "./scenes/DetailsScene";
 import { FeaturesScene } from "./scenes/FeaturesScene";
+import { FilmScene } from "./scenes/FilmScene";
 import { HookScene } from "./scenes/HookScene";
 import { HowItWorksScene } from "./scenes/HowItWorksScene";
 import { PhotoScene } from "./scenes/PhotoScene";
 import { QuestionScene } from "./scenes/QuestionScene";
 import { ResultsScene } from "./scenes/ResultsScene";
-import { RevealScene } from "./scenes/RevealScene";
 import { sceneDuration, timeline } from "./theme";
 
 type Props = {
@@ -45,13 +42,11 @@ export const NfcPromo: React.FC<Props> = ({ businessName, frontImage, withMusic 
         <TransitionSeries.Overlay durationInFrames={join(1)} premountFor={fps}>
           <LightLeakOverlay seed={4} hueShift={200} />
         </TransitionSeries.Overlay>
-        <TransitionSeries.Sequence name="3 · Revelación" durationInFrames={sceneDuration("reveal")} premountFor={fps}>
-          <RevealScene title="Tarjeta NFC" titleAccent="de reseñas" subtitle="Un toque. Una reseña." frontImage={image} />
-        </TransitionSeries.Sequence>
-        {/* Fundido con encuadre idéntico: la cámara continúa sin corte visible */}
-        <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: join(2) })} />
-        <TransitionSeries.Sequence name="4 · Detalles" durationInFrames={sceneDuration("details")} premountFor={fps}>
-          <DetailsScene
+        <TransitionSeries.Sequence name="3 · Tarjeta 3D" durationInFrames={sceneDuration("film")} premountFor={fps}>
+          <FilmScene
+            title="Tarjeta NFC"
+            titleAccent="de reseñas"
+            subtitle="Un toque. Una reseña."
             title1="Mensaje claro"
             sub1="Invita a valorar con 5 estrellas"
             title2="Directo a Google"
@@ -60,14 +55,16 @@ export const NfcPromo: React.FC<Props> = ({ businessName, frontImage, withMusic 
             sub3="Basta con acercar el móvil"
             title4="Acabado acrílico"
             sub4="Elegante en cualquier mostrador"
+            heroLine="Hecha para destacar."
+            heroSub="En tu mostrador."
             frontImage={image}
           />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Transition presentation={whipPan({ direction: "left" })} timing={linearTiming({ durationInFrames: join(3) })} />
+        <TransitionSeries.Transition presentation={whipPan({ direction: "left" })} timing={linearTiming({ durationInFrames: join(2) })} />
         <TransitionSeries.Sequence name="5 · Foto real" durationInFrames={sceneDuration("photo")} premountFor={fps}>
           <PhotoScene photo="tarjetas/foto-real-hd.jpg" tag="FOTO REAL" title="Así de real." sub="Producto real, sin renders" />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Transition presentation={slide({ direction: "from-bottom" })} timing={linearTiming({ durationInFrames: join(4) })} />
+        <TransitionSeries.Transition presentation={cropOut({ radius: 64 })} timing={linearTiming({ durationInFrames: join(3) })} />
         <TransitionSeries.Sequence name="6 · Cómo funciona" durationInFrames={sceneDuration("how")} premountFor={fps}>
           <HowItWorksScene
             step1="Acerca el móvil"
@@ -78,7 +75,7 @@ export const NfcPromo: React.FC<Props> = ({ businessName, frontImage, withMusic 
             frontImage={image}
           />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Transition presentation={iris({ width, height })} timing={linearTiming({ durationInFrames: join(5) })} />
+        <TransitionSeries.Transition presentation={iris({ width, height })} timing={linearTiming({ durationInFrames: join(4) })} />
         <TransitionSeries.Sequence name="7 · Resultados" durationInFrames={sceneDuration("results")} premountFor={fps}>
           <ResultsScene
             headline="Más reseñas."
@@ -90,7 +87,7 @@ export const NfcPromo: React.FC<Props> = ({ businessName, frontImage, withMusic 
             footnote="*Simulación con datos de ejemplo"
           />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Transition presentation={zoomPunch({ flash: true })} timing={linearTiming({ durationInFrames: join(6) })} />
+        <TransitionSeries.Transition presentation={zoomPunch({ flash: true })} timing={linearTiming({ durationInFrames: join(5) })} />
         <TransitionSeries.Sequence name="8 · Ventajas" durationInFrames={sceneDuration("features")} premountFor={fps}>
           <FeaturesScene
             title1="Sin apps"
@@ -103,7 +100,7 @@ export const NfcPromo: React.FC<Props> = ({ businessName, frontImage, withMusic 
             accent4="y tus colores"
           />
         </TransitionSeries.Sequence>
-        <TransitionSeries.Overlay durationInFrames={join(7)} premountFor={fps}>
+        <TransitionSeries.Overlay durationInFrames={join(6)} premountFor={fps}>
           <LightLeakOverlay seed={9} hueShift={20} />
         </TransitionSeries.Overlay>
         <TransitionSeries.Sequence name="9 · Llamada a la acción" durationInFrames={sceneDuration("cta")} premountFor={fps}>

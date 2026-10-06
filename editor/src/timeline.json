@@ -11,12 +11,8 @@
       "duration": 105
     },
     {
-      "id": "reveal",
-      "duration": 180
-    },
-    {
-      "id": "details",
-      "duration": 330
+      "id": "film",
+      "duration": 495
     },
     {
       "id": "photo",
@@ -36,7 +32,7 @@
     },
     {
       "id": "cta",
-      "duration": 180
+      "duration": 210
     }
   ],
   "joins": [
@@ -52,17 +48,12 @@
     },
     {
       "type": "transition",
-      "kind": "fade",
-      "duration": 15
-    },
-    {
-      "type": "transition",
       "kind": "whipPan",
       "duration": 15
     },
     {
       "type": "transition",
-      "kind": "slideUp",
+      "kind": "cropOut",
       "duration": 15
     },
     {
@@ -107,13 +98,6 @@
       "clockStart": 10,
       "riserStart": 60
     },
-    "reveal": {
-      "impact": 0,
-      "turnEnd": 44,
-      "title": 66,
-      "subtitle": 96,
-      "settleStart": 118
-    },
     "how": {
       "phoneIn": 4,
       "tap": 44,
@@ -152,38 +136,49 @@
     "cta": {
       "impact": 0,
       "spinEnd": 72,
-      "headline": 36,
-      "button": 82,
-      "logo": 100,
-      "chime": 124,
-      "fadeOut": 160
-    },
-    "details": {
-      "stops": [
-        {
-          "arrive": 40,
-          "leave": 88
-        },
-        {
-          "arrive": 108,
-          "leave": 160
-        },
-        {
-          "arrive": 180,
-          "leave": 238
-        },
-        {
-          "arrive": 262,
-          "leave": 296
-        }
-      ],
-      "ripples": 192,
-      "breakdownEndPad": 30
+      "headline": 40,
+      "button": 86,
+      "logo": 104,
+      "chime": 128,
+      "fadeOut": 186
     },
     "photo": {
       "tag": 8,
       "title": 20,
       "sub": 36
+    },
+    "film": {
+      "impact": 0,
+      "turnEnd": 44,
+      "title": 66,
+      "subtitle": 96,
+      "titleOut": 166,
+      "cuts": [
+        240,
+        300,
+        360,
+        420
+      ],
+      "supers": [
+        [
+          186,
+          234
+        ],
+        [
+          246,
+          294
+        ],
+        [
+          306,
+          354
+        ],
+        [
+          366,
+          414
+        ]
+      ],
+      "ripples": 312,
+      "heroLine": 430
     }
   }
 }

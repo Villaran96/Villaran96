@@ -9,7 +9,8 @@ import {
   useVideoConfig,
   type InteractivitySchema,
 } from "remotion";
-import { Notification, Particles, PopWord } from "../components/Fx";
+import { Notification, Particles } from "../components/Fx";
+import { MaskLine } from "../components/Typo";
 import { EASE_IN_OUT, EASE_OUT, progress, punch } from "../components/motion";
 import { SANS, SERIF } from "../fonts";
 import { COLORS, cues } from "../theme";
@@ -81,10 +82,10 @@ const ResultsSceneInner: React.FC<Props> = ({ headline, headlineAccent, reviewsF
       <Particles count={26} seed="results" />
       <div style={{ position: "absolute", top: 150, left: 90, right: 90 }}>
         <div style={{ fontFamily: SANS, fontWeight: 900, fontSize: 116, color: "white", letterSpacing: -3, lineHeight: 1 }}>
-          <PopWord at={0}>{headline}</PopWord>
+          <MaskLine at={0}>{headline}</MaskLine>
         </div>
         <div style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 120, color: COLORS.gold, lineHeight: 1.1 }}>
-          <PopWord at={8}>{headlineAccent}</PopWord>
+          <MaskLine at={8}>{headlineAccent}</MaskLine>
         </div>
       </div>
 
