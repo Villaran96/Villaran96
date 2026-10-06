@@ -1,0 +1,876 @@
+<title>Cierzo NFC Mayoristas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;650;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: sistema de diseño Cierzo NFC — hero centrado con la tarjeta 3D, bandas alternas surface / surface-sunken, contenedor de 1120 px, dos columnas 5/7. */
+:root{
+  --surface:#f5f2ea;--surface-raised:#ffffff;--surface-sunken:#ebe7dc;
+  --line:#e0dbcd;--line-strong:#7d8a80;
+  --ink:#18211b;--ink-muted:#56635a;
+  --salvia:#3b6b52;--on-salvia:#ffffff;--salvia-soft:#dbe7dd;
+  --forest:#1f3a2b;--on-forest:#f5f2ea;--on-forest-muted:#b9cbbf;
+  --coral:#b23a20;--on-coral:#ffffff;--coral-soft:#fbe3db;
+  --star:#f2b01e;--link:var(--salvia);
+  --shadow-sm:0 1px 2px #18211b0d,0 2px 8px #18211b0f;
+  --shadow-md:0 2px 6px #18211b0d,0 12px 32px -4px #18211b1f;
+  --shadow-lg:0 4px 12px #18211b0f,0 32px 64px -12px #18211b38;
+  --focus-ring:0 0 0 2px #f5f2ea,0 0 0 4px #3b6b52;
+  --font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Figtree",system-ui,"Segoe UI",sans-serif;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;--space-8:64px;--space-9:96px;
+  --radius-sm:10px;--radius-md:16px;--radius-lg:24px;--radius-xl:32px;--radius-full:9999px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --surface:#121815;--surface-raised:#1b231e;--surface-sunken:#0e1310;
+  --line:#2b352e;--line-strong:#7f8e83;--ink:#f1eee5;--ink-muted:#a9b5ab;
+  --salvia:#93c7a5;--on-salvia:#10231a;--salvia-soft:#22332a;
+  --forest:#233d2f;--coral:#ff8a6b;--on-coral:#2a0f08;--coral-soft:#3a1a12;
+  --shadow-sm:0 1px 2px #00000066;--shadow-md:0 12px 32px -4px #000000a6;--shadow-lg:0 32px 64px -12px #000000cc;
+  --focus-ring:0 0 0 2px #121815,0 0 0 4px #93c7a5;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --surface:#121815;--surface-raised:#1b231e;--surface-sunken:#0e1310;
+  --line:#2b352e;--line-strong:#7f8e83;--ink:#f1eee5;--ink-muted:#a9b5ab;
+  --salvia:#93c7a5;--on-salvia:#10231a;--salvia-soft:#22332a;
+  --forest:#233d2f;--coral:#ff8a6b;--on-coral:#2a0f08;--coral-soft:#3a1a12;
+  --shadow-sm:0 1px 2px #00000066;--shadow-md:0 12px 32px -4px #000000a6;--shadow-lg:0 32px 64px -12px #000000cc;
+  --focus-ring:0 0 0 2px #121815,0 0 0 4px #93c7a5;color-scheme:dark}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth;scroll-padding-top:104px}
+body{margin:0;font-family:var(--font-sans);font-size:17px;line-height:26px;background:var(--surface);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--link)}
+h1,h2,h3{text-wrap:balance}
+p{text-wrap:pretty}
+.cz-wrap{max-width:1120px;margin:0 auto;padding-inline:var(--space-5)}
+.cz-section{padding-block:var(--space-9)}
+.band{background:var(--surface-sunken)}
+.cz-eyebrow{font-size:13px;line-height:16px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--salvia);margin:0 0 var(--space-3)}
+.cz-display{font-size:48px;line-height:52px;font-weight:700;letter-spacing:-.03em;margin:0;color:var(--ink)}
+.cz-lead{font-size:21px;line-height:31px;color:var(--ink-muted);margin:var(--space-4) 0 0}
+.center{text-align:center;max-width:720px;margin:0 auto var(--space-7)}
+.split{display:grid;grid-template-columns:5fr 7fr;gap:var(--space-8);align-items:center}
+.split>*{min-width:0}
+.split-top{align-items:start}
+.caption{font-size:13px;line-height:18px;font-weight:500;letter-spacing:.01em;color:var(--ink-muted)}
+
+/* Botones */
+.cz-btn{font:inherit;font-weight:600;font-size:17px;line-height:1;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);height:52px;padding:0 var(--space-6);border-radius:var(--radius-full);border:1px solid transparent;cursor:pointer;text-decoration:none;transition:transform .2s ease,background-color .2s ease,box-shadow .2s ease;white-space:nowrap}
+.cz-btn:hover{transform:translateY(-1px)}
+.cz-btn:active{transform:scale(.98)}
+.cz-btn:focus-visible{outline:2px solid transparent;outline-offset:2px;box-shadow:var(--focus-ring)}
+.cz-btn-primary{background:var(--salvia);color:var(--on-salvia)}
+.cz-btn-secondary{background:var(--salvia-soft);color:var(--ink)}
+.cz-btn-ghost{background:transparent;color:var(--salvia);padding:0 var(--space-4)}
+.cz-btn-inverse{background:var(--on-forest);color:var(--forest)}
+.cz-btn-sm{height:40px;padding:0 var(--space-5);font-size:15px}
+.cz-btn svg{width:18px;height:18px}
+
+/* Badges */
+.cz-badge{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 var(--space-3);border-radius:var(--radius-full);font-size:13px;line-height:1;font-weight:600;background:var(--salvia-soft);color:var(--salvia);white-space:nowrap}
+.cz-badge-coral{background:var(--coral-soft);color:var(--coral)}
+.cz-badge-solid{background:var(--coral);color:var(--on-coral)}
+
+/* Menú flotante */
+.hdr{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;padding-top:var(--space-4)}
+.cz-nav{display:flex;align-items:center;justify-content:space-between;gap:var(--space-5);height:64px;padding:0 var(--space-3) 0 var(--space-5);background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-full);box-shadow:var(--shadow-md)}
+.cz-logo{font-size:21px;line-height:1;font-weight:700;letter-spacing:-.03em;color:var(--ink);text-decoration:none;white-space:nowrap}
+.cz-logo span{color:var(--salvia);margin-left:6px}
+.cz-nav-links{display:flex;gap:var(--space-5);font-size:15px;font-weight:500}
+.cz-nav-links a{color:var(--ink-muted);text-decoration:none}
+.cz-nav-links a:hover{color:var(--ink)}
+.cz-nav a:focus-visible{outline:2px solid transparent;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+
+/* Hero con la tarjeta 3D */
+.hero{text-align:center;padding-top:var(--space-8);padding-bottom:var(--space-8)}
+.hero h1{margin:var(--space-5) auto 0;max-width:900px;font-size:72px;line-height:74px;font-weight:700;letter-spacing:-.035em;color:var(--ink)}
+.hero h1 em{font-style:normal;color:var(--salvia)}
+.hero .cz-lead{max-width:640px;margin:var(--space-5) auto 0}
+.cta{display:flex;gap:var(--space-3);justify-content:center;flex-wrap:wrap;margin-top:var(--space-6)}
+.cz-stage{position:relative;overflow:hidden;border-radius:var(--radius-xl);background:var(--salvia-soft);display:flex;align-items:center;justify-content:center}
+.cz-stage::before,.cz-stage::after{content:"";position:absolute;left:50%;top:50%;border-radius:50%;border:2px solid var(--salvia);opacity:.16;transform:translate(-50%,-50%);pointer-events:none}
+.cz-stage::before{width:420px;height:420px}
+.cz-stage::after{width:680px;height:680px}
+.hero-stage{margin-top:var(--space-8);height:540px}
+.hero-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity .6s ease;touch-action:pan-y;cursor:grab;z-index:1}
+.hero-stage canvas:active{cursor:grabbing}
+.hero-stage.is-3d canvas{opacity:1}
+.hero-fallback{position:relative;z-index:1;width:min(300px,62%);aspect-ratio:1;border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);transform:rotate(-4deg);transition:opacity .6s ease}
+.hero-stage.is-3d .hero-fallback{opacity:0}
+.chip{position:absolute;z-index:2;left:50%;bottom:var(--space-6);transform:translateX(-50%);display:inline-flex;align-items:center;gap:var(--space-2);height:44px;padding:0 var(--space-5) 0 var(--space-3);border-radius:var(--radius-full);background:var(--surface-raised);box-shadow:var(--shadow-md);font-size:15px;font-weight:600;color:var(--ink);white-space:nowrap;pointer-events:none}
+.chip i{width:28px;height:28px;border-radius:50%;background:var(--salvia);color:var(--on-salvia);display:grid;place-items:center}
+.chip svg{width:16px;height:16px}
+.facts{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--space-3) var(--space-6);margin:var(--space-6) 0 0;padding:0;list-style:none}
+.facts li{display:inline-flex;align-items:center;gap:var(--space-2);font-size:15px;font-weight:500;color:var(--ink-muted)}
+.facts li::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--salvia)}
+
+/* Pasos */
+.cz-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-5)}
+.cz-steps.four{grid-template-columns:repeat(4,1fr)}
+.cz-step{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:var(--space-6);box-shadow:var(--shadow-sm)}
+.cz-step-n{width:40px;height:40px;border-radius:50%;background:var(--forest);color:var(--on-forest);display:grid;place-items:center;font-weight:700;font-size:17px;margin-bottom:var(--space-5)}
+.cz-step h3{margin:0 0 var(--space-2);font-size:20px;line-height:28px;font-weight:650;letter-spacing:-.01em;color:var(--ink)}
+.cz-step p{margin:0;color:var(--ink-muted)}
+
+/* Vídeo en el móvil */
+.phone-stage{padding:var(--space-7) var(--space-5)}
+.phone{position:relative;z-index:1;width:min(300px,78%);aspect-ratio:9/19.2;border-radius:44px;padding:10px;background:linear-gradient(145deg,#4a514c,#141916 40%,#0b0e0c 70%,#3a403b);box-shadow:var(--shadow-lg)}
+.phone video,.phone img{width:100%;height:100%;object-fit:cover;border-radius:35px;display:block;background:#0b0e0c}
+.phone-notch{position:absolute;top:20px;left:50%;width:90px;height:26px;margin-left:-45px;border-radius:14px;background:#000;z-index:2}
+.sound{position:absolute;z-index:3;right:var(--space-4);bottom:var(--space-4)}
+.video-points{display:grid;gap:var(--space-4);margin:var(--space-6) 0 0;padding:0;list-style:none}
+.video-points li{display:flex;gap:var(--space-3);align-items:flex-start;color:var(--ink)}
+.video-points b{font-weight:600}
+.video-points span{color:var(--ink-muted)}
+.tick{flex:none;width:28px;height:28px;border-radius:50%;background:var(--salvia-soft);color:var(--salvia);display:grid;place-items:center}
+.tick svg{width:16px;height:16px}
+
+/* Tarjetas de beneficio */
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--space-5)}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-5)}
+.cz-feature{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:var(--space-6);box-shadow:var(--shadow-sm)}
+.cz-feature-icon{width:48px;height:48px;border-radius:var(--radius-md);background:var(--salvia-soft);color:var(--salvia);display:grid;place-items:center;margin-bottom:var(--space-5)}
+.cz-feature-icon svg{width:24px;height:24px}
+.cz-feature h3{margin:0 0 var(--space-2);font-size:20px;line-height:28px;font-weight:650;letter-spacing:-.01em;color:var(--ink)}
+.cz-feature p{margin:0;color:var(--ink-muted)}
+
+/* La tarjeta real */
+.photo-stage{padding:var(--space-7) var(--space-5)}
+.photo-stage img{position:relative;z-index:1;width:min(360px,86%);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);transform:rotate(3deg)}
+.photo-tag{position:absolute;z-index:2;top:var(--space-5);left:var(--space-5)}
+
+/* Personalización anotada */
+.anno{position:relative;width:min(460px,100%);margin:0 auto}
+.anno img{display:block;width:100%;border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);border:1px solid var(--line)}
+.pin{position:absolute;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:var(--forest);color:var(--on-forest);display:grid;place-items:center;font-weight:700;font-size:15px;box-shadow:0 0 0 6px color-mix(in srgb,var(--surface-raised) 70%,transparent),var(--shadow-md)}
+.custom-list{display:grid;gap:var(--space-4);margin:var(--space-6) 0 0;padding:0;list-style:none;counter-reset:c}
+.custom-list li{display:grid;grid-template-columns:36px 1fr;gap:var(--space-4);align-items:start}
+.custom-list .n{width:36px;height:36px;border-radius:50%;background:var(--forest);color:var(--on-forest);display:grid;place-items:center;font-weight:700;font-size:15px}
+.custom-list h3{margin:4px 0 2px;font-size:20px;line-height:28px;font-weight:650;letter-spacing:-.01em}
+.custom-list p{margin:0;color:var(--ink-muted)}
+
+/* Precios */
+.prices{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-5);padding-top:var(--space-3)}
+.cz-price{position:relative;display:flex;flex-direction:column;gap:var(--space-3);background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:var(--space-6);box-shadow:var(--shadow-sm)}
+.cz-price-featured{border:2px solid var(--salvia);box-shadow:var(--shadow-md)}
+.cz-price h3{margin:0;font-size:20px;line-height:28px;font-weight:650;letter-spacing:-.01em;color:var(--ink)}
+.cz-price-desc{margin:0;color:var(--ink-muted)}
+.cz-price-amount{margin:var(--space-2) 0 0;font-size:56px;line-height:56px;font-weight:700;letter-spacing:-.04em;color:var(--ink);font-variant-numeric:tabular-nums}
+.cz-price-amount small{font-size:17px;line-height:26px;font-weight:500;letter-spacing:0;color:var(--ink-muted);margin-left:var(--space-1)}
+.cz-price-total{margin:0;font-size:15px;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.cz-price ul{list-style:none;margin:var(--space-2) 0 var(--space-4);padding:0;display:grid;gap:var(--space-3);font-size:15px;line-height:22px;flex:1}
+.cz-price li{display:flex;gap:var(--space-3);align-items:flex-start;color:var(--ink)}
+.cz-price li::before{content:"";flex:none;width:20px;height:20px;background:var(--salvia);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/contain no-repeat}
+.cz-price-flag{position:absolute;top:calc(var(--space-3) * -1);right:var(--space-5)}
+
+/* Calculadora */
+.calc{margin-top:var(--space-7);background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);padding:var(--space-6);display:grid;grid-template-columns:7fr 5fr;gap:var(--space-7);align-items:center}
+.calc>*{min-width:0}
+.calc h3{margin:0;font-size:28px;line-height:34px;font-weight:650;letter-spacing:-.02em}
+.qty-row{display:flex;align-items:center;gap:var(--space-4);margin-top:var(--space-5)}
+.qty-row input[type="range"]{flex:1;min-width:0;accent-color:var(--salvia);height:28px}
+.qty-num{width:104px;height:48px;border-radius:var(--radius-md);border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:inherit;font-weight:600;font-size:20px;text-align:center;font-variant-numeric:tabular-nums}
+.qty-num:focus-visible,.field input:focus-visible,.field select:focus-visible,.field textarea:focus-visible{outline:2px solid transparent;box-shadow:var(--focus-ring)}
+.tiers{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--space-2);margin-top:var(--space-4)}
+.tier{border-radius:var(--radius-sm);background:var(--surface-sunken);padding:var(--space-2) var(--space-3);font-size:13px;line-height:18px;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.tier b{display:block;font-size:15px;color:var(--ink);font-weight:650}
+.tier.is-on{background:var(--salvia-soft);box-shadow:inset 0 0 0 2px var(--salvia)}
+.result{display:grid;gap:var(--space-3);background:var(--surface-sunken);border-radius:var(--radius-md);padding:var(--space-5)}
+.result-row{display:flex;justify-content:space-between;gap:var(--space-4);font-variant-numeric:tabular-nums}
+.result-row span{color:var(--ink-muted)}
+.result-row strong{font-weight:650}
+.result-total{border-top:1px solid var(--line);padding-top:var(--space-3);align-items:baseline}
+.result-total strong{font-size:36px;line-height:40px;letter-spacing:-.03em}
+.saving{color:var(--salvia);font-weight:600}
+.note{text-align:center;margin:var(--space-6) 0 0}
+
+/* Preguntas */
+.cz-faq{display:grid;gap:var(--space-3)}
+.cz-faq-item{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-lg);padding:0 var(--space-5)}
+.cz-faq-item summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);min-height:68px;font-size:20px;line-height:28px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.cz-faq-item summary::-webkit-details-marker{display:none}
+.cz-faq-item summary::after{content:"+";flex:none;width:32px;height:32px;border-radius:50%;background:var(--salvia-soft);color:var(--salvia);display:grid;place-items:center;font-size:22px;line-height:1;font-weight:500}
+.cz-faq-item[open] summary::after{content:"\2212"}
+.cz-faq-item summary:focus-visible{outline:2px solid transparent;box-shadow:var(--focus-ring);border-radius:var(--radius-md)}
+.cz-faq-item p{margin:0 0 var(--space-5);color:var(--ink-muted)}
+
+/* Pedido */
+.order-card{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);padding:var(--space-6)}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4) var(--space-5)}
+.field{display:grid;gap:var(--space-2);min-width:0}
+.field.full{grid-column:1/-1}
+.field label{font-size:15px;font-weight:600;color:var(--ink)}
+.field label small{font-weight:500;color:var(--ink-muted)}
+.field input,.field select,.field textarea{width:100%;min-width:0;height:48px;border-radius:var(--radius-md);border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:inherit;font-size:16px;padding:0 var(--space-4)}
+.field textarea{height:auto;min-height:112px;padding:var(--space-3) var(--space-4);resize:vertical;line-height:24px}
+.field .err{display:none;font-size:13px;line-height:18px;color:var(--coral);font-weight:500}
+.field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--coral)}
+.field.invalid .err{display:block}
+.check{grid-column:1/-1;display:flex;gap:var(--space-3);align-items:flex-start;font-size:15px;line-height:22px;color:var(--ink-muted)}
+.check input{width:20px;height:20px;margin-top:1px;accent-color:var(--salvia);flex:none}
+.order-sum{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);flex-wrap:wrap;border-top:1px solid var(--line);padding-top:var(--space-5);margin-top:var(--space-2)}
+.order-sum p{margin:0;font-variant-numeric:tabular-nums}
+.order-sum strong{font-size:22px;letter-spacing:-.02em}
+.done{display:grid;gap:var(--space-4)}
+.done h3{margin:0;font-size:28px;line-height:34px;font-weight:650;letter-spacing:-.02em}
+.done pre{margin:0;white-space:pre-wrap;word-break:break-word;background:var(--surface-sunken);border-radius:var(--radius-md);padding:var(--space-4);font:500 14px/22px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink)}
+.done-actions{display:flex;gap:var(--space-3);flex-wrap:wrap}
+
+/* Banda final y pie */
+.final{background:var(--forest);border-radius:var(--radius-xl);padding:var(--space-9) var(--space-6);text-align:center;color:var(--on-forest)}
+.final h2{margin:0 auto;max-width:720px;font-size:48px;line-height:52px;font-weight:700;letter-spacing:-.03em;color:var(--on-forest)}
+.final p{margin:var(--space-4) auto var(--space-6);max-width:520px;font-size:21px;line-height:31px;color:var(--on-forest-muted)}
+.foot{padding-block:var(--space-7) var(--space-8);display:flex;justify-content:space-between;gap:var(--space-5);align-items:flex-start;flex-wrap:wrap;font-size:13px;line-height:18px;color:var(--ink-muted)}
+.foot p{margin:var(--space-2) 0 0;max-width:460px}
+.foot-brand{display:flex;gap:var(--space-4);align-items:center}
+.foot-mark{flex:none;display:inline-flex;align-items:center;justify-content:center;background:#ffffff;border-radius:var(--radius-md);padding:6px 12px;border:1px solid var(--line)}
+.foot-mark img{height:52px;display:block}
+
+@media (max-width:960px){
+  .cz-steps.four{grid-template-columns:repeat(2,1fr)}
+  .calc{grid-template-columns:1fr;gap:var(--space-6)}
+}
+@media (max-width:760px){
+  .cz-section{padding-block:var(--space-8)}
+  .cz-display{font-size:36px;line-height:40px}
+  .cz-lead{font-size:19px;line-height:28px}
+  .hero{padding-top:var(--space-7);padding-bottom:var(--space-7)}
+  .hero h1{font-size:44px;line-height:46px}
+  .hero .cz-badge{white-space:normal;height:auto;padding:6px var(--space-3);line-height:17px;text-align:center}
+  .hero-stage{height:420px;margin-top:var(--space-7)}
+  .cz-nav-links{display:none}
+  .cz-steps,.cz-steps.four,.grid2,.grid3,.prices{grid-template-columns:1fr}
+  .split{grid-template-columns:1fr;gap:var(--space-6)}
+  .form{grid-template-columns:1fr}
+  .tiers{grid-template-columns:repeat(3,1fr)}
+  .final{padding:var(--space-8) var(--space-5)}
+  .final h2{font-size:34px;line-height:38px}
+  .order-card,.calc{padding:var(--space-5)}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .cz-btn{transition:none}.cz-btn:hover,.cz-btn:active{transform:none}
+  .hero-stage canvas,.hero-fallback{transition:none}
+}
+</style>
+
+<header class="hdr">
+  <div class="cz-wrap">
+    <nav class="cz-nav" aria-label="Principal">
+      <a class="cz-logo" href="#inicio">Cierzo<span>NFC</span></a>
+      <div class="cz-nav-links">
+        <a href="#como-funciona">Cómo funciona</a>
+        <a href="#personalizacion">Personalización</a>
+        <a href="#precios">Precios</a>
+        <a href="#preguntas">Preguntas</a>
+      </div>
+      <a class="cz-btn cz-btn-primary cz-btn-sm" href="#pedido">Pedir tarjetas</a>
+    </nav>
+  </div>
+</header>
+
+<main id="inicio">
+  <section class="hero cz-wrap" aria-labelledby="hero-title">
+    <span class="cz-badge">Venta al por mayor · personalizadas con tu marca</span>
+    <h1 id="hero-title">Más reseñas en Google. <em>Con un toque.</em></h1>
+    <p class="cz-lead">Tarjetas NFC de acrílico con tu diseño, programadas con el enlace de cada negocio. Desde 25 unidades, con precio por volumen.</p>
+    <div class="cta">
+      <a class="cz-btn cz-btn-primary" href="#pedido">Pedir mis tarjetas</a>
+      <a class="cz-btn cz-btn-ghost" href="#precios">Ver precios <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+    </div>
+    <div class="cz-stage hero-stage" id="hero-stage">
+      <img class="hero-fallback" src="assets/diseno.jpg" alt="Tarjeta NFC de Cierzo NFC: «Déjanos tu reseña en Google», cinco estrellas y el icono para acercar el móvil">
+      <canvas id="card3d" aria-label="Tarjeta en 3D: arrástrala para girarla" role="img"></canvas>
+      <span class="chip"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6.5c2.2 3.4 2.2 7.6 0 11"/><path d="M12 4.5c3.2 4.6 3.2 10.4 0 15"/><path d="M16 2.5c4.2 5.8 4.2 13.2 0 19"/></svg></i><span id="chip-text">Arrástrala para girarla</span></span>
+    </div>
+    <ul class="facts">
+      <li>Pedido mínimo 25 unidades</li>
+      <li>Diseño y programación incluidos</li>
+      <li>Acrílico de 3 mm con adhesivo</li>
+      <li>iPhone y Android</li>
+    </ul>
+  </section>
+
+  <section id="como-funciona" class="cz-section band" aria-labelledby="como-title">
+    <div class="cz-wrap">
+      <div class="center">
+        <p class="cz-eyebrow">Cómo funciona</p>
+        <h2 id="como-title" class="cz-display">Tres pasos. Cero fricción.</h2>
+      </div>
+      <div class="cz-steps">
+        <div class="cz-step"><div class="cz-step-n">1</div><h3>Colócala a la vista</h3><p>En la mesa, la barra o la caja. Se pega con su adhesivo y no necesita batería.</p></div>
+        <div class="cz-step"><div class="cz-step-n">2</div><h3>El cliente acerca el móvil</h3><p>Con iPhone o Android, sin instalar nada y sin escanear.</p></div>
+        <div class="cz-step"><div class="cz-step-n">3</div><h3>Reseña en segundos</h3><p>Se abre la ficha de Google del negocio, lista para poner las estrellas.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="en-accion" class="cz-section" aria-labelledby="accion-title">
+    <div class="cz-wrap split">
+      <div>
+        <p class="cz-eyebrow">En acción</p>
+        <h2 id="accion-title" class="cz-display">Míralo en menos de un minuto.</h2>
+        <p class="cz-lead">El mismo vídeo que puedes usar para presentar la tarjeta a tus clientes.</p>
+        <ul class="video-points">
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><div><b>Un toque.</b> <span>El móvil se acerca y la ficha de Google se abre sola.</span></div></li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><div><b>Cinco estrellas.</b> <span>El cliente valora sin buscar el negocio.</span></div></li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><div><b>Reseña publicada.</b> <span>Todo en unos segundos, sin apps.</span></div></li>
+        </ul>
+      </div>
+      <div class="cz-stage phone-stage">
+        <div class="phone">
+          <span class="phone-notch" aria-hidden="true"></span>
+          <video id="promo" src="assets/promo.mp4" poster="assets/promo-poster.jpg" muted loop playsinline preload="metadata" aria-label="Vídeo de la tarjeta NFC de Cierzo NFC"></video>
+        </div>
+        <button class="cz-btn cz-btn-secondary cz-btn-sm sound" id="sound" type="button" aria-pressed="false">Activar sonido</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="ventajas" class="cz-section band" aria-labelledby="ventajas-title">
+    <div class="cz-wrap split">
+      <div class="cz-stage photo-stage">
+        <span class="cz-badge photo-tag">Foto real del producto</span>
+        <img src="assets/foto-real.jpg" alt="Tarjeta NFC de Cierzo NFC en la mano, sobre una mesa de madera" loading="lazy">
+      </div>
+      <div>
+        <p class="cz-eyebrow">Ventajas</p>
+        <h2 id="ventajas-title" class="cz-display">Pensada para que el cliente no se lo piense.</h2>
+        <p class="cz-lead">Cuantos menos pasos, más reseñas. Por eso no hay nada que instalar ni escanear.</p>
+        <div class="grid2" style="margin-top:var(--space-6)">
+          <div class="cz-feature"><div class="cz-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></div><h3>Sin app, sin QR</h3><p>Un toque y listo. Nada que escanear ni descargar.</p></div>
+          <div class="cz-feature"><div class="cz-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></div><h3>Programada para cada negocio</h3><p>Llega con el enlace directo a la ficha de Google que nos indiques.</p></div>
+          <div class="cz-feature"><div class="cz-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg></div><h3>Hecha para el día a día</h3><p>Acrílico de 3 mm con adhesivo, para la barra y las mesas.</p></div>
+          <div class="cz-feature"><div class="cz-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6.5c2.2 3.4 2.2 7.6 0 11"/><path d="M12 4.5c3.2 4.6 3.2 10.4 0 15"/><path d="M16 2.5c4.2 5.8 4.2 13.2 0 19"/></svg></div><h3>iPhone y Android</h3><p>Compatible con los móviles actuales con NFC, sin ajustes.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="para-quien" class="cz-section" aria-labelledby="quien-title">
+    <div class="cz-wrap">
+      <div class="center">
+        <p class="cz-eyebrow">Para quién</p>
+        <h2 id="quien-title" class="cz-display">Hecha para vender por volumen.</h2>
+        <p class="cz-lead">Precios pensados para quien compra muchas: para sus locales o para sus clientes.</p>
+      </div>
+      <div class="grid3">
+        <div class="cz-feature"><div class="cz-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-5h6v5"/></svg></div><h3>Agencias de marketing</h3><p>Ofrece más reseñas como servicio, con la marca de cada cliente en su tarjeta.</p></div>
+        <div class="cz-feature"><div class="cz-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="7" height="13" rx="1.5"/><rect x="14" y="4" width="7" height="16" rx="1.5"/><path d="M6.5 11h0M17.5 8h0M17.5 12h0"/></svg></div><h3>Cadenas y franquicias</h3><p>La misma imagen en todos los locales, cada uno con el enlace de su ficha.</p></div>
+        <div class="cz-feature"><div class="cz-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></div><h3>Distribuidores y tiendas</h3><p>Un producto listo para vender, con margen desde el primer pack.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="personalizacion" class="cz-section band" aria-labelledby="perso-title">
+    <div class="cz-wrap split">
+      <div>
+        <p class="cz-eyebrow">Personalización incluida</p>
+        <h2 id="perso-title" class="cz-display">Tu marca en cada tarjeta.</h2>
+        <p class="cz-lead">El diseño y la programación van incluidos en el precio. Antes de fabricar te enviamos una prueba para que la apruebes.</p>
+        <ol class="custom-list">
+          <li><span class="n">1</span><div><h3>Tu mensaje</h3><p>El texto que invita a valorar, con tus palabras.</p></div></li>
+          <li><span class="n">2</span><div><h3>Tus colores</h3><p>Adaptamos los fondos y detalles a tu identidad.</p></div></li>
+          <li><span class="n">3</span><div><h3>El chip con tu enlace</h3><p>Programado con la ficha de Google de cada negocio.</p></div></li>
+          <li><span class="n">4</span><div><h3>Tu logo</h3><p>Tu marca en la esquina, o la de tu cliente si revendes.</p></div></li>
+        </ol>
+      </div>
+      <figure class="anno" style="margin:0">
+        <img src="assets/diseno.jpg" alt="Diseño de la tarjeta con las zonas personalizables numeradas" loading="lazy">
+        <span class="pin" style="left:8%;top:27%" aria-hidden="true">1</span>
+        <span class="pin" style="left:13%;top:12%" aria-hidden="true">2</span>
+        <span class="pin" style="left:68%;top:63%" aria-hidden="true">3</span>
+        <span class="pin" style="left:80%;top:93%" aria-hidden="true">4</span>
+      </figure>
+    </div>
+  </section>
+
+  <section id="precios" class="cz-section" aria-labelledby="precios-title">
+    <div class="cz-wrap">
+      <div class="center">
+        <p class="cz-eyebrow">Precios al por mayor</p>
+        <h2 id="precios-title" class="cz-display">Cuantas más, mejor precio.</h2>
+        <p class="cz-lead">Diseño personalizado y programación incluidos en todos los packs.</p>
+      </div>
+      <div class="prices">
+        <div class="cz-price">
+          <h3>Pack 25</h3>
+          <p class="cz-price-desc">Para un negocio o tu primer cliente.</p>
+          <p class="cz-price-amount">9 €<small>/ tarjeta</small></p>
+          <p class="cz-price-total">225 € el pack de 25</p>
+          <ul><li>Diseño con tu logo y colores</li><li>Programadas con tu enlace</li><li>Prueba de diseño antes de fabricar</li></ul>
+          <a class="cz-btn cz-btn-secondary" href="#pedido" data-pack="25" data-checkout="pack25">Comprar pack 25</a>
+        </div>
+        <div class="cz-price">
+          <h3>Pack 50</h3>
+          <p class="cz-price-desc">Para varios locales o una cartera pequeña.</p>
+          <p class="cz-price-amount">7 €<small>/ tarjeta</small></p>
+          <p class="cz-price-total">350 € el pack de 50</p>
+          <ul><li>Diseño con tu logo y colores</li><li>Programadas con tu enlace</li><li>Prueba de diseño antes de fabricar</li></ul>
+          <a class="cz-btn cz-btn-secondary" href="#pedido" data-pack="50" data-checkout="pack50">Comprar pack 50</a>
+        </div>
+        <div class="cz-price cz-price-featured">
+          <span class="cz-badge cz-badge-solid cz-price-flag">Mejor precio</span>
+          <h3>Pack 100</h3>
+          <p class="cz-price-desc">Para agencias, cadenas y distribuidores.</p>
+          <p class="cz-price-amount">5 €<small>/ tarjeta</small></p>
+          <p class="cz-price-total">500 € el pack de 100</p>
+          <ul><li>Diseño con tu logo y colores</li><li>Programadas con tu enlace</li><li>Prueba de diseño antes de fabricar</li></ul>
+          <a class="cz-btn cz-btn-primary" href="#pedido" data-pack="100" data-checkout="pack100">Comprar pack 100</a>
+        </div>
+      </div>
+
+      <div class="calc" aria-labelledby="calc-title">
+        <div>
+          <h3 id="calc-title">Calcula tu pedido</h3>
+          <p class="caption" style="margin:var(--space-2) 0 0">Mueve la barra o escribe la cantidad. El precio por tarjeta baja por tramos.</p>
+          <div class="qty-row">
+            <input type="range" id="qty-range" min="25" max="600" step="5" value="100" aria-label="Cantidad de tarjetas">
+            <input type="number" id="qty-num" class="qty-num" min="25" max="10000" step="1" value="100" aria-label="Cantidad de tarjetas (número)">
+          </div>
+          <div class="tiers" id="tiers">
+            <div class="tier" data-min="25"><b>25+</b>9 € / ud</div>
+            <div class="tier" data-min="50"><b>50+</b>7 € / ud</div>
+            <div class="tier" data-min="100"><b>100+</b>5 € / ud</div>
+            <div class="tier" data-min="250"><b>250+</b>4 € / ud</div>
+            <div class="tier" data-min="500"><b>500+</b>A medida</div>
+          </div>
+        </div>
+        <div class="result" aria-live="polite">
+          <div class="result-row"><span>Tarjetas</span><strong id="r-qty">100</strong></div>
+          <div class="result-row"><span>Precio por tarjeta</span><strong id="r-unit">5 €</strong></div>
+          <div class="result-row"><span>Ahorro frente al pack 25</span><strong class="saving" id="r-save">400 €</strong></div>
+          <div class="result-row result-total"><span>Total sin IVA</span><strong id="r-total">500 €</strong></div>
+          <a class="cz-btn cz-btn-secondary" href="#pedido" id="calc-order">Pedir 100 tarjetas</a>
+        </div>
+      </div>
+      <p class="note caption">Precios sin IVA. Pedido mínimo 25 unidades. A partir de 500 tarjetas te preparamos un precio a medida.</p>
+    </div>
+  </section>
+
+  <section id="proceso" class="cz-section band" aria-labelledby="proceso-title">
+    <div class="cz-wrap">
+      <div class="center">
+        <p class="cz-eyebrow">Cómo se hace un pedido</p>
+        <h2 id="proceso-title" class="cz-display">De tu marca a la barra.</h2>
+      </div>
+      <div class="cz-steps four">
+        <div class="cz-step"><div class="cz-step-n">1</div><h3>Nos cuentas tu marca</h3><p>Eliges la cantidad y nos dices logo, colores y enlaces.</p></div>
+        <div class="cz-step"><div class="cz-step-n">2</div><h3>Recibes la prueba</h3><p>Te enviamos el diseño para que lo revises y lo apruebes.</p></div>
+        <div class="cz-step"><div class="cz-step-n">3</div><h3>Apruebas y pagas</h3><p>Con la prueba va el enlace de pago y el plazo de entrega.</p></div>
+        <div class="cz-step"><div class="cz-step-n">4</div><h3>Fabricamos y enviamos</h3><p>Llegan programadas y listas para colocar.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="preguntas" class="cz-section" aria-labelledby="faq-title">
+    <div class="cz-wrap split split-top">
+      <div>
+        <p class="cz-eyebrow">Preguntas</p>
+        <h2 id="faq-title" class="cz-display">Lo que suelen preguntar.</h2>
+      </div>
+      <div class="cz-faq">
+        <details class="cz-faq-item" open><summary>¿Cuál es el pedido mínimo?</summary><p>25 tarjetas. A partir de 50, 100 y 250 unidades el precio por tarjeta baja, y desde 500 te preparamos un precio a medida.</p></details>
+        <details class="cz-faq-item"><summary>¿Qué incluye la personalización?</summary><p>El diseño con tu logo, tus colores y tus textos, y la programación del chip con el enlace que nos indiques. Antes de fabricar te enviamos una prueba para que la apruebes.</p></details>
+        <details class="cz-faq-item"><summary>¿Puedo revender las tarjetas?</summary><p>Sí. Los precios por volumen están pensados para agencias y distribuidores que las ofrecen a sus clientes con su propia marca.</p></details>
+        <details class="cz-faq-item"><summary>¿Necesita batería o conexión?</summary><p>No. La tarjeta es pasiva: se activa con el móvil del cliente, así que no hay que cargarla ni enchufarla.</p></details>
+        <details class="cz-faq-item"><summary>¿Funciona con iPhone y con Android?</summary><p>Sí, con los móviles actuales que tienen NFC. Basta con acercarlo a la tarjeta; no hay que abrir ninguna app.</p></details>
+        <details class="cz-faq-item"><summary>¿Cómo se paga y cuándo llega?</summary><p>Te enviamos el enlace de pago junto con la prueba de diseño. El plazo de entrega y el envío dependen de la cantidad y te los confirmamos antes de pagar.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section id="pedido" class="cz-section band" aria-labelledby="pedido-title">
+    <div class="cz-wrap split split-top">
+      <div>
+        <p class="cz-eyebrow">Pedido</p>
+        <h2 id="pedido-title" class="cz-display">Pide tus tarjetas.</h2>
+        <p class="cz-lead">Cuéntanos cuántas necesitas y cómo es tu marca. Te respondemos con la prueba de diseño y el enlace de pago.</p>
+        <ul class="video-points">
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><div><b>Sin compromiso.</b> <span>No pagas nada hasta aprobar el diseño.</span></div></li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><div><b>El logo, después.</b> <span>Te lo pedimos por email al contestarte.</span></div></li>
+        </ul>
+      </div>
+      <div class="order-card">
+        <form class="form" id="order-form" novalidate>
+          <div class="field"><label for="f-name">Nombre</label><input id="f-name" name="nombre" autocomplete="name" required><span class="err">Escribe tu nombre.</span></div>
+          <div class="field"><label for="f-company">Empresa</label><input id="f-company" name="empresa" autocomplete="organization" required><span class="err">Escribe el nombre de tu empresa.</span></div>
+          <div class="field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" autocomplete="email" required><span class="err">Escribe un email válido, por ejemplo nombre@empresa.es.</span></div>
+          <div class="field"><label for="f-phone">Teléfono <small>(opcional)</small></label><input id="f-phone" name="telefono" type="tel" autocomplete="tel"></div>
+          <div class="field"><label for="f-type">Tipo de cliente</label>
+            <select id="f-type" name="tipo">
+              <option>Agencia de marketing</option>
+              <option>Cadena o franquicia</option>
+              <option>Distribuidor o tienda</option>
+              <option>Negocio con varios locales</option>
+              <option>Otro</option>
+            </select>
+          </div>
+          <div class="field"><label for="f-qty">Cantidad de tarjetas</label><input id="f-qty" name="cantidad" type="number" min="25" step="1" value="100" required><span class="err">El pedido mínimo es de 25 tarjetas.</span></div>
+          <div class="field full"><label for="f-notes">Tu marca y tus enlaces</label><textarea id="f-notes" name="personalizacion" placeholder="Colores, textos y los enlaces de Google que llevarán las tarjetas. Si son para varios negocios, indícalo aquí."></textarea></div>
+          <label class="check" for="f-ok"><input id="f-ok" name="acepto" type="checkbox" required><span>Acepto que Cierzo NFC use estos datos para responder a mi pedido.<a id="privacy-link" href="#" target="_blank" rel="noopener" hidden> Ver política de privacidad</a></span></label>
+          <div class="field full" id="ok-err" hidden><span class="err" style="display:block">Marca la casilla para poder enviarte la propuesta.</span></div>
+          <div class="order-sum">
+            <p>Total estimado <strong id="o-total">500 €</strong> <span class="caption" id="o-unit">· 5 € por tarjeta, sin IVA</span></p>
+            <button class="cz-btn cz-btn-primary" type="submit" id="o-submit">Enviar pedido</button>
+          </div>
+        </form>
+        <div class="done" id="order-done" hidden>
+          <span class="cz-badge" id="done-badge">Pedido recibido</span>
+          <h3 id="done-title">Gracias, te escribimos con la prueba de diseño.</h3>
+          <p class="cz-lead" id="done-text" style="margin:0;font-size:17px;line-height:26px">Te contestamos al email que nos has dado con el diseño y el enlace de pago.</p>
+          <pre id="done-summary"></pre>
+          <div class="done-actions">
+            <button class="cz-btn cz-btn-secondary cz-btn-sm" type="button" id="copy-summary">Copiar resumen</button>
+            <button class="cz-btn cz-btn-ghost cz-btn-sm" type="button" id="new-order">Hacer otro pedido</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cz-wrap" style="padding-block:var(--space-9) 0" aria-labelledby="final-title">
+    <div class="final">
+      <h2 id="final-title">Empieza a recoger reseñas esta semana.</h2>
+      <p>Dinos cuántas necesitas y te preparamos la prueba con tu marca.</p>
+      <a class="cz-btn cz-btn-inverse" href="#pedido">Pedir mis tarjetas</a>
+    </div>
+  </section>
+</main>
+
+<footer class="cz-wrap foot">
+  <div class="foot-brand">
+    <span class="foot-mark"><img src="assets/logo-cierzo.png" alt="Logotipo de Cierzo NFC" loading="lazy"></span>
+    <div>
+      <a class="cz-logo" href="#inicio">Cierzo<span>NFC</span></a>
+      <p>Zaragoza. Google es una marca de Google LLC; Cierzo NFC no está afiliada a Google.</p>
+    </div>
+  </div>
+  <div>© 2026 Cierzo NFC</div>
+</footer>
+
+<script>
+/* Configuración para la web publicada en tu dominio.
+   formEndpoint: URL que recibe los pedidos por POST (por ejemplo, un formulario de Formspree).
+   checkout: enlaces de pago por pack (por ejemplo, Stripe Payment Links). Vacíos = el botón lleva al formulario.
+   privacyUrl: página de tu política de privacidad; si la pones, aparece el enlace junto a la casilla del formulario. */
+window.CIERZO_CONFIG = window.CIERZO_CONFIG || {
+  formEndpoint: "",
+  checkout: { pack25: "", pack50: "", pack100: "" },
+  privacyUrl: ""
+};
+
+(function () {
+  var CONFIG = window.CIERZO_CONFIG;
+  var TIERS = [
+    { min: 25, price: 9 },
+    { min: 50, price: 7 },
+    { min: 100, price: 5 },
+    { min: 250, price: 4 }
+  ];
+  var CUSTOM_FROM = 500;
+  var eur = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+
+  function unitPrice(q) {
+    var p = TIERS[0].price;
+    for (var i = 0; i < TIERS.length; i++) if (q >= TIERS[i].min) p = TIERS[i].price;
+    return p;
+  }
+  function clampQty(v) {
+    var q = Math.round(Number(v));
+    if (!isFinite(q)) q = 25;
+    return Math.max(25, Math.min(10000, q));
+  }
+
+  var range = document.getElementById("qty-range");
+  var num = document.getElementById("qty-num");
+  var fQty = document.getElementById("f-qty");
+
+  function render(q, source) {
+    var custom = q >= CUSTOM_FROM;
+    var unit = unitPrice(q);
+    var total = unit * q;
+    document.getElementById("r-qty").textContent = q.toLocaleString("es-ES");
+    document.getElementById("r-unit").textContent = custom ? "A medida (máx. 4 €)" : eur.format(unit);
+    document.getElementById("r-save").textContent = eur.format((TIERS[0].price - unit) * q);
+    document.getElementById("r-total").textContent = custom ? "Desde " + eur.format(total) : eur.format(total);
+    document.getElementById("calc-order").textContent = custom ? "Pedir precio para " + q.toLocaleString("es-ES") : "Pedir " + q.toLocaleString("es-ES") + " tarjetas";
+    document.getElementById("o-total").textContent = custom ? "Desde " + eur.format(total) : eur.format(total);
+    document.getElementById("o-unit").textContent = custom ? "· precio a medida, sin IVA" : "· " + eur.format(unit) + " por tarjeta, sin IVA";
+    document.querySelectorAll(".tier").forEach(function (t) {
+      var min = Number(t.dataset.min);
+      var next = t.nextElementSibling ? Number(t.nextElementSibling.dataset.min) : Infinity;
+      t.classList.toggle("is-on", q >= min && q < next);
+    });
+    if (source !== "range") range.value = Math.min(600, q);
+    if (source !== "num") num.value = q;
+    if (source !== "form") fQty.value = q;
+  }
+
+  range.addEventListener("input", function () { render(clampQty(range.value), "range"); });
+  num.addEventListener("change", function () { render(clampQty(num.value), "num"); });
+  fQty.addEventListener("change", function () { if (Number(fQty.value) >= 25) render(clampQty(fQty.value), "form"); });
+
+  document.querySelectorAll("[data-pack]").forEach(function (btn) {
+    var link = CONFIG.checkout && CONFIG.checkout[btn.dataset.checkout];
+    if (link) { btn.href = link; btn.target = "_blank"; btn.rel = "noopener"; return; }
+    btn.addEventListener("click", function () { render(clampQty(btn.dataset.pack)); });
+  });
+  document.getElementById("calc-order").addEventListener("click", function () { render(clampQty(num.value)); });
+
+  /* Pedido */
+  var form = document.getElementById("order-form");
+  var done = document.getElementById("order-done");
+  var lastSummary = "";
+
+  function setInvalid(id, bad) { var el = document.getElementById(id); el.setAttribute("aria-invalid", String(bad)); el.closest(".field").classList.toggle("invalid", bad); return bad; }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var data = Object.fromEntries(new FormData(form).entries());
+    var bad = false;
+    bad = setInvalid("f-name", !String(data.nombre || "").trim()) || bad;
+    bad = setInvalid("f-company", !String(data.empresa || "").trim()) || bad;
+    bad = setInvalid("f-email", !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.email || ""))) || bad;
+    bad = setInvalid("f-qty", !(Number(data.cantidad) >= 25)) || bad;
+    var okMissing = !document.getElementById("f-ok").checked;
+    document.getElementById("ok-err").hidden = !okMissing;
+    if (okMissing) document.querySelector("#ok-err .err").textContent = "Marca la casilla para poder enviarte la propuesta.";
+    if (bad || okMissing) { var first = form.querySelector(".invalid input, .invalid select"); if (first) first.focus(); return; }
+
+    var q = clampQty(data.cantidad);
+    var unit = unitPrice(q);
+    var custom = q >= CUSTOM_FROM;
+    lastSummary = [
+      "Pedido Cierzo NFC",
+      "Nombre: " + data.nombre,
+      "Empresa: " + data.empresa,
+      "Email: " + data.email,
+      "Teléfono: " + (data.telefono || "—"),
+      "Tipo de cliente: " + data.tipo,
+      "Cantidad: " + q.toLocaleString("es-ES") + " tarjetas",
+      "Precio: " + (custom ? "a medida (desde " + eur.format(unit * q) + ")" : eur.format(unit) + " por tarjeta · total " + eur.format(unit * q)) + " sin IVA",
+      "Marca y enlaces: " + (data.personalizacion || "—")
+    ].join("\n");
+
+    var submit = document.getElementById("o-submit");
+    function showDone(sent) {
+      document.getElementById("done-badge").textContent = sent ? "Pedido recibido" : "Formulario sin conectar";
+      document.getElementById("done-title").textContent = sent ? "Gracias, te escribimos con la prueba de diseño." : "Este es el resumen de tu pedido.";
+      document.getElementById("done-text").textContent = sent
+        ? "Te contestamos a " + data.email + " con el diseño y el enlace de pago."
+        : "Este formulario todavía no está conectado a un buzón, así que el pedido no se ha enviado. Copia el resumen para guardarlo.";
+      document.getElementById("done-summary").textContent = lastSummary;
+      form.hidden = true;
+      done.hidden = false;
+      done.querySelector("h3").focus && done.querySelector("h3").setAttribute("tabindex", "-1");
+      done.querySelector("h3").focus();
+    }
+
+    if (!CONFIG.formEndpoint) { showDone(false); return; }
+    submit.disabled = true;
+    submit.textContent = "Enviando…";
+    fetch(CONFIG.formEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(Object.assign({}, data, { cantidad: q, precio_unitario: custom ? "a medida" : unit, resumen: lastSummary }))
+    }).then(function (r) {
+      if (!r.ok) throw new Error(String(r.status));
+      showDone(true);
+    }).catch(function () {
+      submit.disabled = false;
+      submit.textContent = "Enviar pedido";
+      document.getElementById("ok-err").hidden = false;
+      document.querySelector("#ok-err .err").textContent = "No hemos podido enviar el pedido. Revisa tu conexión y vuelve a intentarlo.";
+    });
+  });
+
+  document.getElementById("copy-summary").addEventListener("click", function () {
+    var btn = this;
+    function selectIt() {
+      var r = document.createRange(); r.selectNodeContents(document.getElementById("done-summary"));
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      btn.textContent = "Selecciónalo y cópialo";
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(lastSummary).then(function () { btn.textContent = "Resumen copiado"; }, selectIt);
+    } else selectIt();
+  });
+  document.getElementById("new-order").addEventListener("click", function () {
+    form.reset(); form.hidden = false; done.hidden = true; render(clampQty(num.value));
+    document.getElementById("copy-summary").textContent = "Copiar resumen";
+  });
+
+  /* Vídeo: reproduce en silencio cuando está a la vista */
+  var video = document.getElementById("promo");
+  var sound = document.getElementById("sound");
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if ("IntersectionObserver" in window && !reduce) {
+    new IntersectionObserver(function (es) {
+      es.forEach(function (en) { if (en.isIntersecting) { var p = video.play(); if (p && p.catch) p.catch(function () {}); } else video.pause(); });
+    }, { threshold: 0.4 }).observe(video);
+  }
+  sound.addEventListener("click", function () {
+    video.muted = !video.muted;
+    if (!video.muted) { var p = video.play(); if (p && p.catch) p.catch(function () {}); }
+    sound.textContent = video.muted ? "Activar sonido" : "Silenciar";
+    sound.setAttribute("aria-pressed", String(!video.muted));
+  });
+
+  if (CONFIG.privacyUrl) {
+    var privacy = document.getElementById("privacy-link");
+    privacy.href = CONFIG.privacyUrl;
+    privacy.hidden = false;
+  }
+
+  render(100);
+})();
+</script>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.178.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.178.0/examples/jsm/"}}</script>
+<script type="module">
+/* Tarjeta real en 3D: acrílico de 3 mm con barniz, cara impresa con el diseño, reflejos de estudio y sombra. */
+import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const stage = document.getElementById("hero-stage");
+const canvas = document.getElementById("card3d");
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function roundedSquare(size, r) {
+  const s = size / 2, sh = new THREE.Shape();
+  sh.moveTo(-s + r, -s); sh.lineTo(s - r, -s); sh.quadraticCurveTo(s, -s, s, -s + r);
+  sh.lineTo(s, s - r); sh.quadraticCurveTo(s, s, s - r, s); sh.lineTo(-s + r, s);
+  sh.quadraticCurveTo(-s, s, -s, s - r); sh.lineTo(-s, -s + r); sh.quadraticCurveTo(-s, -s, -s + r, -s);
+  return sh;
+}
+function faceGeometry(size, r, mirror) {
+  const geo = new THREE.ShapeGeometry(roundedSquare(size, r), 32);
+  const pos = geo.attributes.position, uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const u = (pos.getX(i) + size / 2) / size;
+    uv[i * 2] = mirror ? 1 - u : u;
+    uv[i * 2 + 1] = (pos.getY(i) + size / 2) / size;
+  }
+  geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  return geo;
+}
+
+try {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1.15;
+
+  const scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
+  camera.position.set(0, 0.05, 3.15);
+  camera.lookAt(0, -0.02, 0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 2.2);
+  key.position.set(1.2, 2.6, 3.4);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0xdbe7dd, 0.9);
+  rim.position.set(-2.4, 1.2, -1.6);
+  scene.add(rim);
+
+  // Sombra de contacto suave bajo la tarjeta (degradado radial), se estrecha cuando la tarjeta gira.
+  const blob = document.createElement("canvas");
+  blob.width = blob.height = 128;
+  const bctx = blob.getContext("2d");
+  const grad = bctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, "rgba(24,33,27,0.55)");
+  grad.addColorStop(0.55, "rgba(24,33,27,0.18)");
+  grad.addColorStop(1, "rgba(24,33,27,0)");
+  bctx.fillStyle = grad;
+  bctx.fillRect(0, 0, 128, 128);
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(blob), transparent: true, depthWrite: false, toneMapped: false }));
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = -0.64;
+  scene.add(shadow);
+
+  const texture = await new THREE.TextureLoader().loadAsync("assets/diseno.jpg");
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  const SIZE = 1, DEPTH = 0.03, R = 0.05;
+  const card = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(roundedSquare(SIZE, R), { depth: DEPTH, bevelEnabled: true, bevelSize: 0.004, bevelThickness: 0.004, bevelSegments: 4, curveSegments: 32 }),
+    new THREE.MeshPhysicalMaterial({ color: 0xe6f1ee, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.05 })
+  );
+  body.position.z = -DEPTH / 2;
+  const front = new THREE.Mesh(faceGeometry(SIZE - 0.002, R, false), new THREE.MeshPhysicalMaterial({ map: texture, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.07 }));
+  front.position.z = DEPTH / 2 + 0.0046;
+  const back = new THREE.Mesh(faceGeometry(SIZE - 0.002, R, true), new THREE.MeshPhysicalMaterial({ map: texture, color: 0xf1f6f6, roughness: 0.42, transparent: true, opacity: 0.9 }));
+  back.position.z = -DEPTH / 2 - 0.0046;
+  back.rotation.y = Math.PI;
+  card.add(body, front, back);
+  scene.add(card);
+
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    // En pantallas estrechas alejamos la cámara para que la tarjeta quepa entera.
+    camera.position.z = w / h < 0.9 ? 4.3 : 3.15;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage);
+  resize();
+
+  // Giro: reposo con vaivén suave (entre −6° y 6°), arrastre libre con inercia y vuelta al reposo.
+  const DEG = Math.PI / 180;
+  let rotY = -4 * DEG, rotX = -3 * DEG, velY = 0, dragging = false, lastX = 0, lastY = 0, dragX = 0, released = 0;
+  canvas.addEventListener("pointerdown", (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId); document.getElementById("chip-text").textContent = "Suelta para que vuelva"; });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    velY = dx * 0.012; rotY += velY; dragX = Math.max(-0.5, Math.min(0.5, dragX + dy * 0.006));
+  });
+  const end = () => { if (!dragging) return; dragging = false; released = performance.now(); document.getElementById("chip-text").textContent = "Arrástrala para girarla"; };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+
+  let visible = true;
+  new IntersectionObserver((es) => { visible = es[0].isIntersecting; if (visible) loop(); }, { threshold: 0 }).observe(stage);
+
+  let raf = 0;
+  const t0 = performance.now();
+  function frame(now) {
+    raf = 0;
+    const t = (now - t0) / 1000;
+    const idleY = reduce ? -4 * DEG : Math.sin(t * 0.55) * 6 * DEG;
+    const idleX = reduce ? -3 * DEG : -3 * DEG + Math.sin(t * 0.4) * 1.5 * DEG;
+    if (!dragging) {
+      velY *= 0.92;
+      rotY += velY;
+      // Vuelve al giro de reposo más cercano (no deshace vueltas completas de golpe).
+      const turns = Math.round((rotY - idleY) / (Math.PI * 2));
+      const target = idleY + turns * Math.PI * 2;
+      const settle = Math.min(1, (now - released) / 1200);
+      rotY += (target - rotY) * (0.04 + settle * 0.04);
+      dragX += (0 - dragX) * 0.08;
+    }
+    card.rotation.set(idleX + dragX, rotY, 0);
+    card.position.y = reduce ? 0 : Math.sin(t * 0.8) * 0.015;
+    const spread = Math.abs(Math.cos(rotY)) * 0.95 + 0.2;
+    shadow.scale.set(spread, 0.26, 1);
+    shadow.material.opacity = 0.75 - card.position.y * 4;
+    renderer.render(scene, camera);
+    if (visible && !(reduce && !dragging && Math.abs(velY) < 1e-4)) loop();
+  }
+  function loop() { if (!raf) raf = requestAnimationFrame(frame); }
+  canvas.addEventListener("pointerdown", loop);
+  stage.classList.add("is-3d");
+  loop();
+} catch (err) {
+  // Sin WebGL se queda la imagen fija de la tarjeta.
+  console.warn("Tarjeta 3D no disponible:", err);
+}
+</script>
