@@ -68,7 +68,7 @@ const useStoneTexture = () =>
     return tex;
   }, []);
 
-const Fog: React.FC = () => {
+export const Fog: React.FC = () => {
   const scene = useThree((s) => s.scene);
   useEffect(() => {
     scene.fog = new THREE.Fog(COLORS.night, 3.2, 7.5);
@@ -79,7 +79,7 @@ const Fog: React.FC = () => {
   return null;
 };
 
-const Table: React.FC = () => {
+export const Table: React.FC = () => {
   const stone = useStoneTexture();
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>

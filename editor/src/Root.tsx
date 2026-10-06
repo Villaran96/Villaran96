@@ -11,6 +11,7 @@ import { QuestionScene } from "./scenes/QuestionScene";
 import { ResultsScene } from "./scenes/ResultsScene";
 import { TOTAL_FRAMES } from "./theme";
 import { Card3D } from "./three/Card3D";
+import { WebCounter, WebEdge, WebStack } from "./web/WebStills";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -33,6 +34,11 @@ export const RemotionRoot: React.FC = () => {
         <Composition id="Results" component={ResultsScene} durationInFrames={165} fps={30} width={1080} height={1920} defaultProps={{ headline: "Más reseñas.", headlineAccent: "Más clientes.", reviewsFrom: 27, reviewsTo: 214, ratingFrom: 3.8, ratingTo: 4.9, footnote: "*Simulación con datos de ejemplo" }} />
         <Composition id="Features" component={FeaturesScene} durationInFrames={180} fps={30} width={1080} height={1920} defaultProps={{ title1: "Sin apps", accent1: "que descargar", title2: "Sin batería", accent2: "ni cargas", title3: "iPhone y Android", accent3: "compatibles", title4: "Con tu logo", accent4: "y tus colores" }} />
         <Composition id="Cta" component={CtaScene} durationInFrames={210} fps={30} width={1080} height={1920} defaultProps={{ headline: "Más reseñas,", headlineAccent: "en un solo toque.", cta: "Pide la tuya →", small: "Link en la bio", logo: "tarjetas/logo-cierzo.png" }} />
+      </Folder>
+      <Folder name="Web">
+        <Composition id="WebEdge" component={WebEdge} durationInFrames={1} fps={30} width={1600} height={1200} />
+        <Composition id="WebCounter" component={WebCounter} durationInFrames={1} fps={30} width={1800} height={1000} />
+        <Composition id="WebStack" component={WebStack} durationInFrames={1} fps={30} width={1200} height={900} defaultProps={{ count: 3 }} />
       </Folder>
       <Folder name="ThreeJS">
         <Composition id="Card3D" component={Card3D} durationInFrames={120} fps={30} width={1080} height={1920} defaultProps={{ image: "tarjetas/diseno.jpg" }} />
