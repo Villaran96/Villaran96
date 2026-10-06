@@ -218,22 +218,29 @@ for b in np.arange(q0, DROP - 0.05, BEAT / 2):
 rs = at("question", C["question"]["riserStart"])
 place(music, rs, riser(DROP - rs), 0.6, rev=0.3)
 
-# Groove principal del drop al final.
+# Groove principal del drop al final, con un tramo "breakdown" (más íntimo) durante los detalles macro.
+BREAK0 = at("details", 0) + 0.4
+BREAK1 = starts["photo"] / FPS
 sidechain = np.ones(N, np.float32)
 bar_t = DROP
 bar_idx = 0
 while bar_t < END_GROOVE + 0.01:
     chord = CHORDS[bar_idx % 4]
     root = ROOTS[bar_idx % 4]
-    place(music, bar_t, pad([note(n) for n in chord] + [note(chord[0] + 12)], BAR + 0.05), 0.42, rev=0.25)
+    breakdown = BREAK0 <= bar_t < BREAK1
+    place(music, bar_t, pad([note(n) for n in chord] + [note(chord[0] + 12)], BAR + 0.05), 0.5 if breakdown else 0.42, rev=0.45 if breakdown else 0.25)
     for k in range(4):
         bt = bar_t + k * BEAT
         if bt >= END_GROOVE:
             break
-        place(music, bt, kick(), 0.95)
+        if breakdown and k != 0:
+            continue
+        place(music, bt, kick(), 0.6 if breakdown else 0.95)
         i0 = int(bt * SR)
         dip = 1 - 0.55 * np.exp(-np.arange(int(0.22 * SR)) / SR / 0.07)
         sidechain[i0 : i0 + len(dip)] = np.minimum(sidechain[i0 : i0 + len(dip)], dip[: max(0, N - i0)])
+        if breakdown:
+            continue
         if k in (1, 3) and bar_idx >= 1:
             place(music, bt, clap(), 0.55, rev=0.2)
         place(music, bt + BEAT / 2, hat(open_=True), 0.2, pan=0.25)
@@ -256,6 +263,9 @@ while bar_t < END_GROOVE + 0.01:
     bar_t += BAR
     bar_idx += 1
 
+# Subida al final del breakdown: la música completa vuelve con la foto real.
+place(music, BREAK1 - 2.0, riser(2.0), 0.55, rev=0.3)
+
 # Acorde final largo que se apaga con el fundido.
 place(music, at("cta", 0), pad([note(n) for n in [57, 60, 64, 69, 76]], (TOTAL_FRAMES - starts["cta"]) / FPS + 0.2), 0.5, rev=0.5)
 music *= sidechain[:, None]
@@ -276,14 +286,35 @@ for i, w in enumerate(q["words"]):
 place(sfx, at("question", q["highlight"]), whoosh(0.25), 0.4, pan=-0.3)
 
 place(sfx, at("reveal", rv["impact"]), impact(), 0.9, rev=0.4)
-place(sfx, at("reveal", rv["impact"]), whoosh(rv["cardLand"] / FPS, up=False), 0.55)
-place(sfx, at("reveal", rv["cardLand"]), thud(), 0.7)
+place(sfx, at("reveal", rv["impact"]), whoosh(rv["turnEnd"] / FPS, up=True), 0.5, pan=-0.3)
 for k, f in enumerate([2093, 2637, 3136, 4186]):
-    place(sfx, at("reveal", rv["shine"]) + k * 0.05, bell(f, 0.9), 0.08, pan=-0.5 + k * 0.33, rev=0.6)
+    place(sfx, at("reveal", rv["turnEnd"] - 10) + k * 0.05, bell(f, 0.9), 0.08, pan=-0.5 + k * 0.33, rev=0.6)
 for k in range(10):
     place(sfx, at("reveal", rv["title"] + k * 2), tick(1800 + k * 60, 0.02), 0.12)
 place(sfx, at("reveal", rv["subtitle"]), whoosh(0.3), 0.3)
-place(sfx, at("how", 0) - 0.1, whoosh(0.3), 0.7, pan=-0.6)
+for k, f in enumerate([3136, 4186]):
+    place(sfx, at("reveal", 128) + k * 0.06, bell(f, 0.8), 0.06, pan=0.4 - k * 0.6, rev=0.6)
+
+# Detalles: cada movimiento de cámara es un "swoosh" suave; cada llegada, un brillo.
+dt = C["details"]
+moves = [(15, dt["stops"][0]["arrive"])] + [(dt["stops"][i]["leave"], dt["stops"][i + 1]["arrive"]) for i in range(3)] + [(dt["stops"][3]["leave"], 330)]
+for i, (a, b) in enumerate(moves):
+    place(sfx, at("details", a), whoosh((b - a) / FPS, up=i % 2 == 0), 0.32, pan=(-0.4 if i % 2 else 0.4), rev=0.3)
+for i, st in enumerate(dt["stops"]):
+    place(sfx, at("details", st["arrive"]), bell(note(88 + [0, 3, 7, 12][i]), 0.9), 0.07, rev=0.6)
+    place(sfx, at("details", st["arrive"] - 4), pop(500, 220, 0.1), 0.18)
+place(sfx, at("details", dt["ripples"]), bell(1318.5, 1.3), 0.26, rev=0.5)
+place(sfx, at("details", dt["ripples"]) + 0.09, bell(1975.5, 1.1), 0.18, rev=0.5)
+place(sfx, at("details", dt["stops"][3]["arrive"]), bell(note(100), 1.2, partials=((1, 1), (2.0, 0.5), (3.01, 0.25))), 0.08, rev=0.7)
+
+# Foto real: golpe de vuelta al groove + "obturador" al aparecer la etiqueta.
+ph = C["photo"]
+place(sfx, at("photo", 0) - 0.12, whoosh(0.3), 0.6, pan=-0.6)
+place(sfx, at("photo", 0), impact()[: int(0.9 * SR)], 0.55, rev=0.3)
+place(sfx, at("photo", ph["tag"]), tick(1500, 0.03), 0.4)
+place(sfx, at("photo", ph["tag"]) + 0.07, hp(rng.normal(0, 1, int(0.06 * SR)), 2000) * np.exp(-np.arange(int(0.06 * SR)) / SR / 0.015), 0.3)
+place(sfx, at("photo", ph["title"]), whoosh(0.3), 0.3)
+place(sfx, at("how", 0) - 0.15, whoosh(0.3), 0.6, pan=0.5)
 
 place(sfx, at("how", hw["phoneIn"]), whoosh(0.5, up=False), 0.45)
 place(sfx, at("how", hw["tap"]), thud(), 0.5)
@@ -326,6 +357,7 @@ for k in range(4):
 
 place(sfx, at("cta", ct["impact"]), impact(), 0.8, rev=0.4)
 place(sfx, at("cta", 0), whoosh(ct["spinEnd"] / FPS, up=False), 0.4)
+place(sfx, at("cta", ct["logo"]), bell(note(84), 1.0), 0.1, rev=0.5)
 place(sfx, at("cta", ct["headline"]), pop(700, 260), 0.3)
 place(sfx, at("cta", ct["headline"] + 8), pop(820, 300), 0.3)
 place(sfx, at("cta", ct["button"]), pop(500, 180, 0.15), 0.45)

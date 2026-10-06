@@ -12,7 +12,15 @@
     },
     {
       "id": "reveal",
-      "duration": 165
+      "duration": 180
+    },
+    {
+      "id": "details",
+      "duration": 330
+    },
+    {
+      "id": "photo",
+      "duration": 120
     },
     {
       "id": "how",
@@ -44,7 +52,17 @@
     },
     {
       "type": "transition",
+      "kind": "fade",
+      "duration": 15
+    },
+    {
+      "type": "transition",
       "kind": "whipPan",
+      "duration": 15
+    },
+    {
+      "type": "transition",
+      "kind": "slideUp",
       "duration": 15
     },
     {
@@ -91,10 +109,10 @@
     },
     "reveal": {
       "impact": 0,
-      "cardLand": 26,
-      "shine": 48,
-      "title": 58,
-      "subtitle": 92
+      "turnEnd": 44,
+      "title": 66,
+      "subtitle": 96,
+      "settleStart": 118
     },
     "how": {
       "phoneIn": 4,
@@ -133,11 +151,39 @@
     },
     "cta": {
       "impact": 0,
-      "spinEnd": 60,
-      "headline": 30,
-      "button": 74,
-      "chime": 120,
+      "spinEnd": 72,
+      "headline": 36,
+      "button": 82,
+      "logo": 100,
+      "chime": 124,
       "fadeOut": 160
+    },
+    "details": {
+      "stops": [
+        {
+          "arrive": 40,
+          "leave": 88
+        },
+        {
+          "arrive": 108,
+          "leave": 160
+        },
+        {
+          "arrive": 180,
+          "leave": 238
+        },
+        {
+          "arrive": 262,
+          "leave": 296
+        }
+      ],
+      "ripples": 192,
+      "breakdownEndPad": 30
+    },
+    "photo": {
+      "tag": 8,
+      "title": 20,
+      "sub": 36
     }
   }
 }

@@ -227,8 +227,15 @@ const HowItWorksSceneInner: React.FC<Props> = ({ step1, step2, step3, businessNa
           translate: `0 ${cardOut * 160}px`,
         }}
       >
-        <CardShadow lift={0.05} y={150} />
-        <NfcCard rotateX={58} rotateZ={-4} businessName={businessName} frontImage={frontImage} shine={progress(frame, c.tap, c.tap + 30)} />
+        <CardShadow lift={0.05} y={170} width={700} />
+        {/* Giro muy lento sobre la mesa: da volumen sin distraer del móvil */}
+        <NfcCard
+          rotateX={58}
+          rotateZ={interpolate(frame, [0, 270], [-7, 5])}
+          scale={0.92}
+          frontImage={frontImage}
+          shine={progress(frame, c.tap, c.tap + 30)}
+        />
       </AbsoluteFill>
 
       <Ripples at={c.tap} x={tapX} y={tapY} />

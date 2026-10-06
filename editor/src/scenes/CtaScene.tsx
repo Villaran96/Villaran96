@@ -2,10 +2,12 @@ import { starburst } from "@remotion/effects/starburst";
 import type React from "react";
 import {
   AbsoluteFill,
+  Img,
   Interactive,
   interpolate,
   Solid,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
   type InteractivitySchema,
@@ -21,7 +23,7 @@ type Props = {
   readonly headlineAccent: string;
   readonly cta: string;
   readonly small: string;
-  readonly businessName: string;
+  readonly logo: string;
   readonly frontImage?: string;
   readonly style?: React.CSSProperties;
 };
@@ -29,17 +31,20 @@ type Props = {
 const c = cues.cta;
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
-const CtaSceneInner: React.FC<Props> = ({ headline, headlineAccent, cta, small, businessName, frontImage, style }) => {
+const CtaSceneInner: React.FC<Props> = ({ headline, headlineAccent, cta, small, logo, frontImage, style }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
 
-  // Giro de 2 vueltas y media que frena hasta quedar de frente.
-  const spin = progress(frame, 0, c.spinEnd, EASE_IN_OUT);
-  const rotY = interpolate(spin, [0, 1], [-900, 0]);
-  const spinSpeed = Math.abs(interpolate(frame, [0, c.spinEnd / 2, c.spinEnd], [0, 1, 0], clamp));
+  // Un único giro de 360° con entrada y salida suaves; luego un vaivén lento.
+  const spinAt = (fr: number) => interpolate(progress(fr, 0, c.spinEnd, EASE_IN_OUT), [0, 1], [-360, 0]);
+  const sway = frame > c.spinEnd ? Math.sin((frame - c.spinEnd) / 26) * 9 * progress(frame, c.spinEnd, c.spinEnd + 30) : 0;
+  const rotY = spinAt(frame) + sway;
+  const spinBlur = Math.min(2.5, Math.abs(spinAt(frame) - spinAt(Math.max(0, frame - 1))) * 0.16);
+  const rotX = interpolate(progress(frame, 0, c.spinEnd, EASE_IN_OUT), [0, 1], [20, 8]);
   const rise = spring({ frame, fps, config: { damping: 18, stiffness: 80 } });
-  const f = float(frame, "cta", 12);
-  const shineCycle = frame > c.spinEnd ? ((frame - c.spinEnd) % 50) / 50 : 0;
+  const f = float(frame, "cta", 6);
+  const shineCycle = frame > c.spinEnd ? ((frame - c.spinEnd) % 60) / 50 : interpolate(frame, [c.spinEnd - 24, c.spinEnd], [0, 1], clamp);
+  const logoIn = spring({ frame: frame - c.logo, fps, config: { damping: 16, stiffness: 140 } });
 
   const button = spring({ frame: frame - c.button, fps, config: { damping: 11, stiffness: 160 } });
   const pulse = frame > c.button ? ((frame - c.button) % 30) / 30 : 0;
@@ -60,14 +65,14 @@ const CtaSceneInner: React.FC<Props> = ({ headline, headlineAccent, cta, small, 
       <AbsoluteFill style={{ background: "radial-gradient(ellipse 70% 40% at 50% 30%, rgba(255,197,49,0.28), transparent 70%)" }} />
       <Particles count={44} seed="cta" color="255,215,120" />
 
-      <AbsoluteFill style={{ perspective: 2000, top: -300 }}>
-        <CardShadow lift={0.3 + f.y * 0.01} y={300} />
-        <div style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d", translate: `${f.x}px ${(1 - rise) * 500 + f.y}px`, filter: `blur(${spinSpeed * 3}px)` }}>
-          <NfcCard rotateX={10 + f.r} rotateY={rotY + f.x * 0.4} rotateZ={-4} scale={0.5 + rise * 0.45} shine={shineCycle} businessName={businessName} frontImage={frontImage} />
+      <AbsoluteFill style={{ perspective: 2000, top: -380 }}>
+        <CardShadow lift={0.3 + f.y * 0.01} y={330} />
+        <div style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d", translate: `${f.x}px ${(1 - rise) * 500 + f.y}px`, filter: spinBlur > 0.2 ? `blur(${spinBlur}px)` : undefined }}>
+          <NfcCard rotateX={rotX + f.r * 0.5} rotateY={rotY} rotateZ={-3} scale={0.5 + rise * 0.4} shine={shineCycle} frontImage={frontImage} />
         </div>
       </AbsoluteFill>
 
-      <AbsoluteFill style={{ alignItems: "center", justifyContent: "flex-end", paddingBottom: 330, textAlign: "center" }}>
+      <AbsoluteFill style={{ alignItems: "center", justifyContent: "flex-end", paddingBottom: 420, textAlign: "center" }}>
         <div style={{ fontFamily: SANS, fontWeight: 900, fontSize: 120, color: "white", letterSpacing: -3, lineHeight: 1 }}>
           <PopWord at={c.headline}>{headline}</PopWord>
         </div>
@@ -129,6 +134,23 @@ const CtaSceneInner: React.FC<Props> = ({ headline, headlineAccent, cta, small, 
           <span style={{ display: "inline-block", translate: `0 ${arrowBob}px`, color: COLORS.gold }}>↓</span>
         </div>
       </AbsoluteFill>
+      <div
+        style={{
+          position: "absolute",
+          bottom: 130,
+          left: "50%",
+          translate: `-50% ${(1 - logoIn) * 40}px`,
+          opacity: logoIn,
+          padding: "14px 34px",
+          borderRadius: 30,
+          background: "white",
+          boxShadow: "0 16px 40px rgba(0,0,0,0.4)",
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        <Img src={staticFile(logo)} style={{ height: 150 }} />
+      </div>
       <AbsoluteFill style={{ background: "black", opacity: fade }} />
     </AbsoluteFill>
   );
@@ -139,7 +161,7 @@ const ctaSchema = {
   headlineAccent: { type: "text-content", default: "en un solo toque.", description: "Titular (acento)" },
   cta: { type: "text-content", default: "Pide la tuya →", description: "Botón" },
   small: { type: "text-content", default: "Link en la bio", description: "Texto pequeño" },
-  businessName: { type: "text-content", default: "TU NEGOCIO", description: "Nombre en la tarjeta" },
+  logo: { type: "asset", default: "tarjetas/logo-cierzo.png", description: "Logo de la marca" },
   frontImage: { type: "asset", default: undefined, description: "Foto real de la tarjeta (opcional)" },
 } as const satisfies InteractivitySchema;
 
