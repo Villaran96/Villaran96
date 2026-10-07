@@ -1,0 +1,21 @@
+{
+  "fps": 30,
+  "bpm": 120,
+  "scenes": [
+    { "id": "hook", "duration": 120 },
+    { "id": "problem", "duration": 120 },
+    { "id": "reveal", "duration": 180 },
+    { "id": "how", "duration": 240 },
+    { "id": "benefits", "duration": 180 },
+    { "id": "cta", "duration": 180 }
+  ],
+  "overlays": { "iris": 20, "wave": 36 },
+  "cues": {
+    "hook": { "collide": 12, "words": [18, 24, 32], "highlight": 40, "split": 46, "wave": [60, 75, 90], "sparkles": [62, 80, 96] },
+    "problem": { "drain": 10, "line1": 14, "line2": 26, "squiggle": 34, "falls": [44, 51, 58, 65, 72], "bubble": 82, "typing": [86, 100], "deflate": 100 },
+    "reveal": { "corners": 6, "card": 14, "echo": [20, 24, 28], "sparkles": [32, 44, 58], "title": 40, "sub": 50, "underline": [56, 60, 64, 68], "flipOut": 78, "flipBack": 112, "exit": 142 },
+    "how": { "title": 6, "chips": 10, "phoneIn": [12, 40], "tap": 60, "rings": [60, 66, 72], "lift": 80, "screen": 96, "chip2": 100, "stars": [120, 128, 135, 143, 150], "chip3": 162, "press": 168, "check": 176, "confetti": 182, "caption": 188, "cover": 222 },
+    "benefits": { "panels": [0, 30, 60, 90], "grid": 120, "tiles": [124, 127, 130], "collapse": 160 },
+    "cta": { "merge": 24, "card": 26, "line1": 40, "line2": 50, "logo": 76, "button": 92, "pulses": [105, 120, 135, 150], "ding": 150 }
+  }
+}

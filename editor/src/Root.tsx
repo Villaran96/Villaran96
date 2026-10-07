@@ -11,6 +11,14 @@ import { QuestionScene } from "./scenes/QuestionScene";
 import { ResultsScene } from "./scenes/ResultsScene";
 import { TOTAL_FRAMES } from "./theme";
 import { Card3D } from "./three/Card3D";
+import { MotionPromo } from "./motion/MotionPromo";
+import { MgBenefits } from "./motion/scenes/MgBenefits";
+import { MgCta } from "./motion/scenes/MgCta";
+import { MgHook } from "./motion/scenes/MgHook";
+import { MgHow } from "./motion/scenes/MgHow";
+import { MgProblem } from "./motion/scenes/MgProblem";
+import { MgReveal } from "./motion/scenes/MgReveal";
+import { MG_TOTAL } from "./motion/theme";
 import { WebCounter, WebEdge, WebStack } from "./web/WebStills";
 
 export const RemotionRoot: React.FC = () => {
@@ -34,6 +42,23 @@ export const RemotionRoot: React.FC = () => {
         <Composition id="Results" component={ResultsScene} durationInFrames={165} fps={30} width={1080} height={1920} defaultProps={{ headline: "Más reseñas.", headlineAccent: "Más clientes.", reviewsFrom: 27, reviewsTo: 214, ratingFrom: 3.8, ratingTo: 4.9, footnote: "*Simulación con datos de ejemplo" }} />
         <Composition id="Features" component={FeaturesScene} durationInFrames={180} fps={30} width={1080} height={1920} defaultProps={{ title1: "Sin apps", accent1: "que descargar", title2: "Sin batería", accent2: "ni cargas", title3: "iPhone y Android", accent3: "compatibles", title4: "Con tu logo", accent4: "y tus colores" }} />
         <Composition id="Cta" component={CtaScene} durationInFrames={210} fps={30} width={1080} height={1920} defaultProps={{ headline: "Más reseñas,", headlineAccent: "en un solo toque.", cta: "Pide la tuya →", small: "Link en la bio", logo: "tarjetas/logo-cierzo.png" }} />
+      </Folder>
+      <Composition
+        id="MotionPromo"
+        component={MotionPromo}
+        durationInFrames={MG_TOTAL}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{ businessName: "Tu negocio", withMusic: true }}
+      />
+      <Folder name="Motion">
+        <Composition id="MgHook" component={MgHook} durationInFrames={120} fps={30} width={1080} height={1920} defaultProps={{ line1: "Tu negocio", line2: "merece", accent: "5 estrellas" }} />
+        <Composition id="MgProblem" component={MgProblem} durationInFrames={120} fps={30} width={1080} height={1920} defaultProps={{ line1: "Pero las reseñas", line2: "no llegan", accent: "solas." }} />
+        <Composition id="MgReveal" component={MgReveal} durationInFrames={180} fps={30} width={1080} height={1920} defaultProps={{ title: "Tarjeta NFC", accent: "de reseñas", backLabel: "Chip NFC" }} />
+        <Composition id="MgHow" component={MgHow} durationInFrames={240} fps={30} width={1080} height={1920} defaultProps={{ title: "Así de fácil.", step1: "Acerca", step2: "Valora", step3: "Publica", businessName: "Tu negocio", caption: "Publicada en segundos." }} />
+        <Composition id="MgBenefits" component={MgBenefits} durationInFrames={180} fps={30} width={1080} height={1920} defaultProps={{ title1: "Sin app", sub1: "Nada que descargar.", title2: "Sin batería", sub2: "No se carga ni se enchufa.", title3: "iPhone y Android", sub3: "Móviles actuales con NFC.", title4: "Con tu logo", sub4: "Y con tus colores.", heading: "Todo de serie." }} />
+        <Composition id="MgCta" component={MgCta} durationInFrames={180} fps={30} width={1080} height={1920} defaultProps={{ line1: "Un toque.", line2: "Una reseña.", brand: "Cierzo NFC", button: "Pide la tuya" }} />
       </Folder>
       <Folder name="Web">
         <Composition id="WebEdge" component={WebEdge} durationInFrames={1} fps={30} width={1600} height={1200} />

@@ -57,6 +57,26 @@ node scripts/stills.mjs hoja.png NfcPromo:200 NfcPromo:500 Reveal:40
 - Three.js renderiza por software (sin GPU): el render completo tarda bastante más que un vídeo 2D.
 - Las fuentes (Inter Tight e Instrument Serif) se sirven desde `public/fonts`, porque el navegador de render no pasa por el proxy.
 
+## Anuncio en motion graphics (`MotionPromo`)
+
+Anuncio de 34 s en estilo motion graphics plano, hecho solo a partir de la foto de la tarjeta (`public/motion/tarjeta.png`): sus cuatro colores, las ondas de las esquinas, las estrellas y el icono NFC.
+
+| # | Escena | Archivo | Qué pasa |
+|---|---|---|---|
+| 1 | 5 estrellas | `src/motion/scenes/MgHook.tsx` | Cuatro bolas de color chocan, sale una estrella que se reparte en cinco y el texto «Tu negocio merece 5 estrellas» con rotulador |
+| 2 | El problema | `src/motion/scenes/MgProblem.tsx` | Fondo oscuro: las estrellas pierden el color y se caen; un bocadillo escribe y se desinfla |
+| 3 | La tarjeta | `src/motion/scenes/MgReveal.tsx` | Cortinilla de ondas de colores, la tarjeta entra con una pila de color detrás y se voltea para enseñar el chip NFC |
+| 4 | Cómo funciona | `src/motion/scenes/MgHow.tsx` | Un móvil plano toca la tarjeta, salen ondas NFC, se rellenan las estrellas y un check verde cubre la pantalla |
+| 5 | Ventajas | `src/motion/scenes/MgBenefits.tsx` | Cuatro paneles de color con iconos que se dibujan y una rejilla 2 × 2 que se recoge en cuatro puntos |
+| 6 | Cierre | `src/motion/scenes/MgCta.tsx` | Los puntos giran y se convierten en la tarjeta; «Un toque. Una reseña.», logo y botón |
+
+- Tiempos: `src/motion/timeline.json` (120 BPM, cada escena empieza en un compás). Las piezas comunes (estrellas, ondas, trazos, móvil plano, cortinillas) están en `src/motion/kit.tsx`.
+- Música y efectos: `python3 scripts/make-motion-audio.py` genera `public/audio/motion-promo.wav` a partir de la misma línea de tiempo.
+
+```console
+npx remotion render MotionPromo out/motion-promo.mp4 --concurrency=4 --crf=18
+```
+
 ## Transcripción con Whisper
 
 `scripts/transcribe.sh` genera subtítulos por palabra con whisper.cpp. Necesita el modelo en `models/ggml-<modelo>.bin` (ver `scripts/get-model.sh`).
