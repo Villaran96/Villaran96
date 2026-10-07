@@ -77,6 +77,22 @@ Anuncio de 34 s en estilo motion graphics plano, hecho solo a partir de la foto 
 npx remotion render MotionPromo out/motion-promo.mp4 --concurrency=4 --crf=18
 ```
 
+## Tres estilos más
+
+Cada uno con su guion, formato, música y efectos propios (sintetizados con `scripts/synth.py`).
+
+| Composición | Formato | Estilo | Archivos | Música |
+|---|---|---|---|---|
+| `ArcadePromo` | 1080 × 1920, 27 s | Videojuego de 8 bits: pantalla de título, nivel sin tarjeta, cofre con la tarjeta, nivel con combo de reseñas, «nivel superado» y «¿continuar?». Todo se dibuja en un lienzo de 180 × 320 píxeles con fuente propia de 5 × 7 (con tildes y eñe). | `src/arcade/` | Chiptune a 150 BPM: `python3 scripts/make-arcade-audio.py` |
+| `EditorialPromo` | 1920 × 1080, 24 s | Revista suiza en blanco y negro, «Manual de las cinco estrellas»: retícula de 12 columnas, números gigantes, recortes de la foto de la tarjeta como único color y cierre en negativo. | `src/editorial/` | Minimal house a 120 BPM: `python3 scripts/make-editorial-audio.py` |
+| `IsoPromo` | 1080 × 1080, 21 s | Diorama isométrico low-poly (Three.js, sombreado *toon*): una cafetería en una isla flotante de 8:00 a 22:00; cada cliente toca la tarjeta y una estrella vuela al cartel. | `src/iso/` | Lo-fi a 90 BPM con vinilo, pájaros y grillos: `python3 scripts/make-iso-audio.py` |
+
+```console
+npx remotion render ArcadePromo out/arcade-promo.mp4 --concurrency=4 --crf=18
+npx remotion render EditorialPromo out/editorial-promo.mp4 --concurrency=4 --crf=18
+npx remotion render IsoPromo out/iso-promo.mp4 --concurrency=4 --crf=18
+```
+
 ## Transcripción con Whisper
 
 `scripts/transcribe.sh` genera subtítulos por palabra con whisper.cpp. Necesita el modelo en `models/ggml-<modelo>.bin` (ver `scripts/get-model.sh`).

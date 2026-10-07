@@ -1,0 +1,40 @@
+{
+  "fps": 30,
+  "bpm": 150,
+  "scenes": [
+    { "id": "title", "duration": 96 },
+    { "id": "level1", "duration": 192 },
+    { "id": "powerup", "duration": 96 },
+    { "id": "level2", "duration": 240 },
+    { "id": "clear", "duration": 96 },
+    { "id": "continue", "duration": 96 }
+  ],
+  "typeSpeed": 1.5,
+  "cues": {
+    "title": { "presents": [0, 30], "titleIn": 30, "start": 72, "flash": 76 },
+    "level1": {
+      "banner": [0, 26],
+      "customers": [34, 82, 130],
+      "dialog": [
+        { "at": 40, "text": "LOS CLIENTES SALEN CONTENTOS..." },
+        { "at": 104, "text": "...PERO NADIE DEJA RESEÑA." }
+      ],
+      "alarm": 150,
+      "dissolve": 174
+    },
+    "powerup": { "shake": 8, "open": 22, "land": 52, "text": [40, 50, 60], "blinds": 84 },
+    "level2": {
+      "banner": [0, 20],
+      "customers": [26, 64, 98, 128, 152, 172],
+      "dialog": [
+        { "at": 30, "text": "UN TOQUE CON EL MÓVIL..." },
+        { "at": 96, "text": "...Y LA RESEÑA ESTÁ HECHA." },
+        { "at": 164, "text": "SIN APPS. SIN PILAS." }
+      ],
+      "fastForward": 150,
+      "flash": 232
+    },
+    "clear": { "titleIn": 4, "stars": [22, 28, 34, 40, 46], "stats": [56, 66, 76] },
+    "continue": { "question": 0, "card": 10, "lines": [24, 36], "blink": 48 }
+  }
+}

@@ -11,6 +11,9 @@ import { QuestionScene } from "./scenes/QuestionScene";
 import { ResultsScene } from "./scenes/ResultsScene";
 import { TOTAL_FRAMES } from "./theme";
 import { Card3D } from "./three/Card3D";
+import { ARCADE_TOTAL, ArcadePromo } from "./arcade/ArcadePromo";
+import { EDITORIAL_TOTAL, EditorialPromo } from "./editorial/Editorial";
+import { ISO_TOTAL, IsoPromo } from "./iso/IsoPromo";
 import { MotionPromo } from "./motion/MotionPromo";
 import { MgBenefits } from "./motion/scenes/MgBenefits";
 import { MgCta } from "./motion/scenes/MgCta";
@@ -52,6 +55,9 @@ export const RemotionRoot: React.FC = () => {
         height={1920}
         defaultProps={{ businessName: "Tu negocio", withMusic: true }}
       />
+      <Composition id="ArcadePromo" component={ArcadePromo} durationInFrames={ARCADE_TOTAL} fps={30} width={1080} height={1920} defaultProps={{ withMusic: true }} />
+      <Composition id="EditorialPromo" component={EditorialPromo} durationInFrames={EDITORIAL_TOTAL} fps={30} width={1920} height={1080} defaultProps={{ withMusic: true }} />
+      <Composition id="IsoPromo" component={IsoPromo} durationInFrames={ISO_TOTAL} fps={30} width={1080} height={1080} defaultProps={{ withMusic: true }} />
       <Folder name="Motion">
         <Composition id="MgHook" component={MgHook} durationInFrames={120} fps={30} width={1080} height={1920} defaultProps={{ line1: "Tu negocio", line2: "merece", accent: "5 estrellas" }} />
         <Composition id="MgProblem" component={MgProblem} durationInFrames={120} fps={30} width={1080} height={1920} defaultProps={{ line1: "Pero las reseñas", line2: "no llegan", accent: "solas." }} />

@@ -1,0 +1,74 @@
+{
+  "fps": 30,
+  "bpm": 120,
+  "scenes": [
+    {
+      "id": "cover",
+      "duration": 90
+    },
+    {
+      "id": "rule1",
+      "duration": 120
+    },
+    {
+      "id": "rule2",
+      "duration": 120
+    },
+    {
+      "id": "rule3",
+      "duration": 120
+    },
+    {
+      "id": "rule4",
+      "duration": 120
+    },
+    {
+      "id": "close",
+      "duration": 150
+    }
+  ],
+  "cues": {
+    "cover": {
+      "rules": 0,
+      "masthead": 0,
+      "kicker": 6,
+      "title": [
+        12,
+        20,
+        30
+      ],
+      "out": 80
+    },
+    "rule": {
+      "numeral": 0,
+      "headline": [
+        8,
+        14
+      ],
+      "caption": 24,
+      "figure": 18,
+      "figCaption": 34,
+      "extra": [
+        44,
+        56,
+        68
+      ],
+      "out": 108
+    },
+    "close": {
+      "invert": 0,
+      "line1": 10,
+      "line2": [
+        22,
+        28,
+        34
+      ],
+      "card": 48,
+      "sign": [
+        66,
+        74
+      ],
+      "rules": 90
+    }
+  }
+}

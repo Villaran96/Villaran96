@@ -1,0 +1,26 @@
+{
+  "fps": 30,
+  "bpm": 90,
+  "duration": 640,
+  "hours": [8, 22],
+  "intro": [0, 100],
+  "customers": [
+    { "at": 96, "shirt": "#8AB4F8", "hair": "#3b2a20" },
+    { "at": 186, "shirt": "#F28B82", "hair": "#e0b25b" },
+    { "at": 246, "shirt": "#81C995", "hair": "#1d1d1d" },
+    { "at": 276, "shirt": "#FDD663", "hair": "#7a4a2a" },
+    { "at": 392, "shirt": "#C58AF9", "hair": "#2a2a35" }
+  ],
+  "walk": 56,
+  "stay": 34,
+  "tapAfter": 12,
+  "flight": 30,
+  "captions": [
+    { "from": 18, "to": 104, "text": "abre la cafetería" },
+    { "from": 186, "to": 300, "text": "hora punta" },
+    { "from": 380, "to": 470, "text": "el último café de la tarde" },
+    { "from": 490, "to": 556, "text": "un buen día" }
+  ],
+  "endcard": 556,
+  "outro": [500, 640]
+}
