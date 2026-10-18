@@ -1,0 +1,24 @@
+{
+  "name": "apps-ia",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/build.mjs",
+    "build:artifact": "node scripts/build.mjs --artifact",
+    "preview": "vite preview --outDir dist"
+  },
+  "dependencies": {
+    "lucide-react": "1.50.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-react": "5.2.0",
+    "tailwindcss": "4.3.3",
+    "vite": "7.3.6",
+    "vite-plugin-singlefile": "2.3.3"
+  }
+}

@@ -1,0 +1,25 @@
+@import "tailwindcss" source(".");
+@import "../shared/base.css";
+
+@theme {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
+}
+
+/* Fondo y texto de la página: blanco roto con un punto violeta; grafito en oscuro. */
+:root {
+  --page: #f7f7fa;
+  --ink: #18171f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0f0e14;
+    --ink: #e6e4ee;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0f0e14;
+  --ink: #e6e4ee;
+  color-scheme: dark;
+}

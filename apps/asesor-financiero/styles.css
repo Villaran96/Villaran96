@@ -1,0 +1,24 @@
+@import "tailwindcss" source(".");
+@import "../shared/base.css";
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Fondo y texto de la página: gris con un punto violeta, casi negro violáceo en oscuro. */
+:root {
+  --page: #f6f5fb;
+  --ink: #17132b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0d0b16;
+    --ink: #e7e4f3;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0d0b16;
+  --ink: #e7e4f3;
+  color-scheme: dark;
+}

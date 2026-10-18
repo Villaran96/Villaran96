@@ -1,0 +1,25 @@
+@import "tailwindcss" source(".");
+@import "../shared/base.css";
+
+@theme {
+  --font-sans: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Fondo y texto de la página: gris con un punto verde; casi negro verdoso en oscuro. */
+:root {
+  --page: #f3f6f4;
+  --ink: #101814;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0a0f0c;
+    --ink: #e3ebe6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0a0f0c;
+  --ink: #e3ebe6;
+  color-scheme: dark;
+}
