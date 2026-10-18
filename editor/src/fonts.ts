@@ -5,6 +5,9 @@ import { staticFile } from "remotion";
 export const SANS = "Inter Tight";
 export const SERIF = "Instrument Serif";
 
-loadFont({ family: SANS, url: staticFile("fonts/InterTight-var.woff2"), weight: "100 900" });
-loadFont({ family: SERIF, url: staticFile("fonts/InstrumentSerif-400.woff2"), weight: "400" });
-loadFont({ family: SERIF, url: staticFile("fonts/InstrumentSerif-400-italic.woff2"), weight: "400", style: "italic" });
+// Promesa para quien dibuja texto en <canvas>: el lienzo no se redibuja solo cuando llega la fuente.
+export const fontsLoaded = Promise.all([
+  loadFont({ family: SANS, url: staticFile("fonts/InterTight-var.woff2"), weight: "100 900" }),
+  loadFont({ family: SERIF, url: staticFile("fonts/InstrumentSerif-400.woff2"), weight: "400" }),
+  loadFont({ family: SERIF, url: staticFile("fonts/InstrumentSerif-400-italic.woff2"), weight: "400", style: "italic" }),
+]);

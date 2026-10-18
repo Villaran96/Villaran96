@@ -10,3 +10,6 @@ out
 whisper.cpp/
 cmake.log
 models/
+
+# Render del showreel
+gemini_showreel.mp4

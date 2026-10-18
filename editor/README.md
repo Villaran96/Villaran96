@@ -93,6 +93,28 @@ npx remotion render EditorialPromo out/editorial-promo.mp4 --concurrency=4 --crf
 npx remotion render IsoPromo out/iso-promo.mp4 --concurrency=4 --crf=18
 ```
 
+## Showreel generativo (`GeminiShowreel`)
+
+1920 × 1080 a 60 fps, 18 s (1080 fotogramas). Todo se dibuja en un único `<canvas>` en `src/GeminiShowreel.tsx`, calculado solo a partir de `frame` (sin estado entre fotogramas ni `Math.random()`), así que cualquier fotograma se puede renderizar suelto. El pulso visual sigue las corcheas de la música: `beatPulse = (1 − progreso de la corchea)³` a 128 BPM.
+
+| # | Fotogramas | Escena |
+|---|---|---|
+| 1 | 0–179 | Cadena de 5 epiciclos de Fourier y su onda (suma evaluada en `t − i·0,012`, i = 0…240) |
+| 2 | 180–359 | CÓDIGO / PRECISIÓN / SISTEMA en 14 bandas con `easeOutBack` y vibración al ritmo |
+| 3 | 360–539 | 450 trayectorias de 18 pasos sobre el rotacional de `sin(0,004x + t)·cos(0,004y − 0,8t)` y tarjeta translúcida |
+| 4 | 540–719 | Torus knot (3,5) de 320 vértices en 3D con aristas `i+1` e `i+18` |
+| 5 | 720–899 | Red de 55 nodos: aristas a < 260 px y triángulos a < 180 px |
+| 6 | 900–1079 | Anillos con `easeOutExpo`, estrella de 8 puntas y «GEMINI STUDIO» |
+
+HUD en todos los fotogramas: escena, coordenadas X/Y del punto seguido, `128 BPM // SYNC LOCKED`, contador de fotogramas y barra de progreso.
+
+- Música: `node generate-audio.js` genera `public/synth_beat.wav` (bombo 135→32 Hz en negras, hi-hat de ruido filtrado en corcheas y bajo triangular).
+- Fuentes: Inter 900 y JetBrains Mono en `public/fonts`; el lienzo espera a que estén cargadas antes de dibujar.
+
+```console
+npx remotion render GeminiShowreel gemini_showreel.mp4 --codec=h264
+```
+
 ## Transcripción con Whisper
 
 `scripts/transcribe.sh` genera subtítulos por palabra con whisper.cpp. Necesita el modelo en `models/ggml-<modelo>.bin` (ver `scripts/get-model.sh`).
