@@ -1,5 +1,6 @@
 // Segundo Cerebro: contratos, pólizas, impuestos y notas en un solo sitio, con un chat que responde
-// citando el documento y la página (búsqueda simulada sobre los datos de ejemplo). Un solo archivo.
+// citando el documento y la página (búsqueda simulada sobre tus propios documentos). Un solo archivo.
+// Arranca con lo que viene en el prompt y todo lo que añades se guarda.
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
@@ -13,15 +14,14 @@ import {
   Landmark,
   Lightbulb,
   MessageSquare,
-  Moon,
   Paperclip,
+  Pencil,
   Plus,
   Search,
   Send,
   ShieldCheck,
   Sparkles,
   StickyNote,
-  Sun,
   Trash2,
   Upload,
   X,
@@ -29,509 +29,74 @@ import {
 
 /* ───────────────────────── Fechas ───────────────────────── */
 
-const HOY = (() => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-})();
-const fecha = (iso) => {
-  const [y, m, d] = iso.split("-").map(Number);
+const aISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const deISO = (s) => {
+  const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);
 };
-const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const diasHasta = (d) => Math.round((d - HOY) / 86_400_000);
-const larga = (d) => new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "long", year: "numeric" }).format(d);
-const corta = (d) => new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric" }).format(d).replace(".", "");
-const lista = (xs) => new Intl.ListFormat("es", { type: "conjunction" }).format(xs);
+const hoyISO = () => aISO(new Date());
+const sumarDias = (iso, n) => {
+  const d = deISO(iso);
+  d.setDate(d.getDate() + n);
+  return aISO(d);
+};
+const sumarMeses = (iso, n) => {
+  const d = deISO(iso);
+  const dia = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + n);
+  d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return aISO(d);
+};
+const diasEntre = (a, b) => Math.round((deISO(b) - deISO(a)) / 86_400_000);
+const larga = (iso) => new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "long", year: "numeric" }).format(deISO(iso));
+const corta = (iso) => new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric" }).format(deISO(iso)).replace(".", "");
+const nuevoId = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+const normalizar = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-// La póliza del auto se renueva cada 14 de marzo: la próxima fecha a partir de hoy.
-const VENCE_AUTO = (() => {
-  const y = HOY >= new Date(HOY.getFullYear(), 2, 14) ? HOY.getFullYear() + 1 : HOY.getFullYear();
-  return new Date(y, 2, 14);
-})();
-const INICIO_AUTO = new Date(VENCE_AUTO.getFullYear() - 1, 2, 14);
-const AVISO_AUTO = new Date(VENCE_AUTO.getFullYear(), 1, 14);
-
-/* ───────────────────────── Datos de ejemplo ───────────────────────── */
+/* ───────────────────────── Datos del prompt ───────────────────────── */
 
 const CATEGORIAS = [
-  { id: "contratos", nombre: "Contratos", unidad: "docs", icono: FileText, color: "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300", anillo: "ring-blue-400" },
-  { id: "seguros", nombre: "Seguros", unidad: "docs", icono: ShieldCheck, color: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300", anillo: "ring-emerald-400" },
-  { id: "impuestos", nombre: "Impuestos", unidad: "docs", icono: Landmark, color: "bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-300", anillo: "ring-orange-400" },
-  { id: "notas", nombre: "Notas e ideas", unidad: "notas", icono: Lightbulb, color: "bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300", anillo: "ring-violet-400" },
+  { id: "contratos", nombre: "Contratos", icono: FileText, color: "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300", anillo: "ring-blue-400" },
+  { id: "seguros", nombre: "Seguros", icono: ShieldCheck, color: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300", anillo: "ring-emerald-400" },
+  { id: "impuestos", nombre: "Impuestos", icono: Landmark, color: "bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-300", anillo: "ring-orange-400" },
+  { id: "notas", nombre: "Notas e ideas", icono: Lightbulb, color: "bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300", anillo: "ring-violet-400" },
 ];
 const CAT = Object.fromEntries(CATEGORIAS.map((c) => [c.id, c]));
-
-// fin: fecha de vencimiento (o null si no vence); estado: texto cuando no hay fecha de fin.
-const DOCUMENTOS_INICIALES = [
-  // Contratos (12)
-  {
-    id: "renta",
-    cat: "contratos",
-    nombre: "Contrato de arrendamiento · Depto. Roma Norte.pdf",
-    subido: "2026-07-28",
-    inicio: "2026-08-01",
-    fin: "2027-07-31",
-    paginas: 14,
-    tamano: "3.1 MB",
-    resumen: "Arrendamiento de vivienda en Orizaba 54, depto. 302, Roma Norte, CDMX. Arrendadora: Mariana Ortega Ruiz.",
-    datos: [
-      ["Renta mensual", "$12,000 MXN, se paga del 1 al 5 de cada mes"],
-      ["Depósito en garantía", "$12,000 MXN (un mes)"],
-      ["Aumento anual", "Según la inflación (INPC), al renovar"],
-      ["Mascotas", "Permitidas, una mascota pequeña"],
-      ["Salida anticipada", "Avisar con 60 días; penalización de un mes de renta"],
-      ["Mantenimiento", "Incluido en la renta"],
-    ],
-    pagina: {
-      n: 3,
-      lineas: ["CLÁUSULA TERCERA. RENTA.", "El ARRENDATARIO pagará una renta mensual de $12,000.00 (doce mil pesos 00/100 M.N.)", "dentro de los primeros cinco días naturales de cada mes."],
-      destacado: "Vigencia: del 1 de agosto de 2026 al 31 de julio de 2027.",
-    },
-    claves: ["renta", "arrendamiento", "depa", "departamento", "casa", "alquiler", "roma", "deposito", "mascotas"],
-  },
-  {
-    id: "laboral",
-    cat: "contratos",
-    nombre: "Contrato laboral · Grupo Altavista.pdf",
-    subido: "2024-01-15",
-    inicio: "2024-01-15",
-    fin: null,
-    estado: "Indefinido",
-    paginas: 9,
-    tamano: "1.2 MB",
-    resumen: "Contrato por tiempo indefinido como diseñador sénior. Incluye seguro de vida y vales de despensa.",
-    datos: [
-      ["Puesto", "Diseñador sénior"],
-      ["Jornada", "Lunes a viernes, híbrido (2 días en oficina)"],
-      ["Vacaciones", "18 días al año"],
-      ["Prestaciones", "Seguro de vida, vales de despensa, aguinaldo de 30 días"],
-    ],
-    claves: ["trabajo", "laboral", "empleo", "sueldo", "vacaciones", "altavista"],
-  },
-  {
-    id: "nube",
-    cat: "contratos",
-    nombre: "Contrato de servicios · Nube Creativa.pdf",
-    subido: "2026-02-26",
-    inicio: "2026-03-01",
-    fin: "2027-02-28",
-    paginas: 6,
-    tamano: "820 KB",
-    resumen: "Prestación de servicios de diseño y contenido para redes sociales. Pago mensual contra factura.",
-    datos: [
-      ["Honorarios", "$18,000 MXN al mes más IVA"],
-      ["Entregables", "12 piezas y 4 reels al mes"],
-      ["Renovación", "Automática salvo aviso 30 días antes"],
-    ],
-    claves: ["servicios", "cliente", "freelance", "nube", "honorarios", "redes"],
-  },
-  {
-    id: "nda",
-    cat: "contratos",
-    nombre: "Acuerdo de confidencialidad · Studio Lumen.pdf",
-    subido: "2026-06-10",
-    inicio: "2026-06-10",
-    fin: "2028-06-10",
-    paginas: 4,
-    tamano: "410 KB",
-    resumen: "NDA bilateral para el proyecto de identidad de marca de Studio Lumen.",
-    datos: [
-      ["Duración", "2 años"],
-      ["Penalización", "$250,000 MXN por incumplimiento"],
-    ],
-    claves: ["nda", "confidencialidad", "lumen"],
-  },
-  {
-    id: "telmex",
-    cat: "contratos",
-    nombre: "Contrato de internet · Telmex.pdf",
-    subido: "2025-06-01",
-    inicio: "2025-06-01",
-    fin: "2026-11-30",
-    paginas: 5,
-    tamano: "690 KB",
-    resumen: "Internet de fibra de 200 Mbps con plazo forzoso de 18 meses.",
-    datos: [
-      ["Mensualidad", "$589 MXN"],
-      ["Velocidad", "200 Mbps"],
-      ["Cancelación anticipada", "Penalización de $1,200 MXN"],
-    ],
-    claves: ["internet", "telmex", "wifi", "fibra"],
-  },
-  {
-    id: "telcel",
-    cat: "contratos",
-    nombre: "Contrato de telefonía · Telcel.pdf",
-    subido: "2025-07-15",
-    inicio: "2025-07-15",
-    fin: "2027-01-15",
-    paginas: 7,
-    tamano: "760 KB",
-    resumen: "Plan Telcel Libre 5000 a 18 meses con equipo incluido.",
-    datos: [
-      ["Mensualidad", "$499 MXN"],
-      ["Datos", "20 GB y redes sociales ilimitadas"],
-    ],
-    claves: ["telefono", "celular", "movil", "telcel", "plan"],
-  },
-  {
-    id: "gym",
-    cat: "contratos",
-    nombre: "Contrato de gimnasio · Smart Fit.pdf",
-    subido: "2026-01-02",
-    inicio: "2026-01-02",
-    fin: "2026-12-31",
-    paginas: 3,
-    tamano: "380 KB",
-    resumen: "Membresía Black anual con acceso a todas las sedes.",
-    datos: [
-      ["Mensualidad", "$599 MXN"],
-      ["Permanencia", "12 meses"],
-    ],
-    claves: ["gimnasio", "gym", "smart fit", "membresia"],
-  },
-  {
-    id: "mazda",
-    cat: "contratos",
-    nombre: "Contrato de compraventa · Mazda 3 2022.pdf",
-    subido: "2025-05-05",
-    inicio: "2025-05-05",
-    fin: null,
-    estado: "Cumplido",
-    paginas: 5,
-    tamano: "1.6 MB",
-    resumen: "Compra del Mazda 3 sedán 2022 a particular. Factura endosada y tarjeta de circulación a tu nombre.",
-    datos: [
-      ["Precio", "$315,000 MXN"],
-      ["Placas", "MXA-482-C"],
-    ],
-    claves: ["auto", "coche", "carro", "mazda", "compraventa", "vehiculo"],
-  },
-  {
-    id: "credito",
-    cat: "contratos",
-    nombre: "Contrato de crédito personal · BBVA.pdf",
-    subido: "2025-09-15",
-    inicio: "2025-09-15",
-    fin: "2027-09-15",
-    paginas: 11,
-    tamano: "1.9 MB",
-    resumen: "Crédito personal de $70,000 MXN a 24 meses.",
-    datos: [
-      ["Pago mensual", "$3,450 MXN"],
-      ["Tasa", "21.9 % anual fija"],
-      ["Pago anticipado", "Sin penalización"],
-    ],
-    claves: ["credito", "prestamo", "bbva", "deuda", "banco"],
-  },
-  {
-    id: "origen",
-    cat: "contratos",
-    nombre: "Contrato freelance · Revista Origen.pdf",
-    subido: "2025-01-28",
-    inicio: "2025-02-01",
-    fin: "2026-01-31",
-    paginas: 4,
-    tamano: "520 KB",
-    resumen: "Ilustraciones mensuales para la sección de cultura de Revista Origen.",
-    datos: [["Honorarios", "$6,500 MXN por ilustración"]],
-    claves: ["freelance", "revista", "origen", "ilustracion"],
-  },
-  {
-    id: "mantenimiento",
-    cat: "contratos",
-    nombre: "Contrato de mantenimiento · Edificio Orizaba 54.pdf",
-    subido: "2026-08-01",
-    inicio: "2026-01-01",
-    fin: "2026-12-31",
-    paginas: 3,
-    tamano: "300 KB",
-    resumen: "Reglamento y cuota de mantenimiento del edificio, incluida en la renta.",
-    datos: [["Cuota", "$1,500 MXN al mes (la paga la arrendadora)"]],
-    claves: ["mantenimiento", "edificio", "condominio"],
-  },
-  {
-    id: "narvarte",
-    cat: "contratos",
-    nombre: "Contrato de arrendamiento anterior · Narvarte.pdf",
-    subido: "2024-08-01",
-    inicio: "2024-08-01",
-    fin: "2026-07-31",
-    paginas: 12,
-    tamano: "2.7 MB",
-    resumen: "Arrendamiento anterior en la colonia Narvarte. Depósito devuelto en agosto de 2026.",
-    datos: [
-      ["Renta", "$10,500 MXN al mes"],
-      ["Depósito", "Devuelto el 12 de agosto de 2026"],
-    ],
-    claves: ["narvarte", "arrendamiento anterior"],
-  },
-  // Seguros (5)
-  {
-    id: "gnp",
-    cat: "seguros",
-    nombre: "Póliza Seguro GNP.pdf",
-    subido: iso(INICIO_AUTO),
-    inicio: iso(INICIO_AUTO),
-    fin: iso(VENCE_AUTO),
-    paginas: 8,
-    tamano: "2.4 MB",
-    resumen: "Seguro de auto con cobertura amplia para el Mazda 3 2022.",
-    datos: [
-      ["Cobertura", "Amplia"],
-      ["Vigencia", `${corta(INICIO_AUTO)} – ${corta(VENCE_AUTO)}`],
-      ["Aseguradora", "GNP Seguros"],
-      ["Número de póliza", "589274631"],
-      ["Prima anual", "$14,850 MXN"],
-      ["Deducible", "5 % daños materiales, 10 % robo total"],
-    ],
-    pagina: {
-      n: 2,
-      lineas: ["CARÁTULA DE PÓLIZA · AUTOMÓVILES RESIDENTES", "Asegurado: Diego Salinas · Vehículo: Mazda 3 Sedán i Sport 2022", "Póliza: 589274631 · Paquete: Cobertura amplia"],
-      destacado: `Vigencia: del ${INICIO_AUTO.toLocaleDateString("es-MX")} a las 12:00 h al ${VENCE_AUTO.toLocaleDateString("es-MX")} a las 12:00 h.`,
-    },
-    claves: ["seguro de auto", "auto", "coche", "carro", "gnp", "poliza", "mazda", "vehiculo"],
-  },
-  {
-    id: "gmm",
-    cat: "seguros",
-    nombre: "Seguro de gastos médicos mayores · AXA.pdf",
-    subido: "2026-06-01",
-    inicio: "2026-06-01",
-    fin: "2027-06-01",
-    paginas: 22,
-    tamano: "4.8 MB",
-    resumen: "Póliza individual de gastos médicos mayores.",
-    datos: [
-      ["Suma asegurada", "$15,000,000 MXN"],
-      ["Deducible", "$25,000 MXN"],
-      ["Coaseguro", "10 % con tope de $45,000 MXN"],
-    ],
-    claves: ["gastos medicos", "medico", "salud", "axa", "hospital"],
-  },
-  {
-    id: "vida",
-    cat: "seguros",
-    nombre: "Seguro de vida · MetLife (prestación laboral).pdf",
-    subido: "2024-02-01",
-    inicio: "2024-02-01",
-    fin: null,
-    estado: "Mientras dure el empleo",
-    paginas: 6,
-    tamano: "900 KB",
-    resumen: "Seguro de vida grupal incluido en tu contrato con Grupo Altavista.",
-    datos: [
-      ["Suma asegurada", "24 meses de sueldo"],
-      ["Beneficiarios", "Ana Salinas (50 %), Carmen López (50 %)"],
-    ],
-    claves: ["vida", "metlife", "beneficiarios"],
-  },
-  {
-    id: "hogar",
-    cat: "seguros",
-    nombre: "Seguro de hogar · Chubb.pdf",
-    subido: "2025-11-20",
-    inicio: "2025-11-20",
-    fin: "2026-11-20",
-    paginas: 10,
-    tamano: "1.4 MB",
-    resumen: "Seguro de contenidos y responsabilidad civil para el departamento.",
-    datos: [
-      ["Contenidos", "$450,000 MXN"],
-      ["Responsabilidad civil", "$1,000,000 MXN"],
-      ["Prima anual", "$3,280 MXN"],
-    ],
-    claves: ["hogar", "casa", "chubb", "contenidos"],
-  },
-  {
-    id: "viaje",
-    cat: "seguros",
-    nombre: "Cotización seguro de viaje · Assist Card.pdf",
-    subido: "2026-10-02",
-    inicio: null,
-    fin: null,
-    estado: "Cotización",
-    paginas: 2,
-    tamano: "240 KB",
-    resumen: "Cotización de asistencia en viaje para 10 días en Europa (requisito Schengen).",
-    datos: [
-      ["Cobertura médica", "€60,000"],
-      ["Precio", "$1,980 MXN"],
-    ],
-    claves: ["viaje", "europa", "schengen", "assist card"],
-  },
-  // Impuestos (8)
-  {
-    id: "anual25",
-    cat: "impuestos",
-    nombre: "Declaración anual 2025 · SAT.pdf",
-    subido: "2026-04-28",
-    inicio: null,
-    fin: null,
-    estado: "Presentada",
-    paginas: 6,
-    tamano: "1.1 MB",
-    resumen: "Declaración anual del ejercicio 2025, presentada el 28 de abril de 2026.",
-    datos: [
-      ["Ingresos acumulables", "$612,400 MXN"],
-      ["Deducciones personales", "$42,600 MXN"],
-      ["ISR a cargo (pagado)", "$18,450 MXN"],
-    ],
-    pagina: {
-      n: 4,
-      lineas: ["DETERMINACIÓN DEL IMPUESTO", "Ingresos acumulables: $612,400 · Deducciones personales: $42,600", "Retenciones y pagos provisionales acreditados."],
-      destacado: "ISR a cargo: $18,450.00 · Pagado el 28/04/2026.",
-    },
-    claves: ["impuestos", "declaracion", "anual", "sat", "isr", "2025", "pague"],
-  },
-  {
-    id: "acuse25",
-    cat: "impuestos",
-    nombre: "Acuse de declaración anual 2025.pdf",
-    subido: "2026-04-28",
-    inicio: null,
-    fin: null,
-    estado: "Presentada",
-    paginas: 1,
-    tamano: "180 KB",
-    resumen: "Acuse de recibo del SAT con número de operación 260428117349.",
-    datos: [["Número de operación", "260428117349"]],
-    claves: ["acuse", "sat", "declaracion"],
-  },
-  {
-    id: "anual24",
-    cat: "impuestos",
-    nombre: "Declaración anual 2024 · SAT.pdf",
-    subido: "2025-04-22",
-    inicio: null,
-    fin: null,
-    estado: "Presentada",
-    paginas: 6,
-    tamano: "1.0 MB",
-    resumen: "Declaración anual 2024 con saldo a favor, devuelto en mayo de 2025.",
-    datos: [["Saldo a favor", "$6,320 MXN (devuelto)"]],
-    claves: ["declaracion", "2024", "saldo a favor", "devolucion"],
-  },
-  {
-    id: "csf",
-    cat: "impuestos",
-    nombre: "Constancia de situación fiscal.pdf",
-    subido: "2026-09-08",
-    inicio: null,
-    fin: null,
-    estado: "Al día",
-    paginas: 2,
-    tamano: "160 KB",
-    resumen: "Constancia del SAT con régimen de sueldos y salarios y actividad empresarial y profesional.",
-    datos: [
-      ["RFC", "SALD900101AB1"],
-      ["Régimen", "Sueldos y salarios · Actividad profesional"],
-    ],
-    claves: ["constancia", "rfc", "situacion fiscal", "regimen"],
-  },
-  {
-    id: "prov1",
-    cat: "impuestos",
-    nombre: "Pagos provisionales ISR · ene–jun 2026.pdf",
-    subido: "2026-07-17",
-    inicio: null,
-    fin: null,
-    estado: "Pagado",
-    paginas: 6,
-    tamano: "740 KB",
-    resumen: "Pagos provisionales mensuales del ISR por actividad profesional, de enero a junio de 2026.",
-    datos: [["Total pagado", "$21,300 MXN"]],
-    claves: ["pagos provisionales", "isr", "mensual", "2026"],
-  },
-  {
-    id: "prov2",
-    cat: "impuestos",
-    nombre: "Pagos provisionales ISR · jul–sep 2026.pdf",
-    subido: "2026-10-16",
-    inicio: null,
-    fin: null,
-    estado: "Pagado",
-    paginas: 3,
-    tamano: "420 KB",
-    resumen: "Pagos provisionales de julio a septiembre de 2026.",
-    datos: [["Total pagado", "$11,050 MXN"]],
-    claves: ["pagos provisionales", "isr", "mensual", "2026"],
-  },
-  {
-    id: "deducibles",
-    cat: "impuestos",
-    nombre: "Facturas deducibles 2025 (resumen).pdf",
-    subido: "2026-03-30",
-    inicio: null,
-    fin: null,
-    estado: "Archivado",
-    paginas: 4,
-    tamano: "610 KB",
-    resumen: "Resumen de facturas deducibles: honorarios médicos, lentes y seguro de gastos médicos.",
-    datos: [["Total deducible", "$42,600 MXN"]],
-    claves: ["deducibles", "facturas", "deducciones"],
-  },
-  {
-    id: "tenencia",
-    cat: "impuestos",
-    nombre: "Tenencia y refrendo 2026 · CDMX.pdf",
-    subido: "2026-03-10",
-    inicio: null,
-    fin: null,
-    estado: "Pagado",
-    paginas: 1,
-    tamano: "150 KB",
-    resumen: "Pago de tenencia y refrendo vehicular 2026 del Mazda 3.",
-    datos: [["Importe", "$3,872 MXN"]],
-    claves: ["tenencia", "refrendo", "auto", "cdmx"],
-  },
-];
-
-const NOTAS_INICIALES = [
-  ["Ideas para el reel de octubre", "Antes y después del estudio, 3 trucos de iluminación y cierre invitando a la newsletter.", "Ideas", "2026-10-15"],
-  ["Presupuesto viaje a Europa", "Vuelos $18,000 · hoteles $16,000 · comida y transporte $12,000 · extras $4,000. Total: $50,000.", "Viajes", "2026-10-12"],
-  ["Itinerario Europa (borrador)", "Madrid 3 noches → Lisboa 3 → Oporto 2. Mirar trenes Lisboa–Oporto.", "Viajes", "2026-10-11"],
-  ["Pendientes con el contador", "Enviar facturas de septiembre antes del día 10. Preguntar por deducción de colegiaturas.", "Trabajo", "2026-10-09"],
-  ["Regalo para Ana", "Le encantó la cerámica de Tlaquepaque. Buscar taller en Coyoacán.", "Personal", "2026-10-08"],
-  ["Preguntas para la llamada con cliente", "¿Plazos de la fase 2? ¿Quién aprueba los diseños? ¿Presupuesto para fotos?", "Trabajo", "2026-10-07"],
-  ["Idea de negocio: tarjetas NFC", "Tarjetas NFC de reseñas para restaurantes. Packs de 25, 50 y 100 con diseño incluido.", "Ideas", "2026-10-05"],
-  ["Libros pendientes", "El infinito en un junco · Pedro Páramo (releer) · Hábitos atómicos.", "Aprendizaje", "2026-10-03"],
-  ["Medidas del depa", "Sala 4.20 × 3.60 m. Ventana 1.80 m. Hueco del librero 2.10 m.", "Personal", "2026-09-30"],
-  ["Notas reunión rediseño web", "Menú más corto, casos de éxito arriba y formulario de contacto en 3 pasos.", "Trabajo", "2026-09-28"],
-  ["Receta: tinga de pollo", "Jitomate, cebolla, chipotle y pollo deshebrado. 20 min a fuego bajo.", "Recetas", "2026-09-27"],
-  ["Restaurantes por probar", "Lardo (repetir), Máximo, Masala y Maíz, Rosetta.", "Personal", "2026-09-25"],
-  ["Rutina de mañana", "Agua, 10 min de estiramientos, planificar las 3 tareas del día antes de abrir el correo.", "Personal", "2026-09-22"],
-  ["Frases para la newsletter", "«Diseñar es decidir qué quitar». «Lo simple se recuerda».", "Ideas", "2026-09-20"],
-  ["Aprendizajes del tercer trimestre", "Cobrar el 50 % por adelantado. Limitar a 2 rondas de cambios.", "Trabajo", "2026-09-18"],
-  ["Guion podcast · episodio 12", "Tema: cómo ponerle precio a tu trabajo creativo. Invitada: Laura Martín.", "Ideas", "2026-09-16"],
-  ["Pendientes del coche", "Verificación hecha. Servicio de los 45,000 km en noviembre.", "Personal", "2026-09-14"],
-  ["Objetivos 2027", "Viaje a Europa, fondo de emergencia completo y lanzar el podcast.", "Personal", "2026-09-12"],
-  ["Lecturas sobre IA", "Artículos sobre agentes y diseño de producto con IA. Guardar los mejores en Notion.", "Aprendizaje", "2026-09-10"],
-  ["Proveedores de fotografía", "Estudio Nómada (producto) · Paula R. (retrato) · renta de luces en Doctores.", "Trabajo", "2026-09-08"],
-  ["Plantilla de propuesta", "Contexto, objetivos, entregables, calendario, inversión y condiciones.", "Trabajo", "2026-09-05"],
-  ["Fiesta de Laura", "Sábado 7. Llevar mezcal y algo dulce.", "Personal", "2026-09-03"],
-  ["Ejercicios de movilidad", "Cadera 90/90, gato-camello, rotaciones torácicas. 3 × 10.", "Personal", "2026-09-01"],
-  ["Receta: chilaquiles verdes", "Salsa de tomate verde con serrano, totopos, crema, queso fresco y huevo.", "Recetas", "2026-08-29"],
-  ["Hábitos que quiero mantener", "Leer 20 min al día, entrenar 5 días, revisar finanzas los domingos.", "Personal", "2026-08-26"],
-  ["Feedback del taller de marca", "Gustó el ejercicio de arquetipos. Faltó tiempo para la parte práctica.", "Trabajo", "2026-08-22"],
-  ["Películas recomendadas", "Perfect Days · Roma (volver a ver) · Aftersun.", "Personal", "2026-08-19"],
-  ["Checklist de la mudanza", "Cambiar domicilio en el banco y el SAT. Contratar internet. Recoger depósito.", "Personal", "2026-08-02"],
-  ["Contenido: finanzas personales", "Serie de 5 reels: presupuesto, fondo de emergencia, metas, deudas e inversión.", "Ideas", "2026-07-30"],
-  ["Curso de fotografía · notas", "Regla de tercios, triángulo de exposición y luz de ventana para producto.", "Aprendizaje", "2026-07-25"],
-  ["Plantas del balcón", "Regar el potus cada 7 días. La lavanda necesita más sol.", "Personal", "2026-07-20"],
-  ["Ideas para el estudio en casa", "Fondo de papel gris, una ventana como luz principal y rebotador blanco.", "Ideas", "2026-07-16"],
-  ["Contraseña del wifi para visitas", "Está en la nota del refri. No guardarla aquí.", "Personal", "2026-07-10"],
-  ["Mapa mental del podcast", "Temas: precios, clientes, herramientas y salud mental del freelance.", "Ideas", "2026-07-05"],
-].map(([titulo, texto, etiqueta, fecha], i) => ({ id: `n${i + 1}`, titulo, texto, etiqueta, fecha }));
-
-const RECORDATORIOS_INICIALES = [
-  { id: "r-hogar", titulo: "Renovar el seguro de hogar (Chubb)", fecha: "2026-11-13", doc: "hogar", activo: true },
-  { id: "r-sat", titulo: "Pago provisional de octubre (SAT)", fecha: "2026-11-17", doc: "prov2", activo: true },
-  { id: "r-telmex", titulo: "Fin del plazo forzoso de Telmex", fecha: "2026-11-23", doc: "telmex", activo: true },
-  { id: "r-gym", titulo: "Decidir si renuevo el gimnasio", fecha: "2026-12-15", doc: "gym", activo: false },
-];
-
+const PREGUNTA_INICIAL = "¿Cuándo vence mi seguro de auto?";
 const SUGERENCIAS = ["¿Qué contratos tengo vigentes?", "¿Cuánto pagué de impuestos?", "Resumen de mi contrato actual"];
+
+function estadoInicial() {
+  const hoy = hoyISO();
+  const base = {
+    documentos: [
+      {
+        id: "d1",
+        nombre: "Póliza Seguro GNP.pdf",
+        carpeta: "seguros",
+        descripcion: "Seguro de auto",
+        subido: hoy,
+        vence: "2026-03-14",
+        paginaVence: 2,
+        datos: [
+          ["Cobertura", "Amplia"],
+          ["Aseguradora", "GNP"],
+          ["Número de póliza", "589274631"],
+        ],
+        archivo: null,
+      },
+    ],
+    notas: [],
+    recordatorios: [],
+  };
+  return {
+    ...base,
+    chat: [
+      { id: "m1", de: "yo", texto: PREGUNTA_INICIAL },
+      { id: "m2", de: "ia", ...responder(PREGUNTA_INICIAL, base, hoy) },
+    ],
+  };
+}
 
 const VISTAS = [
   { id: "chat", nombre: "Chat" },
@@ -540,179 +105,265 @@ const VISTAS = [
   { id: "recordatorios", nombre: "Recordatorios" },
 ];
 
-/* ───────────────────────── Utilidades ───────────────────────── */
+/* ───────────────────────── Guardado ───────────────────────── */
 
-const normalizar = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+// En claude.ai los datos van a la parte privada de tu cuenta (capacidad `db`), así que los ves igual
+// en el móvil y en el ordenador. Fuera de claude.ai se guardan en este navegador.
+function useGuardado(clave, crearInicial) {
+  const [estado, setEstado] = useState(() => {
+    try {
+      const local = localStorage.getItem(clave);
+      if (local) return JSON.parse(local);
+    } catch {}
+    return crearInicial();
+  });
+  const ref = useRef(null);
+  const escrito = useRef(null);
+  const cola = useRef(Promise.resolve());
+  const actual = useRef(estado);
+  actual.current = estado;
 
-function estadoDoc(doc) {
-  if (!doc.fin) return { texto: doc.estado ?? "Archivado", tono: "gris" };
-  const d = diasHasta(fecha(doc.fin));
-  if (d < 0) return { texto: "Vencido", tono: "rojo" };
-  if (d <= 60) return { texto: `Vence en ${d} días`, tono: "ambar" };
-  return { texto: "Vigente", tono: "verde" };
+  const subir = useCallback((json) => {
+    escrito.current = json;
+    cola.current = cola.current.then(() => ref.current.set({ estado: JSON.parse(json) })).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      if (!window.claude?.use) return;
+      const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+      const id = db && user ? await user.id() : null;
+      if (!vivo || !id) return;
+      try {
+        const doc = db.doc(`data/users/${id}/${clave}`);
+        const snap = await doc.get();
+        if (!vivo) return;
+        ref.current = doc;
+        const remoto = snap.exists ? snap.data()?.estado : null;
+        if (remoto) {
+          escrito.current = JSON.stringify(remoto);
+          setEstado(remoto);
+        } else {
+          subir(JSON.stringify(actual.current));
+        }
+      } catch {}
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [clave, subir]);
+
+  useEffect(() => {
+    const json = JSON.stringify(estado);
+    try {
+      localStorage.setItem(clave, json);
+    } catch {}
+    if (!ref.current || json === escrito.current) return;
+    const t = setTimeout(() => subir(json), 500);
+    return () => clearTimeout(t);
+  }, [clave, estado, subir]);
+
+  return [estado, setEstado];
 }
 
-const TONOS = {
-  verde: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  ambar: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  rojo: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300",
-  gris: "bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300",
+/* ───────────────────────── Archivos ───────────────────────── */
+
+// En claude.ai los archivos se suben a la propia página (capacidad `assets`). Si no se puede (fuera de
+// claude.ai o con un tipo de archivo que no admite), se guardan en este navegador con IndexedDB.
+const TIPOS_ASSETS = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  txt: "text/plain",
+  md: "text/markdown",
+  csv: "text/csv",
+  json: "application/json",
 };
 
-function useTema(clave) {
-  const leer = () => {
-    const t = document.documentElement.dataset.theme;
-    return t ? t === "dark" : !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-  };
-  const [oscuro, setOscuro] = useState(() => {
-    try {
-      const guardado = localStorage.getItem(clave);
-      if (guardado) document.documentElement.dataset.theme = guardado;
-    } catch {}
-    return leer();
+function abrirIDB() {
+  return new Promise((resolver, rechazar) => {
+    const r = indexedDB.open("segundo-cerebro", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("archivos");
+    r.onsuccess = () => resolver(r.result);
+    r.onerror = () => rechazar(r.error);
   });
-  useEffect(() => {
-    const sync = () => setOscuro(leer());
-    const mo = new MutationObserver(sync);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
-    mq?.addEventListener?.("change", sync);
-    return () => {
-      mo.disconnect();
-      mq?.removeEventListener?.("change", sync);
-    };
-  }, []);
-  const alternar = useCallback(() => {
-    const siguiente = leer() ? "light" : "dark";
-    document.documentElement.dataset.theme = siguiente;
+}
+
+async function idb(modo, accion) {
+  const db = await abrirIDB();
+  return new Promise((resolver, rechazar) => {
+    const tx = db.transaction("archivos", modo);
+    const peticion = accion(tx.objectStore("archivos"));
+    tx.oncomplete = () => resolver(peticion?.result);
+    tx.onerror = () => rechazar(tx.error);
+  });
+}
+
+async function guardarArchivo(archivo) {
+  const ext = archivo.name.split(".").pop().toLowerCase();
+  const assets = window.claude?.use ? await window.claude.use("assets") : null;
+  if (assets && TIPOS_ASSETS[ext]) {
     try {
-      localStorage.setItem(clave, siguiente);
+      const { id } = await assets.upload(archivo, { type: TIPOS_ASSETS[ext] });
+      return { tipo: "asset", id, mime: TIPOS_ASSETS[ext] };
     } catch {}
-  }, [clave]);
-  return [oscuro, alternar];
+  }
+  try {
+    const id = nuevoId();
+    await idb("readwrite", (s) => s.put(archivo, id));
+    return { tipo: "local", id, mime: archivo.type };
+  } catch {
+    return null;
+  }
 }
 
-/* ───────────────────────── Respuestas del chat (RAG simulado) ───────────────────────── */
-
-function respuestaSeguroAuto(recordatorioActivo) {
-  return {
-    texto: `Tu seguro de auto vence el **${larga(VENCE_AUTO)}**. Este dato está en el documento «Póliza Seguro GNP.pdf» (página 2).`,
-    fuentes: [{ doc: "gnp", pagina: 2 }],
-    vinetas: [`**Cobertura:** amplia`, `**Vigencia:** ${corta(INICIO_AUTO)} – ${corta(VENCE_AUTO)}`, `**Aseguradora:** GNP Seguros`, `**Número de póliza:** 589274631`],
-    sugerencia: recordatorioActivo
-      ? null
-      : { texto: "¿Te gustaría que te avise 1 mes antes de la renovación?", recordatorio: { id: "r-gnp", titulo: "Renovación del seguro de auto (GNP)", fecha: iso(AVISO_AUTO), doc: "gnp" } },
-  };
+async function urlArchivo(archivo) {
+  if (!archivo) return null;
+  if (archivo.tipo === "asset") return `/_blob/${archivo.id}`;
+  try {
+    const blob = await idb("readonly", (s) => s.get(archivo.id));
+    return blob ? URL.createObjectURL(blob) : null;
+  } catch {
+    return null;
+  }
 }
 
-function responder(pregunta, { documentos, notas, recordatorios }) {
+async function borrarArchivo(archivo) {
+  if (!archivo) return;
+  try {
+    if (archivo.tipo === "asset") await (await window.claude?.use?.("assets"))?.delete(archivo.id);
+    else await idb("readwrite", (s) => s.delete(archivo.id));
+  } catch {}
+}
+
+/* ───────────────────────── Chat (búsqueda simulada sobre tus documentos) ───────────────────────── */
+
+const PARADAS = new Set("cual cuales cuando cuanto cuanta donde que quien como tengo tiene tienes mis del los las una uno sobre para por con esta este estan son hay esto eso".split(" "));
+const terminos = (q) =>
+  normalizar(q)
+    .split(/[^a-z0-9ñ]+/)
+    .filter((t) => t.length >= 3 && !PARADAS.has(t));
+const textoDoc = (d) => normalizar([d.nombre, d.descripcion, CAT[d.carpeta]?.nombre, ...d.datos.flat()].join(" "));
+const puntuar = (texto, ts) => ts.reduce((s, t) => s + (texto.includes(t) || (t.endsWith("s") && texto.includes(t.slice(0, -1))) ? 1 : 0), 0);
+const sinExt = (n) => n.replace(/\.[a-z0-9]{2,5}$/i, "");
+const vigente = (d, hoy) => !d.vence || d.vence >= hoy;
+
+function vinetasDoc(d) {
+  const v = d.datos.map(([k, val]) => `**${k}:** ${val}`);
+  if (d.vence) v.splice(Math.min(1, v.length), 0, `**Vigencia:** hasta el ${corta(d.vence)}`);
+  return v;
+}
+
+function respuestaVencimiento(d, hoy) {
+  const fuentes = [{ doc: d.id, pagina: d.paginaVence ?? null }];
+  if (!d.vence) {
+    return {
+      texto: `No tengo la fecha de vencimiento de «${d.nombre}». Puedes añadirla editando el documento.`,
+      fuentes,
+      vinetas: vinetasDoc(d),
+      sugerencia: { tipo: "editar", doc: d.id, texto: "Añade la fecha de vencimiento y podré avisarte." },
+    };
+  }
+  const quien = d.descripcion ? `Tu ${d.descripcion.charAt(0).toLowerCase()}${d.descripcion.slice(1)}` : `«${d.nombre}»`;
+  const texto = `${quien} ${d.vence >= hoy ? "vence" : "venció"} el **${larga(d.vence)}**. Este dato está en el documento «${d.nombre}»${d.paginaVence ? ` (página ${d.paginaVence})` : ""}.`;
+  let sugerencia;
+  if (d.vence < hoy) {
+    sugerencia = { tipo: "editar", doc: d.id, texto: "Esa fecha ya pasó. Si renovaste, actualiza el vencimiento del documento y podré avisarte de la próxima renovación." };
+  } else {
+    const unMesAntes = sumarMeses(d.vence, -1);
+    const fecha = unMesAntes > hoy ? unMesAntes : d.vence;
+    sugerencia = {
+      tipo: "recordatorio",
+      texto: unMesAntes > hoy ? "¿Te gustaría que te avise 1 mes antes de la renovación?" : "¿Te gustaría que te avise el día del vencimiento?",
+      recordatorio: { id: `r-${d.id}-${d.vence}`, titulo: `Renovación: ${d.descripcion || sinExt(d.nombre)}`, fecha, doc: d.id },
+    };
+  }
+  return { texto, fuentes, vinetas: vinetasDoc(d), sugerencia };
+}
+
+function responder(pregunta, { documentos, notas }, hoy) {
   const q = normalizar(pregunta);
-  const doc = (id) => documentos.find((d) => d.id === id);
-  const yaAvisa = (id) => recordatorios.some((r) => r.id === id && r.activo);
+  const contratos = documentos.filter((d) => d.carpeta === "contratos");
+  const sinContratos = { texto: "No tienes contratos guardados todavía. Súbelos con el clip 📎 a la carpeta Contratos." };
 
-  if (/(seguro|poliza).*(auto|coche|carro)|(auto|coche|carro).*(seguro|poliza)|gnp/.test(q)) return respuestaSeguroAuto(yaAvisa("r-gnp"));
-
-  if (/vigente|activos|que contratos/.test(q)) {
-    const vigentes = documentos.filter((d) => d.cat === "contratos" && (d.fin ? diasHasta(fecha(d.fin)) >= 0 : d.estado === "Indefinido"));
-    const pronto = vigentes.filter((d) => d.fin && diasHasta(fecha(d.fin)) <= 90).sort((a, b) => fecha(a.fin) - fecha(b.fin));
+  if (/venc|caduc|expir|renov/.test(q)) {
+    const ts = terminos(q).filter((t) => !/^(venc|caduc|expir|renov)/.test(t));
+    const mejor = documentos.map((d) => ({ d, p: puntuar(textoDoc(d), ts) })).sort((a, b) => b.p - a.p)[0];
+    if (mejor?.p > 0) return respuestaVencimiento(mejor.d, hoy);
+    const proximos = documentos.filter((d) => d.vence && d.vence >= hoy).sort((a, b) => a.vence.localeCompare(b.vence));
+    if (!proximos.length) return { texto: "No encontré ese documento entre los tuyos." };
     return {
-      texto:
-        `Tienes **${vigentes.length} contratos vigentes**. ${pronto.length ? `Ojo con ${pronto.length === 1 ? "uno que vence" : `${pronto.length} que vencen`} en los próximos 3 meses.` : ""}`.trim(),
-      vinetas: vigentes.map(
-        (d) =>
-          `**${d.nombre.replace(/\.pdf$/, "").replace(/^Contrato (de |)/, "")}**: ${d.fin ? `hasta el ${corta(fecha(d.fin))}${diasHasta(fecha(d.fin)) <= 90 ? " ⚠️" : ""}` : d.estado.toLowerCase()}`,
-      ),
-      fuentes: pronto.slice(0, 2).map((d) => ({ doc: d.id })),
-      sugerencia:
-        pronto[0] && !recordatorios.some((r) => r.doc === pronto[0].id)
-          ? {
-              texto: `¿Te aviso una semana antes de que termine «${pronto[0].nombre.replace(/\.pdf$/, "")}»?`,
-              recordatorio: {
-                id: `r-${pronto[0].id}`,
-                titulo: `Vence ${pronto[0].nombre.replace(/\.pdf$/, "")}`,
-                fecha: iso(new Date(fecha(pronto[0].fin).getTime() - 7 * 86_400_000)),
-                doc: pronto[0].id,
-              },
-            }
-          : null,
-    };
-  }
-
-  if (/impuesto|sat\b|isr|declaracion|pague|tenencia/.test(q)) {
-    return {
-      texto:
-        "En tu **declaración anual 2025** (presentada el 28 de abril de 2026) pagaste **$18,450 MXN** de ISR. En 2026 llevas **$32,350 MXN** en pagos provisionales y **$3,872 MXN** de tenencia y refrendo.",
-      vinetas: [
-        "**Pagos provisionales ene–jun 2026:** $21,300",
-        "**Pagos provisionales jul–sep 2026:** $11,050",
-        "**Declaración 2024:** saldo a favor de $6,320 (ya devuelto)",
-        "**Deducciones personales 2025:** $42,600",
-      ],
-      fuentes: [{ doc: "anual25", pagina: 4 }, { doc: "prov2" }],
-      sugerencia: yaAvisa("r-sat")
-        ? null
-        : { texto: "¿Quieres que te recuerde el próximo pago provisional?", recordatorio: { id: "r-sat", titulo: "Pago provisional de octubre (SAT)", fecha: "2026-11-17", doc: "prov2" } },
-    };
-  }
-
-  if (/contrato actual|mi contrato|arrendamiento|renta|depa|alquiler/.test(q)) {
-    const d = doc("renta");
-    return {
-      texto: `Tu contrato actual es el **arrendamiento del depto. en Roma Norte**, vigente del ${corta(fecha(d.inicio))} al **${corta(fecha(d.fin))}** (te quedan ${diasHasta(fecha(d.fin))} días).`,
-      vinetas: d.datos.map(([k, v]) => `**${k}:** ${v}`),
-      fuentes: [{ doc: "renta", pagina: 3 }],
-      sugerencia: recordatorios.some((r) => r.doc === "renta")
-        ? null
-        : {
-            texto: "¿Te aviso 60 días antes del fin para negociar la renovación?",
-            recordatorio: { id: "r-renta", titulo: "Negociar la renovación del depa", fecha: iso(new Date(fecha(d.fin).getTime() - 60 * 86_400_000)), doc: "renta" },
-          },
-    };
-  }
-
-  if (/vence|vencimiento|caduca|renovar|proxim/.test(q)) {
-    const proximos = documentos
-      .filter((d) => d.fin && diasHasta(fecha(d.fin)) >= 0)
-      .sort((a, b) => fecha(a.fin) - fecha(b.fin))
-      .slice(0, 5);
-    return {
-      texto: "Estos son tus próximos vencimientos:",
-      vinetas: proximos.map((d) => `**${corta(fecha(d.fin))}** · ${d.nombre.replace(/\.pdf$/, "")} (en ${diasHasta(fecha(d.fin))} días)`),
+      texto: "No encontré ese documento. Estos son tus próximos vencimientos:",
+      vinetas: proximos.slice(0, 5).map((d) => `**${corta(d.vence)}** · ${d.nombre}`),
       fuentes: proximos.slice(0, 2).map((d) => ({ doc: d.id })),
     };
   }
 
-  if (/^resumen\s+de\s+«(.+)»$/.test(pregunta.trim())) {
-    const nombre = pregunta.trim().match(/«(.+)»/)[1];
-    const d = documentos.find((x) => x.nombre === nombre);
-    if (d) {
-      return {
-        texto: `**${d.nombre}**: ${d.resumen}`,
-        vinetas: (d.datos ?? []).map(([k, v]) => `**${k}:** ${v}`),
-        fuentes: [{ doc: d.id, pagina: d.pagina?.n }],
-      };
-    }
+  if (/contrato/.test(q) && /vigente|activo|tengo/.test(q)) {
+    const vigentes = contratos.filter((d) => vigente(d, hoy));
+    if (!contratos.length) return sinContratos;
+    if (!vigentes.length) return { texto: `Ninguno de tus ${contratos.length} contratos está vigente.` };
+    return {
+      texto: `Tienes **${vigentes.length} ${vigentes.length === 1 ? "contrato vigente" : "contratos vigentes"}**:`,
+      vinetas: vigentes.map((d) => `**${sinExt(d.nombre)}**: ${d.vence ? `hasta el ${corta(d.vence)}` : "sin fecha de fin"}`),
+      fuentes: vigentes.slice(0, 3).map((d) => ({ doc: d.id })),
+    };
   }
 
-  // Búsqueda por palabras: documentos y notas que comparten más términos con la pregunta.
-  const terminos = q.split(/[^a-z0-9ñ]+/).filter((t) => t.length > 3 && !["cual", "cuales", "tengo", "donde", "sobre", "tiene", "para", "como", "cuanto", "cuando", "esta", "este", "mis"].includes(t));
-  const puntuar = (texto) => terminos.reduce((s, t) => s + (normalizar(texto).includes(t) ? 1 : 0), 0);
+  if (/impuesto|\bsat\b|\bisr\b|\biva\b|declaraci|hacienda|tribut/.test(q)) {
+    const docs = documentos.filter((d) => d.carpeta === "impuestos");
+    if (!docs.length) return { texto: "Aún no tienes documentos en Impuestos. Súbelos con el clip 📎 y te diré lo que aparece en ellos." };
+    const importes = docs.flatMap((d) => d.datos.filter(([k]) => /pag|import|total|isr|cargo|cuota/i.test(normalizar(k))).map(([, v]) => v));
+    const numeros = importes.map((v) => Number(String(v).replace(/[^\d.]/g, ""))).filter((n) => n > 0);
+    const simbolo =
+      importes
+        .map(
+          (v) =>
+            String(v)
+              .trim()
+              .match(/^[$€£]/)?.[0],
+        )
+        .find(Boolean) ?? "";
+    return {
+      texto: numeros.length
+        ? `Según tus documentos de Impuestos, has pagado **${simbolo}${new Intl.NumberFormat("es-MX").format(numeros.reduce((s, n) => s + n, 0))}** en total.`
+        : "Estos son tus documentos de Impuestos. Añade a cada uno el importe pagado y te diré el total:",
+      vinetas: docs.flatMap((d) => [`**${sinExt(d.nombre)}**`, ...d.datos.map(([k, v]) => `${k}: ${v}`)]),
+      fuentes: docs.slice(0, 3).map((d) => ({ doc: d.id })),
+    };
+  }
+
+  if (/contrato actual|mi contrato|resumen.*contrato/.test(q)) {
+    const actual = contratos.filter((d) => vigente(d, hoy)).sort((a, b) => b.subido.localeCompare(a.subido))[0];
+    if (!actual) return contratos.length ? { texto: "No tienes ningún contrato vigente." } : sinContratos;
+    return {
+      texto: `Tu contrato actual es **${sinExt(actual.nombre)}**.${actual.descripcion ? ` ${actual.descripcion}.` : ""}`,
+      vinetas: vinetasDoc(actual),
+      fuentes: [{ doc: actual.id, pagina: actual.paginaVence ?? null }],
+    };
+  }
+
+  const ts = terminos(q);
   const docs = documentos
-    .map((d) => ({ d, p: puntuar([d.nombre, d.resumen, ...(d.claves ?? []), ...(d.datos ?? []).flat()].join(" ")) }))
+    .map((d) => ({ d, p: puntuar(textoDoc(d), ts) }))
     .filter((x) => x.p > 0)
     .sort((a, b) => b.p - a.p);
   const ns = notas
-    .map((n) => ({ n, p: puntuar(`${n.titulo} ${n.texto} ${n.etiqueta}`) }))
+    .map((n) => ({ n, p: puntuar(normalizar(`${n.titulo} ${n.texto}`), ts) }))
     .filter((x) => x.p > 0)
     .sort((a, b) => b.p - a.p);
-
-  if (!docs.length && !ns.length) {
-    return { texto: "No encontré nada sobre eso en tus documentos ni en tus notas. Si tienes el archivo, súbelo con el clip 📎 y te respondo al momento." };
-  }
+  if (!docs.length && !ns.length) return { texto: "No encontré nada sobre eso en tus documentos ni en tus notas." };
   return {
-    texto: "Encontré esto relacionado con tu pregunta:",
-    vinetas: [...docs.slice(0, 3).map(({ d }) => `**${d.nombre.replace(/\.pdf$/, "")}**: ${d.resumen}`), ...ns.slice(0, 2).map(({ n }) => `**Nota «${n.titulo}»**: ${n.texto}`)],
-    fuentes: docs.slice(0, 2).map(({ d }) => ({ doc: d.id })),
+    texto: "Encontré esto en tus documentos:",
+    vinetas: [
+      ...docs.slice(0, 4).map(({ d }) => `**${sinExt(d.nombre)}** (${CAT[d.carpeta].nombre})${d.descripcion ? `: ${d.descripcion}` : ""}`),
+      ...ns.slice(0, 3).map(({ n }) => `**Nota «${n.titulo}»**: ${n.texto}`),
+    ],
+    fuentes: docs.slice(0, 3).map(({ d }) => ({ doc: d.id })),
   };
 }
 
@@ -721,6 +372,8 @@ function responder(pregunta, { documentos, notas, recordatorios }) {
 const foco = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500";
 const campo =
   "w-full rounded-xl bg-zinc-50 px-3.5 py-2.5 text-[15px] ring-1 ring-zinc-200 outline-none placeholder:text-zinc-400 focus:ring-2 focus:ring-violet-500 dark:bg-white/5 dark:ring-white/10";
+const etiqueta = "mb-1 block text-xs font-semibold text-zinc-500 dark:text-zinc-400";
+const botonPrincipal = `rounded-xl bg-violet-600 py-3 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-40 ${foco}`;
 
 function Tarjeta({ className = "", children }) {
   return <section className={`rounded-2xl bg-white ring-1 ring-zinc-900/[0.06] dark:bg-[#18171f] dark:ring-white/10 ${className}`}>{children}</section>;
@@ -738,13 +391,13 @@ function Rico({ texto }) {
   );
 }
 
-function Interruptor({ activo, onClick, etiqueta }) {
+function Interruptor({ activo, onClick, etiqueta: aria }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={activo}
-      aria-label={etiqueta}
+      aria-label={aria}
       onClick={onClick}
       className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${foco} ${activo ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-700"}`}
     >
@@ -753,7 +406,20 @@ function Interruptor({ activo, onClick, etiqueta }) {
   );
 }
 
-function Hoja({ abierta, onCerrar, titulo, icono: Icono, children, ancha = false }) {
+function BotonBorrar({ onClick, etiqueta: aria }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={aria}
+      className={`grid size-8 shrink-0 place-items-center rounded-lg text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 ${foco}`}
+    >
+      <Trash2 className="size-4" />
+    </button>
+  );
+}
+
+function Hoja({ abierta, onCerrar, titulo, icono: Icono, children }) {
   useEffect(() => {
     if (!abierta) return;
     const tecla = (e) => e.key === "Escape" && onCerrar();
@@ -764,9 +430,7 @@ function Hoja({ abierta, onCerrar, titulo, icono: Icono, children, ancha = false
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={titulo}>
       <button type="button" aria-label="Cerrar" onClick={onCerrar} className="absolute inset-0 bg-zinc-950/45 backdrop-blur-[2px] motion-safe:animate-fade" />
-      <div
-        className={`relative max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white pt-5 pb-[max(20px,env(safe-area-inset-bottom))] shadow-2xl gutter-lg sm:rounded-3xl sm:pb-6 dark:bg-[#1c1b24] dark:ring-1 dark:ring-white/10 motion-safe:animate-sheet ${ancha ? "sm:max-w-xl" : "sm:max-w-md"}`}
-      >
+      <div className="relative max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white pt-5 pb-[max(20px,env(safe-area-inset-bottom))] shadow-2xl gutter-lg motion-safe:animate-sheet sm:max-w-lg sm:rounded-3xl sm:pb-6 dark:bg-[#1c1b24] dark:ring-1 dark:ring-white/10">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="flex min-w-0 items-center gap-2 text-lg font-bold tracking-tight">
             {Icono && <Icono className="size-5 shrink-0 text-violet-600 dark:text-violet-400" />}
@@ -787,11 +451,12 @@ function Hoja({ abierta, onCerrar, titulo, icono: Icono, children, ancha = false
   );
 }
 
-function IconoPdf({ tam = "size-10" }) {
+function IconoDoc({ nombre }) {
+  const ext = (nombre.split(".").pop() || "").slice(0, 4).toUpperCase();
   return (
-    <span className={`relative grid ${tam} shrink-0 place-items-center rounded-lg bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300`}>
+    <span className="relative grid size-10 shrink-0 place-items-center rounded-lg bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300">
       <FileText className="size-5" />
-      <span className="absolute -bottom-1 rounded bg-red-600 px-1 text-[8px] leading-3 font-extrabold text-white">PDF</span>
+      {nombre.includes(".") && <span className="absolute -bottom-1 rounded bg-red-600 px-1 text-[8px] leading-3 font-extrabold text-white">{ext}</span>}
     </span>
   );
 }
@@ -799,12 +464,12 @@ function IconoPdf({ tam = "size-10" }) {
 function MiniDoc({ doc, pagina, onAbrir }) {
   return (
     <div className="flex items-center gap-3 rounded-xl bg-white p-2.5 ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10">
-      <IconoPdf />
+      <IconoDoc nombre={doc.nombre} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{doc.nombre}</p>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {CAT[doc.cat].nombre} · {doc.tamano}
-          {pagina ? ` · página ${pagina}` : ` · ${doc.paginas} págs.`}
+          {CAT[doc.carpeta].nombre}
+          {pagina ? ` · página ${pagina}` : ""}
         </p>
       </div>
       <button
@@ -818,27 +483,47 @@ function MiniDoc({ doc, pagina, onAbrir }) {
   );
 }
 
+function estadoDoc(d, hoy) {
+  if (!d.vence) return null;
+  const dias = diasEntre(hoy, d.vence);
+  if (dias < 0) return { texto: "Vencido", clase: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300" };
+  if (dias <= 60) return { texto: `Vence en ${dias} ${dias === 1 ? "día" : "días"}`, clase: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" };
+  return { texto: "Vigente", clase: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" };
+}
+
+function FilaDoc({ doc, hoy, onClick }) {
+  const e = estadoDoc(doc, hoy);
+  return (
+    <button type="button" onClick={onClick} className={`flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-white/5 ${foco}`}>
+      <IconoDoc nombre={doc.nombre} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">{doc.nombre}</span>
+        <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+          {CAT[doc.carpeta].nombre}
+          {doc.vence ? ` · vence el ${corta(doc.vence)}` : ""}
+        </span>
+      </span>
+      {e && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${e.clase}`}>{e.texto}</span>}
+    </button>
+  );
+}
+
 /* ───────────────────────── App ───────────────────────── */
 
 export default function SegundoCerebro() {
-  const [oscuro, alternarTema] = useTema("segundo-cerebro:tema");
+  const [datos, setDatos] = useGuardado("segundo-cerebro", estadoInicial);
   const [pantalla, setPantalla] = useState("cerebro"); // "inicio" | "cerebro"
   const [vista, setVista] = useState("chat");
   const [filtroCat, setFiltroCat] = useState(null);
-  const [documentos, setDocumentos] = useState(DOCUMENTOS_INICIALES);
-  const [notas, setNotas] = useState(NOTAS_INICIALES);
-  const [recordatorios, setRecordatorios] = useState(RECORDATORIOS_INICIALES);
-  const [mensajes, setMensajes] = useState(() => [
-    { id: 1, de: "yo", texto: "¿Cuándo vence mi seguro de auto?" },
-    { id: 2, de: "ia", ...respuestaSeguroAuto(false) },
-  ]);
   const [escribiendo, setEscribiendo] = useState(false);
-  const [hoja, setHoja] = useState(null); // {doc} | {nota} | "buscar" | {subir: File} | "recordatorio" | "nota-nueva"
+  const [hoja, setHoja] = useState(null); // "buscar" | "recordatorio" | "nota-nueva" | {doc} | {editar} | {nota} | {subir: File}
   const [toast, setToast] = useState(null);
   const toastRef = useRef();
   const archivoRef = useRef();
-  const estadoRef = useRef();
-  estadoRef.current = { documentos, notas, recordatorios };
+  const datosRef = useRef(datos);
+  datosRef.current = datos;
+  const hoy = hoyISO();
+  const { documentos, notas, recordatorios, chat } = datos;
 
   const avisar = useCallback((texto) => {
     clearTimeout(toastRef.current);
@@ -846,12 +531,13 @@ export default function SegundoCerebro() {
     toastRef.current = setTimeout(() => setToast(null), 2800);
   }, []);
   const cerrarHoja = useCallback(() => setHoja(null), []);
+  const cambiar = (lista, fn) => setDatos((d) => ({ ...d, [lista]: fn(d[lista]) }));
 
   const cuentas = {
-    contratos: documentos.filter((d) => d.cat === "contratos").length,
-    seguros: documentos.filter((d) => d.cat === "seguros").length,
-    impuestos: documentos.filter((d) => d.cat === "impuestos").length,
-    notas: notas.length,
+    contratos: documentos.filter((d) => d.carpeta === "contratos").length,
+    seguros: documentos.filter((d) => d.carpeta === "seguros").length,
+    impuestos: documentos.filter((d) => d.carpeta === "impuestos").length,
+    notas: notas.length + documentos.filter((d) => d.carpeta === "notas").length,
   };
 
   const irA = (v) => {
@@ -863,20 +549,46 @@ export default function SegundoCerebro() {
     const p = pregunta.trim();
     if (!p || escribiendo) return;
     irA("chat");
-    setMensajes((ms) => [...ms, { id: Date.now(), de: "yo", texto: p }]);
+    cambiar("chat", (c) => [...c, { id: nuevoId(), de: "yo", texto: p }].slice(-40));
     setEscribiendo(true);
-    setTimeout(
-      () => {
-        setMensajes((ms) => [...ms, { id: Date.now() + 1, de: "ia", ...responder(p, estadoRef.current) }]);
-        setEscribiendo(false);
-      },
-      800 + Math.min(p.length * 10, 500),
-    );
+    setTimeout(() => {
+      cambiar("chat", (c) => [...c, { id: nuevoId(), de: "ia", ...responder(p, datosRef.current, hoyISO()) }].slice(-40));
+      setEscribiendo(false);
+    }, 700);
   };
 
-  const activarRecordatorio = (r) => {
-    setRecordatorios((rs) => (rs.some((x) => x.id === r.id) ? rs.map((x) => (x.id === r.id ? { ...x, activo: true } : x)) : [...rs, { ...r, activo: true }]));
-    avisar(`Te avisaré el ${corta(fecha(r.fecha))}`);
+  const acciones = {
+    activarRecordatorio: (r) => {
+      cambiar("recordatorios", (rs) => (rs.some((x) => x.id === r.id) ? rs.map((x) => (x.id === r.id ? { ...x, activo: true } : x)) : [...rs, { ...r, activo: true }]));
+      avisar(`Te avisaré el ${corta(r.fecha)}`);
+    },
+    guardarDoc: (doc) => {
+      cambiar("documentos", (ds) => (ds.some((d) => d.id === doc.id) ? ds.map((d) => (d.id === doc.id ? doc : d)) : [doc, ...ds]));
+      setHoja({ doc: doc.id });
+      avisar("Documento guardado");
+    },
+    borrarDoc: (doc) => {
+      borrarArchivo(doc.archivo);
+      cambiar("documentos", (ds) => ds.filter((d) => d.id !== doc.id));
+      cerrarHoja();
+      avisar("Documento eliminado");
+    },
+    guardarNota: (nota) => {
+      cambiar("notas", (ns) => (ns.some((n) => n.id === nota.id) ? ns.map((n) => (n.id === nota.id ? nota : n)) : [nota, ...ns]));
+      cerrarHoja();
+      avisar("Nota guardada");
+    },
+    borrarNota: (id) => {
+      cambiar("notas", (ns) => ns.filter((n) => n.id !== id));
+      cerrarHoja();
+    },
+    nuevoRecordatorio: (r) => {
+      cambiar("recordatorios", (rs) => [...rs, { ...r, id: nuevoId(), activo: true }]);
+      cerrarHoja();
+      avisar(`Te avisaré el ${corta(r.fecha)}`);
+    },
+    alternarRecordatorio: (id) => cambiar("recordatorios", (rs) => rs.map((r) => (r.id === id ? { ...r, activo: !r.activo } : r))),
+    borrarRecordatorio: (id) => cambiar("recordatorios", (rs) => rs.filter((r) => r.id !== id)),
   };
 
   const elegirCategoria = (id) => {
@@ -889,41 +601,11 @@ export default function SegundoCerebro() {
     }
   };
 
-  const subirArchivo = (archivo, cat) => {
-    const kb = archivo.size / 1024;
-    const tamano = kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(kb))} KB`;
-    if (cat === "notas") {
-      setNotas((ns) => [{ id: `n${Date.now()}`, titulo: archivo.name, texto: `Archivo adjunto (${tamano}).`, etiqueta: "Archivo", fecha: iso(HOY) }, ...ns]);
-    } else {
-      setDocumentos((ds) => [
-        {
-          id: `d${Date.now()}`,
-          cat,
-          nombre: archivo.name,
-          subido: iso(HOY),
-          inicio: null,
-          fin: null,
-          estado: "Nuevo",
-          paginas: "—",
-          tamano,
-          resumen: "Subido hoy. Aún no hay datos extraídos de este archivo.",
-          datos: [],
-          claves: [],
-        },
-        ...ds,
-      ]);
-    }
-    cerrarHoja();
-    irA("chat");
-    setMensajes((ms) => [
-      ...ms,
-      { id: Date.now(), de: "ia", texto: `📎 Guardé **${archivo.name}** en **${CAT[cat].nombre}**. Ya aparece en tus ${cat === "notas" ? "notas" : "documentos"} y puedes preguntarme por él.` },
-    ]);
-    avisar(`${archivo.name} subido`);
-  };
-
   const tabInferior = pantalla === "inicio" ? "inicio" : vista === "documentos" ? "documentos" : vista === "recordatorios" ? "recordatorios" : "cerebro";
   const docAbierto = hoja?.doc ? documentos.find((d) => d.id === hoja.doc) : null;
+  const docEditar = hoja?.editar ? documentos.find((d) => d.id === hoja.editar) : null;
+  const notaAbierta = hoja?.nota ? notas.find((n) => n.id === hoja.nota) : null;
+  const abrirDoc = (id) => setHoja({ doc: id });
 
   return (
     <div className="min-h-screen font-sans">
@@ -944,14 +626,6 @@ export default function SegundoCerebro() {
           >
             <Search className="size-5" />
           </button>
-          <button
-            type="button"
-            onClick={alternarTema}
-            aria-label={oscuro ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-            className={`grid size-10 place-items-center rounded-full text-zinc-600 hover:bg-white dark:text-zinc-300 dark:hover:bg-white/10 ${foco}`}
-          >
-            {oscuro ? <Sun className="size-5" /> : <Moon className="size-5" />}
-          </button>
           <span className="ml-1 grid size-10 place-items-center rounded-full bg-zinc-900 text-sm font-bold text-white dark:bg-white dark:text-zinc-900" aria-label="Diego">
             D
           </span>
@@ -960,16 +634,7 @@ export default function SegundoCerebro() {
 
       <main className="mx-auto max-w-3xl gutter pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
         {pantalla === "inicio" ? (
-          <Inicio
-            documentos={documentos}
-            notas={notas}
-            recordatorios={recordatorios}
-            cuentas={cuentas}
-            abrirDoc={(id) => setHoja({ doc: id })}
-            irA={irA}
-            preguntar={preguntar}
-            elegirCategoria={elegirCategoria}
-          />
+          <Inicio documentos={documentos} recordatorios={recordatorios} cuentas={cuentas} hoy={hoy} abrirDoc={abrirDoc} irA={irA} elegirCategoria={elegirCategoria} />
         ) : (
           <>
             <div role="tablist" aria-label="Vista" className="flex gap-1 rounded-2xl bg-zinc-200/60 p-1 dark:bg-white/[0.06]">
@@ -987,60 +652,37 @@ export default function SegundoCerebro() {
               ))}
             </div>
 
-            <div className="no-scrollbar -mx-4 mt-3 flex gap-2.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0">
-              {CATEGORIAS.map((c) => {
-                const activa = (vista === "documentos" && filtroCat === c.id) || (vista === "notas" && c.id === "notas");
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => elegirCategoria(c.id)}
-                    aria-pressed={activa}
-                    className={`flex w-[138px] shrink-0 items-center gap-2.5 rounded-2xl bg-white p-3 text-left ring-1 transition hover:ring-zinc-300 sm:w-auto dark:bg-[#18171f] dark:hover:ring-white/20 ${foco} ${activa ? `ring-2 ${c.anillo}` : "ring-zinc-900/[0.06] dark:ring-white/10"}`}
-                  >
-                    <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${c.color}`}>
-                      <c.icono className="size-[18px]" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-bold">{c.nombre}</span>
-                      <span className="block text-xs text-zinc-500 tabular-nums dark:text-zinc-400">
-                        {cuentas[c.id]} {c.unidad}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <TarjetasCategoria cuentas={cuentas} activa={vista === "documentos" ? filtroCat : vista === "notas" ? "notas" : null} onElegir={elegirCategoria} />
 
             <div className="mt-4">
               {vista === "chat" && (
                 <VistaChat
-                  mensajes={mensajes}
+                  chat={chat}
                   escribiendo={escribiendo}
                   documentos={documentos}
                   recordatorios={recordatorios}
                   preguntar={preguntar}
-                  abrirDoc={(id) => setHoja({ doc: id })}
-                  activarRecordatorio={activarRecordatorio}
+                  abrirDoc={abrirDoc}
+                  editarDoc={(id) => setHoja({ editar: id })}
+                  activarRecordatorio={acciones.activarRecordatorio}
                   onClip={() => archivoRef.current?.click()}
                 />
               )}
               {vista === "documentos" && (
-                <VistaDocumentos documentos={documentos} filtroCat={filtroCat} setFiltroCat={setFiltroCat} abrirDoc={(id) => setHoja({ doc: id })} onSubir={() => archivoRef.current?.click()} />
+                <VistaDocumentos documentos={documentos} hoy={hoy} filtroCat={filtroCat} setFiltroCat={setFiltroCat} abrirDoc={abrirDoc} onSubir={() => archivoRef.current?.click()} />
               )}
-              {vista === "notas" && <VistaNotas notas={notas} abrirNota={(id) => setHoja({ nota: id })} onNueva={() => setHoja("nota-nueva")} />}
-              {vista === "recordatorios" && (
-                <VistaRecordatorios
-                  recordatorios={recordatorios}
-                  documentos={documentos}
-                  alternar={(id) => setRecordatorios((rs) => rs.map((r) => (r.id === id ? { ...r, activo: !r.activo } : r)))}
-                  borrar={(id) => {
-                    setRecordatorios((rs) => rs.filter((r) => r.id !== id));
-                    avisar("Recordatorio eliminado");
-                  }}
-                  abrirDoc={(id) => setHoja({ doc: id })}
-                  onNuevo={() => setHoja("recordatorio")}
+              {vista === "notas" && (
+                <VistaNotas
+                  notas={notas}
+                  archivos={documentos.filter((d) => d.carpeta === "notas")}
+                  hoy={hoy}
+                  abrirNota={(id) => setHoja({ nota: id })}
+                  abrirDoc={abrirDoc}
+                  onNueva={() => setHoja("nota-nueva")}
                 />
+              )}
+              {vista === "recordatorios" && (
+                <VistaRecordatorios recordatorios={recordatorios} documentos={documentos} hoy={hoy} acciones={acciones} abrirDoc={abrirDoc} onNuevo={() => setHoja("recordatorio")} />
               )}
             </div>
           </>
@@ -1050,7 +692,6 @@ export default function SegundoCerebro() {
       <input
         ref={archivoRef}
         type="file"
-        accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.heic"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -1077,7 +718,7 @@ export default function SegundoCerebro() {
                   type="button"
                   onClick={accion}
                   aria-current={activo ? "page" : undefined}
-                  className={`flex w-full flex-col items-center gap-1 pt-2.5 pb-2 text-[11px] font-semibold ${foco} ${activo ? "text-violet-700 dark:text-violet-300" : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"}`}
+                  className={`flex w-full flex-col items-center gap-1 pt-2.5 pb-2 font-semibold ${foco} ${activo ? "text-violet-700 dark:text-violet-300" : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"}`}
                 >
                   <span className={`grid h-7 w-12 place-items-center rounded-full ${activo ? "bg-violet-100 dark:bg-violet-500/15" : ""}`}>
                     <I className="size-5" strokeWidth={activo ? 2.4 : 2} />
@@ -1099,82 +740,125 @@ export default function SegundoCerebro() {
       )}
 
       {docAbierto && (
-        <VisorDoc
-          doc={docAbierto}
-          onCerrar={cerrarHoja}
-          preguntar={(p) => {
-            cerrarHoja();
-            preguntar(p);
-          }}
-        />
-      )}
-
-      {hoja?.nota && (
-        <Hoja abierta onCerrar={cerrarHoja} titulo="Nota" icono={StickyNote}>
-          {(() => {
-            const n = notas.find((x) => x.id === hoja.nota);
-            return (
-              n && (
-                <article>
-                  <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">{n.etiqueta}</span>
-                  <h3 className="mt-3 text-xl font-bold">{n.titulo}</h3>
-                  <p className="mt-2 font-serif text-[17px] leading-relaxed text-zinc-700 dark:text-zinc-300">{n.texto}</p>
-                  <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">Creada el {larga(fecha(n.fecha))}</p>
-                </article>
-              )
-            );
-          })()}
+        <Hoja abierta onCerrar={cerrarHoja} titulo={docAbierto.nombre} icono={FileText}>
+          <DetalleDoc doc={docAbierto} hoy={hoy} onEditar={() => setHoja({ editar: docAbierto.id })} onBorrar={() => acciones.borrarDoc(docAbierto)} />
         </Hoja>
       )}
 
-      <Hoja abierta={hoja === "buscar"} onCerrar={cerrarHoja} titulo="Buscar" icono={Search}>
-        <Buscador
-          documentos={documentos}
-          notas={notas}
-          abrirDoc={(id) => setHoja({ doc: id })}
-          abrirNota={(id) => setHoja({ nota: id })}
-          preguntar={(p) => {
-            cerrarHoja();
-            preguntar(p);
-          }}
-        />
-      </Hoja>
+      {docEditar && (
+        <Hoja abierta onCerrar={cerrarHoja} titulo="Editar documento" icono={Pencil}>
+          <FormDoc doc={docEditar} onGuardar={acciones.guardarDoc} />
+        </Hoja>
+      )}
 
       {hoja?.subir && (
         <Hoja abierta onCerrar={cerrarHoja} titulo="Subir documento" icono={Upload}>
-          <FormSubir archivo={hoja.subir} onGuardar={subirArchivo} />
+          <FormSubir
+            archivo={hoja.subir}
+            onGuardar={(doc) => {
+              acciones.guardarDoc(doc);
+              avisar(`Guardado en ${CAT[doc.carpeta].nombre}`);
+            }}
+          />
         </Hoja>
       )}
 
-      <Hoja abierta={hoja === "recordatorio"} onCerrar={cerrarHoja} titulo="Nuevo recordatorio" icono={BellRing}>
-        <FormRecordatorio
-          documentos={documentos}
-          onGuardar={(r) => {
-            setRecordatorios((rs) => [...rs, { ...r, id: `r${Date.now()}`, activo: true }]);
-            cerrarHoja();
-            avisar(`Te avisaré el ${corta(fecha(r.fecha))}`);
-          }}
-        />
+      <Hoja abierta={hoja === "nota-nueva" || !!notaAbierta} onCerrar={cerrarHoja} titulo={notaAbierta ? "Nota" : "Nueva nota"} icono={StickyNote}>
+        <FormNota key={notaAbierta?.id ?? "nueva"} nota={notaAbierta} hoy={hoy} onGuardar={acciones.guardarNota} onBorrar={notaAbierta ? () => acciones.borrarNota(notaAbierta.id) : null} />
       </Hoja>
 
-      <Hoja abierta={hoja === "nota-nueva"} onCerrar={cerrarHoja} titulo="Nueva nota" icono={StickyNote}>
-        <FormNota
-          etiquetas={[...new Set(notas.map((n) => n.etiqueta))]}
-          onGuardar={(n) => {
-            setNotas((ns) => [{ ...n, id: `n${Date.now()}`, fecha: iso(HOY) }, ...ns]);
-            cerrarHoja();
-            avisar("Nota guardada");
-          }}
-        />
+      <Hoja abierta={hoja === "buscar"} onCerrar={cerrarHoja} titulo="Buscar" icono={Search}>
+        <Buscador documentos={documentos} notas={notas} hoy={hoy} abrirDoc={abrirDoc} abrirNota={(id) => setHoja({ nota: id })} />
       </Hoja>
+
+      <Hoja abierta={hoja === "recordatorio"} onCerrar={cerrarHoja} titulo="Nuevo recordatorio" icono={BellRing}>
+        <FormRecordatorio documentos={documentos} hoy={hoy} onGuardar={acciones.nuevoRecordatorio} />
+      </Hoja>
+    </div>
+  );
+}
+
+/* ───────────────────────── Categorías e inicio ───────────────────────── */
+
+function TarjetasCategoria({ cuentas, activa, onElegir }) {
+  return (
+    <div className="no-scrollbar -mx-4 mt-3 flex gap-2.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0">
+      {CATEGORIAS.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => onElegir(c.id)}
+          aria-pressed={activa === c.id}
+          className={`flex w-[138px] shrink-0 items-center gap-2.5 rounded-2xl bg-white p-3 text-left ring-1 transition hover:ring-zinc-300 sm:w-auto dark:bg-[#18171f] dark:hover:ring-white/20 ${foco} ${activa === c.id ? `ring-2 ${c.anillo}` : "ring-zinc-900/[0.06] dark:ring-white/10"}`}
+        >
+          <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${c.color}`}>
+            <c.icono className="size-[18px]" />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold">{c.nombre}</span>
+            <span className="block text-xs text-zinc-500 tabular-nums dark:text-zinc-400">
+              {cuentas[c.id]} {c.id === "notas" ? (cuentas[c.id] === 1 ? "nota" : "notas") : cuentas[c.id] === 1 ? "doc" : "docs"}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Inicio({ documentos, recordatorios, cuentas, hoy, abrirDoc, irA, elegirCategoria }) {
+  const proximos = documentos.filter((d) => d.vence && d.vence >= hoy).sort((a, b) => a.vence.localeCompare(b.vence));
+  const avisos = recordatorios.filter((r) => r.activo && r.fecha >= hoy).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  return (
+    <div className="grid grid-cols-1 gap-4">
+      <button
+        type="button"
+        onClick={() => irA("chat")}
+        className={`flex items-center gap-3 rounded-2xl bg-violet-600 p-4 text-left text-white shadow-lg shadow-violet-600/25 hover:bg-violet-700 ${foco}`}
+      >
+        <MessageSquare className="size-6 shrink-0" />
+        <span className="min-w-0 flex-1 font-bold">Pregúntale a tu Segundo Cerebro</span>
+        <ChevronRight className="size-5" />
+      </button>
+      <TarjetasCategoria cuentas={cuentas} activa={null} onElegir={elegirCategoria} />
+      <Tarjeta className="p-4">
+        <h2 className="text-sm font-bold">Próximos vencimientos</h2>
+        {proximos.length ? (
+          <ul className="mt-2">
+            {proximos.slice(0, 5).map((d) => (
+              <li key={d.id}>
+                <FilaDoc doc={d} hoy={hoy} onClick={() => abrirDoc(d.id)} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No tienes documentos con vencimientos próximos.</p>
+        )}
+      </Tarjeta>
+      <Tarjeta className="p-4">
+        <h2 className="text-sm font-bold">Recordatorios</h2>
+        {avisos.length ? (
+          <ul className="mt-2 divide-y divide-zinc-100 dark:divide-white/5">
+            {avisos.slice(0, 5).map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <span className="min-w-0 truncate font-semibold">{r.titulo}</span>
+                <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">{corta(r.fecha)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No tienes recordatorios activos.</p>
+        )}
+      </Tarjeta>
     </div>
   );
 }
 
 /* ───────────────────────── Chat ───────────────────────── */
 
-function MensajeIA({ m, documentos, recordatorios, abrirDoc, activarRecordatorio }) {
-  const activado = m.sugerencia?.recordatorio && recordatorios.some((r) => r.id === m.sugerencia.recordatorio.id && r.activo);
+function MensajeIA({ m, documentos, recordatorios, abrirDoc, editarDoc, activarRecordatorio }) {
+  const s = m.sugerencia;
+  const activado = s?.tipo === "recordatorio" && recordatorios.some((r) => r.id === s.recordatorio.id && r.activo);
   return (
     <div className="flex gap-2.5 motion-safe:animate-pop">
       <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-violet-600 text-white">
@@ -1188,7 +872,7 @@ function MensajeIA({ m, documentos, recordatorios, abrirDoc, activarRecordatorio
           <div className="mt-3 grid grid-cols-1 gap-2">
             {m.fuentes.map((f) => {
               const d = documentos.find((x) => x.id === f.doc);
-              return d && <MiniDoc key={f.doc} doc={d} pagina={f.pagina} onAbrir={() => abrirDoc(d.id)} />;
+              return d ? <MiniDoc key={f.doc} doc={d} pagina={f.pagina} onAbrir={() => abrirDoc(d.id)} /> : null;
             })}
           </div>
         )}
@@ -1204,23 +888,35 @@ function MensajeIA({ m, documentos, recordatorios, abrirDoc, activarRecordatorio
             ))}
           </ul>
         )}
-        {m.sugerencia && (
+        {s && (
           <div className="mt-4 rounded-xl bg-violet-50 p-3.5 ring-1 ring-violet-100 dark:bg-violet-500/10 dark:ring-violet-500/20">
-            <p className="text-sm font-medium text-violet-950 dark:text-violet-100">💡 {m.sugerencia.texto}</p>
-            <button
-              type="button"
-              disabled={activado}
-              onClick={() => activarRecordatorio(m.sugerencia.recordatorio)}
-              className={`mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition ${foco} ${activado ? "bg-emerald-600 text-white" : "bg-violet-600 text-white hover:bg-violet-700"}`}
-            >
-              {activado ? (
-                <>
-                  <Check className="size-4" /> Recordatorio activado · {corta(fecha(m.sugerencia.recordatorio.fecha))}
-                </>
-              ) : (
-                <>🔔 Activar recordatorio</>
-              )}
-            </button>
+            <p className="text-sm font-medium text-violet-950 dark:text-violet-100">💡 {s.texto}</p>
+            {s.tipo === "recordatorio" ? (
+              <button
+                type="button"
+                disabled={activado}
+                onClick={() => activarRecordatorio(s.recordatorio)}
+                className={`mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition ${foco} ${activado ? "bg-emerald-600 text-white" : "bg-violet-600 text-white hover:bg-violet-700"}`}
+              >
+                {activado ? (
+                  <>
+                    <Check className="size-4" /> Recordatorio activado · {corta(s.recordatorio.fecha)}
+                  </>
+                ) : (
+                  "🔔 Activar recordatorio"
+                )}
+              </button>
+            ) : (
+              documentos.some((d) => d.id === s.doc) && (
+                <button
+                  type="button"
+                  onClick={() => editarDoc(s.doc)}
+                  className={`mt-2.5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-violet-700 ${foco}`}
+                >
+                  <Pencil className="size-4" /> Editar documento
+                </button>
+              )
+            )}
           </div>
         )}
       </Tarjeta>
@@ -1228,7 +924,7 @@ function MensajeIA({ m, documentos, recordatorios, abrirDoc, activarRecordatorio
   );
 }
 
-function VistaChat({ mensajes, escribiendo, documentos, recordatorios, preguntar, abrirDoc, activarRecordatorio, onClip }) {
+function VistaChat({ chat, escribiendo, documentos, recordatorios, preguntar, abrirDoc, editarDoc, activarRecordatorio, onClip }) {
   const [texto, setTexto] = useState("");
   const finRef = useRef();
   const primera = useRef(true);
@@ -1238,18 +934,18 @@ function VistaChat({ mensajes, escribiendo, documentos, recordatorios, preguntar
       return;
     }
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [mensajes.length, escribiendo]);
+  }, [chat.length, escribiendo]);
 
   return (
     <div>
       <div className="grid grid-cols-1 gap-4" aria-live="polite">
-        {mensajes.map((m) =>
+        {chat.map((m) =>
           m.de === "yo" ? (
             <p key={m.id} className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-violet-600 px-4 py-2.5 text-[15px] font-medium text-white shadow-sm motion-safe:animate-pop">
               {m.texto}
             </p>
           ) : (
-            <MensajeIA key={m.id} m={m} documentos={documentos} recordatorios={recordatorios} abrirDoc={abrirDoc} activarRecordatorio={activarRecordatorio} />
+            <MensajeIA key={m.id} m={m} documentos={documentos} recordatorios={recordatorios} abrirDoc={abrirDoc} editarDoc={editarDoc} activarRecordatorio={activarRecordatorio} />
           ),
         )}
         {escribiendo && (
@@ -1321,26 +1017,10 @@ function VistaChat({ mensajes, escribiendo, documentos, recordatorios, preguntar
 
 /* ───────────────────────── Documentos, notas y recordatorios ───────────────────────── */
 
-function FilaDoc({ doc, onClick }) {
-  const e = estadoDoc(doc);
-  return (
-    <button type="button" onClick={onClick} className={`flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-white/5 ${foco}`}>
-      <IconoPdf />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{doc.nombre}</span>
-        <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
-          {CAT[doc.cat].nombre} · {doc.tamano} · subido el {corta(fecha(doc.subido))}
-        </span>
-      </span>
-      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${TONOS[e.tono]}`}>{e.texto}</span>
-    </button>
-  );
-}
-
-function VistaDocumentos({ documentos, filtroCat, setFiltroCat, abrirDoc, onSubir }) {
+function VistaDocumentos({ documentos, hoy, filtroCat, setFiltroCat, abrirDoc, onSubir }) {
   const [q, setQ] = useState("");
   const nq = normalizar(q.trim());
-  const filtrados = documentos.filter((d) => (!filtroCat || d.cat === filtroCat) && (!nq || normalizar(`${d.nombre} ${d.resumen}`).includes(nq)));
+  const filtrados = documentos.filter((d) => (!filtroCat || d.carpeta === filtroCat) && (!nq || textoDoc(d).includes(nq)));
   return (
     <Tarjeta className="p-3 sm:p-4">
       <div className="flex gap-2 p-1">
@@ -1370,63 +1050,64 @@ function VistaDocumentos({ documentos, filtroCat, setFiltroCat, abrirDoc, onSubi
       <ul className="mt-1">
         {filtrados.map((d) => (
           <li key={d.id}>
-            <FilaDoc doc={d} onClick={() => abrirDoc(d.id)} />
+            <FilaDoc doc={d} hoy={hoy} onClick={() => abrirDoc(d.id)} />
           </li>
         ))}
       </ul>
-      {filtrados.length === 0 && <p className="px-2 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">No hay documentos con ese filtro.</p>}
+      {filtrados.length === 0 && (
+        <p className="px-2 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          {documentos.length ? "No hay documentos con ese filtro." : "Aún no tienes documentos. Súbelos con el botón Subir."}
+        </p>
+      )}
     </Tarjeta>
   );
 }
 
-function VistaNotas({ notas, abrirNota, onNueva }) {
-  const [etiqueta, setEtiqueta] = useState(null);
-  const etiquetas = [...new Set(notas.map((n) => n.etiqueta))];
-  const visibles = notas.filter((n) => !etiqueta || n.etiqueta === etiqueta);
+function VistaNotas({ notas, archivos, hoy, abrirNota, abrirDoc, onNueva }) {
   return (
     <div>
-      <div className="flex items-center gap-2">
-        <div className="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-          {[null, ...etiquetas].map((t) => (
-            <button
-              key={t ?? "todas"}
-              type="button"
-              aria-pressed={etiqueta === t}
-              onClick={() => setEtiqueta(t)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${foco} ${etiqueta === t ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white" : "bg-white ring-zinc-200 dark:bg-transparent dark:ring-white/15"}`}
-            >
-              {t ?? `Todas (${notas.length})`}
-            </button>
-          ))}
-        </div>
-        <button type="button" onClick={onNueva} aria-label="Nueva nota" className={`grid size-9 shrink-0 place-items-center rounded-xl bg-violet-600 text-white hover:bg-violet-700 ${foco}`}>
-          <Plus className="size-5" />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-600 dark:text-zinc-300">
+          {notas.length} {notas.length === 1 ? "nota" : "notas"}
+        </p>
+        <button type="button" onClick={onNueva} className={`flex items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white hover:bg-violet-700 ${foco}`}>
+          <Plus className="size-4" /> Nueva nota
         </button>
       </div>
       <ul className="mt-3 columns-1 gap-3 sm:columns-2">
-        {visibles.map((n) => (
+        {notas.map((n) => (
           <li key={n.id} className="mb-3 break-inside-avoid">
             <button
               type="button"
               onClick={() => abrirNota(n.id)}
               className={`w-full rounded-2xl bg-white p-4 text-left ring-1 ring-zinc-900/[0.06] hover:ring-violet-300 dark:bg-[#18171f] dark:ring-white/10 dark:hover:ring-violet-500/40 ${foco}`}
             >
-              <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
-                <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">{n.etiqueta}</span>
-                {corta(fecha(n.fecha))}
-              </span>
-              <span className="mt-2 block font-bold">{n.titulo}</span>
-              <span className="mt-1 block font-serif text-[15px] leading-snug text-zinc-600 dark:text-zinc-400">{n.texto}</span>
+              <span className="block text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{corta(n.fecha)}</span>
+              <span className="mt-1 block font-bold">{n.titulo}</span>
+              {n.texto && <span className="mt-1 block font-serif text-[15px] leading-snug whitespace-pre-line text-zinc-600 dark:text-zinc-400">{n.texto}</span>}
             </button>
           </li>
         ))}
       </ul>
+      {notas.length === 0 && <p className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">Aún no tienes notas.</p>}
+      {archivos.length > 0 && (
+        <Tarjeta className="mt-2 p-3">
+          <h2 className="px-2 pt-1 text-xs font-bold tracking-wider text-zinc-400 uppercase">Archivos en Notas e ideas</h2>
+          <ul className="mt-1">
+            {archivos.map((d) => (
+              <li key={d.id}>
+                <FilaDoc doc={d} hoy={hoy} onClick={() => abrirDoc(d.id)} />
+              </li>
+            ))}
+          </ul>
+        </Tarjeta>
+      )}
     </div>
   );
 }
 
-function VistaRecordatorios({ recordatorios, documentos, alternar, borrar, abrirDoc, onNuevo }) {
-  const ordenados = [...recordatorios].sort((a, b) => fecha(a.fecha) - fecha(b.fecha));
+function VistaRecordatorios({ recordatorios, documentos, hoy, acciones, abrirDoc, onNuevo }) {
+  const ordenados = [...recordatorios].sort((a, b) => a.fecha.localeCompare(b.fecha));
   return (
     <Tarjeta className="p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3 px-1 pb-2">
@@ -1437,38 +1118,31 @@ function VistaRecordatorios({ recordatorios, documentos, alternar, borrar, abrir
       </div>
       <ul className="divide-y divide-zinc-100 dark:divide-white/5">
         {ordenados.map((r) => {
-          const d = diasHasta(fecha(r.fecha));
+          const dias = diasEntre(hoy, r.fecha);
           const doc = documentos.find((x) => x.id === r.doc);
           return (
             <li key={r.id} className={`flex items-center gap-3 px-1 py-3 ${r.activo ? "" : "opacity-55"}`}>
               <span className="grid w-12 shrink-0 place-items-center rounded-xl bg-zinc-50 py-1.5 text-center dark:bg-white/5">
                 <span className="text-[10px] font-bold text-violet-600 uppercase dark:text-violet-400">
-                  {new Intl.DateTimeFormat("es-MX", { month: "short" }).format(fecha(r.fecha)).replace(".", "")}
+                  {new Intl.DateTimeFormat("es-MX", { month: "short" }).format(deISO(r.fecha)).replace(".", "")}
                 </span>
-                <span className="text-lg leading-none font-extrabold tabular-nums">{fecha(r.fecha).getDate()}</span>
+                <span className="text-lg leading-none font-extrabold tabular-nums">{deISO(r.fecha).getDate()}</span>
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">{r.titulo}</p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">{d < 0 ? "Ya pasó" : d === 0 ? "Hoy" : `En ${d} días`}</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">{dias < 0 ? "Ya pasó" : dias === 0 ? "Hoy" : `En ${dias} ${dias === 1 ? "día" : "días"}`}</p>
                 {doc && (
                   <button
                     type="button"
                     onClick={() => abrirDoc(doc.id)}
                     className={`block max-w-full truncate text-left text-xs font-semibold text-violet-700 underline-offset-2 hover:underline dark:text-violet-300 ${foco}`}
                   >
-                    {doc.nombre.replace(/\.pdf$/, "")}
+                    {doc.nombre}
                   </button>
                 )}
               </div>
-              <Interruptor activo={r.activo} onClick={() => alternar(r.id)} etiqueta={`Avisar: ${r.titulo}`} />
-              <button
-                type="button"
-                onClick={() => borrar(r.id)}
-                aria-label={`Eliminar «${r.titulo}»`}
-                className={`grid size-8 shrink-0 place-items-center rounded-lg text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 ${foco}`}
-              >
-                <Trash2 className="size-4" />
-              </button>
+              <Interruptor activo={r.activo} onClick={() => acciones.alternarRecordatorio(r.id)} etiqueta={`Avisar: ${r.titulo}`} />
+              <BotonBorrar onClick={() => acciones.borrarRecordatorio(r.id)} etiqueta={`Eliminar «${r.titulo}»`} />
             </li>
           );
         })}
@@ -1478,140 +1152,291 @@ function VistaRecordatorios({ recordatorios, documentos, alternar, borrar, abrir
   );
 }
 
-/* ───────────────────────── Inicio ───────────────────────── */
+/* ───────────────────────── Hojas ───────────────────────── */
 
-function Inicio({ documentos, notas, recordatorios, cuentas, abrirDoc, irA, preguntar, elegirCategoria }) {
-  const proximos = documentos
-    .filter((d) => d.fin && diasHasta(fecha(d.fin)) >= 0 && diasHasta(fecha(d.fin)) <= 180)
-    .sort((a, b) => fecha(a.fin) - fecha(b.fin))
-    .slice(0, 4);
-  const recientes = [...documentos].sort((a, b) => fecha(b.subido) - fecha(a.subido)).slice(0, 4);
-  const activos = recordatorios.filter((r) => r.activo && diasHasta(fecha(r.fecha)) >= 0).length;
+function DetalleDoc({ doc, hoy, onEditar, onBorrar }) {
+  const [url, setUrl] = useState(null);
+  const [confirmar, setConfirmar] = useState(false);
+  const e = estadoDoc(doc, hoy);
+  useEffect(() => {
+    let vivo = true;
+    let creada = null;
+    urlArchivo(doc.archivo).then((u) => {
+      if (u?.startsWith("blob:")) creada = u;
+      if (vivo) setUrl(u);
+    });
+    return () => {
+      vivo = false;
+      if (creada) URL.revokeObjectURL(creada);
+    };
+  }, [doc.archivo]);
+  const imagen = doc.archivo?.mime?.startsWith("image/");
+
   return (
-    <div className="grid grid-cols-1 gap-4">
-      <div className="pt-1">
-        <h2 className="text-2xl font-extrabold tracking-tight">Hola, Diego</h2>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Tienes {documentos.length} documentos, {notas.length} notas y {activos} recordatorios activos.
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => irA("chat")}
-        className={`flex items-center gap-3 rounded-2xl bg-violet-600 p-4 text-left text-white shadow-lg shadow-violet-600/25 hover:bg-violet-700 ${foco}`}
-      >
-        <MessageSquare className="size-6 shrink-0" />
-        <span className="min-w-0 flex-1">
-          <span className="block font-bold">Pregúntale a tu Segundo Cerebro</span>
-          <span className="block text-sm text-violet-100">Fechas, importes y cláusulas al instante</span>
+    <div>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+        {e && <span className={`rounded-full px-2 py-0.5 font-bold ${e.clase}`}>{e.texto}</span>}
+        <span>
+          {CAT[doc.carpeta].nombre} · subido el {corta(doc.subido)}
         </span>
-        <ChevronRight className="size-5" />
-      </button>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        {CATEGORIAS.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => elegirCategoria(c.id)}
-            className={`flex items-center gap-2.5 rounded-2xl bg-white p-3 text-left ring-1 ring-zinc-900/[0.06] hover:ring-zinc-300 dark:bg-[#18171f] dark:ring-white/10 ${foco}`}
-          >
-            <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${c.color}`}>
-              <c.icono className="size-[18px]" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-bold">{c.nombre}</span>
-              <span className="block text-xs text-zinc-500 dark:text-zinc-400">
-                {cuentas[c.id]} {c.unidad}
-              </span>
-            </span>
-          </button>
-        ))}
       </div>
-      <Tarjeta className="p-4">
-        <h3 className="flex items-center justify-between gap-2 text-sm font-bold">
-          Próximos vencimientos
-          <button type="button" onClick={() => preguntar("¿Qué vence próximamente?")} className={`text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300 ${foco}`}>
-            Preguntar
+      {doc.descripcion && <p className="mt-3 text-[15px] text-zinc-700 dark:text-zinc-300">{doc.descripcion}</p>}
+      <dl className="mt-3 divide-y divide-zinc-100 rounded-xl ring-1 ring-zinc-200 dark:divide-white/5 dark:ring-white/10">
+        {doc.vence && (
+          <div className="flex justify-between gap-4 px-3 py-2 text-sm">
+            <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">Vencimiento</dt>
+            <dd className="min-w-0 text-right font-semibold">
+              {larga(doc.vence)}
+              {doc.paginaVence ? ` (página ${doc.paginaVence})` : ""}
+            </dd>
+          </div>
+        )}
+        {doc.datos.map(([k, v], i) => (
+          <div key={i} className="flex justify-between gap-4 px-3 py-2 text-sm">
+            <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">{k}</dt>
+            <dd className="min-w-0 text-right font-semibold break-words">{v}</dd>
+          </div>
+        ))}
+        {!doc.vence && !doc.datos.length && (
+          <p className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">Sin datos. Edita el documento para añadir su vencimiento y sus datos clave, y el chat podrá responder sobre él.</p>
+        )}
+      </dl>
+      <div className="mt-4">
+        {!doc.archivo && <p className="text-sm text-zinc-500 dark:text-zinc-400">Este documento no tiene archivo adjunto.</p>}
+        {doc.archivo && !url && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{doc.archivo.tipo === "local" ? "El archivo está guardado en otro navegador o se ha borrado." : "Cargando el archivo…"}</p>
+        )}
+        {url && imagen && <img src={url} alt={doc.nombre} className="max-h-80 w-full rounded-xl object-contain ring-1 ring-zinc-200 dark:ring-white/10" />}
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className={`mt-2 inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-3.5 py-2 text-sm font-bold text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 ${foco}`}
+          >
+            <FileText className="size-4" /> Ver archivo
+          </a>
+        )}
+        {doc.archivo?.tipo === "local" && <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Este archivo solo está guardado en este navegador.</p>}
+      </div>
+      {confirmar ? (
+        <div className="mt-4 rounded-xl bg-red-50 p-3 dark:bg-red-500/10">
+          <p className="text-sm font-semibold text-red-900 dark:text-red-100">Se eliminará el documento y su archivo. ¿Seguro?</p>
+          <div className="mt-3 flex gap-2">
+            <button type="button" onClick={onBorrar} className={`rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700 ${foco}`}>
+              Sí, eliminar
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmar(false)}
+              className={`rounded-lg bg-white px-3 py-2 text-sm font-bold text-zinc-700 ring-1 ring-zinc-200 dark:bg-transparent dark:text-zinc-200 dark:ring-white/10 ${foco}`}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-5 flex gap-2">
+          <button type="button" onClick={onEditar} className={`flex flex-1 items-center justify-center gap-2 ${botonPrincipal}`}>
+            <Pencil className="size-4" /> Editar
           </button>
-        </h3>
-        <ul className="mt-2">
-          {proximos.map((d) => (
-            <li key={d.id}>
-              <FilaDoc doc={d} onClick={() => abrirDoc(d.id)} />
-            </li>
-          ))}
-        </ul>
-      </Tarjeta>
-      <Tarjeta className="p-4">
-        <h3 className="text-sm font-bold">Añadidos recientemente</h3>
-        <ul className="mt-2">
-          {recientes.map((d) => (
-            <li key={d.id}>
-              <FilaDoc doc={d} onClick={() => abrirDoc(d.id)} />
-            </li>
-          ))}
-        </ul>
-      </Tarjeta>
+          <button
+            type="button"
+            onClick={() => setConfirmar(true)}
+            className={`rounded-xl px-4 text-sm font-bold text-zinc-500 ring-1 ring-zinc-200 hover:bg-red-50 hover:text-red-600 dark:text-zinc-400 dark:ring-white/10 dark:hover:bg-red-500/10 ${foco}`}
+          >
+            Eliminar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ───────────────────────── Hojas ───────────────────────── */
-
-function VisorDoc({ doc, onCerrar, preguntar }) {
-  const e = estadoDoc(doc);
+function CamposDoc({ f, setF }) {
+  const cambiarDato = (i, j, v) => setF({ ...f, datos: f.datos.map((d, k) => (k === i ? (j === 0 ? [v, d[1]] : [d[0], v]) : d)) });
   return (
-    <Hoja abierta onCerrar={onCerrar} titulo={doc.nombre} icono={FileText} ancha>
-      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-        <span className={`rounded-full px-2 py-0.5 font-bold ${TONOS[e.tono]}`}>{e.texto}</span>
-        <span>
-          {CAT[doc.cat].nombre} · {doc.paginas} págs. · {doc.tamano}
-        </span>
+    <>
+      <div>
+        <label htmlFor="doc-nombre" className={etiqueta}>
+          Nombre
+        </label>
+        <input id="doc-nombre" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} className={campo} />
       </div>
-      {/* Página simulada del PDF con el dato resaltado */}
-      <div className="mt-4 rounded-xl bg-zinc-100 p-3 sm:p-5 dark:bg-black/30">
-        <div className="mx-auto max-w-md rounded-sm bg-white p-5 text-zinc-800 shadow-md">
-          <p className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">
-            {doc.nombre.replace(/\.pdf$/, "")} · página {doc.pagina?.n ?? 1}
-          </p>
-          {(doc.pagina?.lineas ?? [doc.resumen]).map((l, i) => (
-            <p key={i} className={`mt-2 font-serif text-[13px] leading-snug ${i === 0 && doc.pagina ? "font-semibold" : ""}`}>
-              {l}
-            </p>
-          ))}
-          {doc.pagina?.destacado && <p className="mt-2 rounded bg-yellow-200/80 px-1 font-serif text-[13px] leading-snug">{doc.pagina.destacado}</p>}
-          {[92, 100, 84, 96, 70].map((w, i) => (
-            <span key={i} className="mt-2 block h-1.5 rounded-full bg-zinc-200" style={{ width: `${w}%` }} />
+      <fieldset>
+        <legend className="mb-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">Carpeta</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {CATEGORIAS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              aria-pressed={f.carpeta === c.id}
+              onClick={() => setF({ ...f, carpeta: c.id })}
+              className={`flex items-center gap-2 rounded-xl p-2.5 text-left text-sm font-semibold ring-1 ${foco} ${f.carpeta === c.id ? `bg-white ring-2 dark:bg-white/5 ${c.anillo}` : "ring-zinc-200 dark:ring-white/10"}`}
+            >
+              <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${c.color}`}>
+                <c.icono className="size-4" />
+              </span>
+              {c.nombre}
+            </button>
           ))}
         </div>
+      </fieldset>
+      <div>
+        <label htmlFor="doc-desc" className={etiqueta}>
+          Qué es (opcional, por ejemplo «Seguro de auto»)
+        </label>
+        <input id="doc-desc" value={f.descripcion} onChange={(e) => setF({ ...f, descripcion: e.target.value })} className={campo} />
       </div>
-      <p className="mt-4 text-sm text-zinc-700 dark:text-zinc-300">{doc.resumen}</p>
-      {doc.datos?.length > 0 && (
-        <dl className="mt-3 divide-y divide-zinc-100 rounded-xl ring-1 ring-zinc-200 dark:divide-white/5 dark:ring-white/10">
-          {doc.datos.map(([k, v]) => (
-            <div key={k} className="flex justify-between gap-4 px-3 py-2 text-sm">
-              <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">{k}</dt>
-              <dd className="min-w-0 text-right font-semibold">{v}</dd>
+      <div className="grid grid-cols-[2fr_1fr] gap-3">
+        <div>
+          <label htmlFor="doc-vence" className={etiqueta}>
+            Vencimiento (opcional)
+          </label>
+          <input id="doc-vence" type="date" value={f.vence} onChange={(e) => setF({ ...f, vence: e.target.value })} className={campo} />
+        </div>
+        <div>
+          <label htmlFor="doc-pagina" className={etiqueta}>
+            Página
+          </label>
+          <input id="doc-pagina" inputMode="numeric" value={f.paginaVence} onChange={(e) => setF({ ...f, paginaVence: e.target.value.replace(/\D/g, "") })} className={campo} />
+        </div>
+      </div>
+      <fieldset>
+        <legend className="mb-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">Datos clave (opcional)</legend>
+        <div className="grid grid-cols-1 gap-2">
+          {f.datos.map(([k, v], i) => (
+            <div key={i} className="flex items-center gap-2">
+              <label htmlFor={`dato-k-${i}`} className="sr-only">
+                Dato
+              </label>
+              <input id={`dato-k-${i}`} value={k} onChange={(e) => cambiarDato(i, 0, e.target.value)} placeholder="Dato" className={`${campo} flex-1`} />
+              <label htmlFor={`dato-v-${i}`} className="sr-only">
+                Valor
+              </label>
+              <input id={`dato-v-${i}`} value={v} onChange={(e) => cambiarDato(i, 1, e.target.value)} placeholder="Valor" className={`${campo} flex-1`} />
+              <BotonBorrar onClick={() => setF({ ...f, datos: f.datos.filter((_, j) => j !== i) })} etiqueta="Quitar dato" />
             </div>
           ))}
-        </dl>
-      )}
-      <button
-        type="button"
-        onClick={() => preguntar(`Resumen de «${doc.nombre}»`)}
-        className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white hover:bg-violet-700 ${foco}`}
-      >
-        <Sparkles className="size-4" /> Preguntar sobre este documento
-      </button>
-    </Hoja>
+          <button
+            type="button"
+            onClick={() => setF({ ...f, datos: [...f.datos, ["", ""]] })}
+            className={`flex items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-zinc-200 py-2 text-sm font-semibold text-zinc-500 hover:border-violet-300 hover:text-violet-700 dark:border-white/10 dark:text-zinc-400 ${foco}`}
+          >
+            <Plus className="size-4" /> Añadir dato
+          </button>
+        </div>
+      </fieldset>
+    </>
   );
 }
 
-function Buscador({ documentos, notas, abrirDoc, abrirNota, preguntar }) {
+const aFormulario = (doc) => ({
+  nombre: doc.nombre,
+  carpeta: doc.carpeta,
+  descripcion: doc.descripcion ?? "",
+  vence: doc.vence ?? "",
+  paginaVence: doc.paginaVence ? String(doc.paginaVence) : "",
+  datos: doc.datos,
+});
+const deFormulario = (f) => ({
+  nombre: f.nombre.trim(),
+  carpeta: f.carpeta,
+  descripcion: f.descripcion.trim(),
+  vence: f.vence || null,
+  paginaVence: f.paginaVence ? Number(f.paginaVence) : null,
+  datos: f.datos.map(([k, v]) => [k.trim(), v.trim()]).filter(([k, v]) => k && v),
+});
+
+function FormDoc({ doc, onGuardar }) {
+  const [f, setF] = useState(() => aFormulario(doc));
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (f.nombre.trim()) onGuardar({ ...doc, ...deFormulario(f) });
+      }}
+      className="grid grid-cols-1 gap-4"
+    >
+      <CamposDoc f={f} setF={setF} />
+      <button type="submit" disabled={!f.nombre.trim()} className={botonPrincipal}>
+        Guardar cambios
+      </button>
+    </form>
+  );
+}
+
+function FormSubir({ archivo, onGuardar }) {
+  const [f, setF] = useState({ nombre: archivo.name, carpeta: null, descripcion: "", vence: "", paginaVence: "", datos: [] });
+  const [guardando, setGuardando] = useState(false);
+  const tamano = archivo.size > 1048576 ? `${(archivo.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(archivo.size / 1024))} KB`;
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!f.carpeta || !f.nombre.trim() || guardando) return;
+        setGuardando(true);
+        const guardado = await guardarArchivo(archivo);
+        onGuardar({ id: nuevoId(), subido: hoyISO(), archivo: guardado, ...deFormulario(f) });
+      }}
+      className="grid grid-cols-1 gap-4"
+    >
+      <div className="flex items-center gap-3 rounded-xl bg-zinc-50 p-3 dark:bg-white/5">
+        <IconoDoc nombre={archivo.name} />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{archivo.name}</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">{tamano}</p>
+        </div>
+      </div>
+      <CamposDoc f={f} setF={setF} />
+      <button type="submit" disabled={!f.carpeta || !f.nombre.trim() || guardando} className={botonPrincipal}>
+        {guardando ? "Guardando…" : f.carpeta ? `Guardar en ${CAT[f.carpeta].nombre}` : "Elige una carpeta"}
+      </button>
+    </form>
+  );
+}
+
+function FormNota({ nota, hoy, onGuardar, onBorrar }) {
+  const [titulo, setTitulo] = useState(nota?.titulo ?? "");
+  const [texto, setTexto] = useState(nota?.texto ?? "");
+  const valido = titulo.trim();
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valido) onGuardar({ id: nota?.id ?? nuevoId(), fecha: nota?.fecha ?? hoy, titulo: titulo.trim(), texto: texto.trim() });
+      }}
+      className="grid grid-cols-1 gap-3"
+    >
+      <div>
+        <label htmlFor="nota-titulo" className={etiqueta}>
+          Título
+        </label>
+        <input id="nota-titulo" autoFocus={!nota} value={titulo} onChange={(e) => setTitulo(e.target.value)} className={campo} />
+      </div>
+      <div>
+        <label htmlFor="nota-texto" className={etiqueta}>
+          Nota
+        </label>
+        <textarea id="nota-texto" rows={5} value={texto} onChange={(e) => setTexto(e.target.value)} className={`${campo} resize-none font-serif text-base`} />
+      </div>
+      <button type="submit" disabled={!valido} className={`mt-1 ${botonPrincipal}`}>
+        Guardar nota
+      </button>
+      {onBorrar && (
+        <button type="button" onClick={onBorrar} className={`rounded-xl py-2.5 text-sm font-bold text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:text-zinc-400 dark:hover:bg-red-500/10 ${foco}`}>
+          Eliminar nota
+        </button>
+      )}
+    </form>
+  );
+}
+
+function Buscador({ documentos, notas, hoy, abrirDoc, abrirNota }) {
   const [q, setQ] = useState("");
   const nq = normalizar(q.trim());
-  const docs = nq ? documentos.filter((d) => normalizar(`${d.nombre} ${d.resumen} ${(d.claves ?? []).join(" ")}`).includes(nq)).slice(0, 6) : [];
-  const ns = nq ? notas.filter((n) => normalizar(`${n.titulo} ${n.texto}`).includes(nq)).slice(0, 4) : [];
+  const docs = nq ? documentos.filter((d) => textoDoc(d).includes(nq)).slice(0, 8) : [];
+  const ns = nq ? notas.filter((n) => normalizar(`${n.titulo} ${n.texto}`).includes(nq)).slice(0, 6) : [];
   return (
     <div>
       <div className="relative">
@@ -1624,7 +1449,7 @@ function Buscador({ documentos, notas, abrirDoc, abrirNota, preguntar }) {
       {nq && (
         <div className="mt-3">
           {docs.map((d) => (
-            <FilaDoc key={d.id} doc={d} onClick={() => abrirDoc(d.id)} />
+            <FilaDoc key={d.id} doc={d} hoy={hoy} onClick={() => abrirDoc(d.id)} />
           ))}
           {ns.map((n) => (
             <button
@@ -1642,98 +1467,40 @@ function Buscador({ documentos, notas, abrirDoc, abrirNota, preguntar }) {
               </span>
             </button>
           ))}
-          {!docs.length && !ns.length && <p className="py-4 text-center text-sm text-zinc-500 dark:text-zinc-400">Sin coincidencias exactas.</p>}
-          <button
-            type="button"
-            onClick={() => preguntar(q)}
-            className={`mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-50 py-2.5 text-sm font-bold text-violet-700 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 ${foco}`}
-          >
-            <Sparkles className="size-4" /> Preguntar «{q.trim()}» al chat
-          </button>
+          {!docs.length && !ns.length && <p className="py-4 text-center text-sm text-zinc-500 dark:text-zinc-400">Sin resultados.</p>}
         </div>
       )}
     </div>
   );
 }
 
-function sugerirCategoria(nombre) {
-  const n = normalizar(nombre);
-  if (/poliza|seguro|gnp|axa|aseguradora/.test(n)) return "seguros";
-  if (/sat|isr|impuesto|declaracion|factura|cfdi|predial|tenencia/.test(n)) return "impuestos";
-  if (/nota|idea|apunte|\.txt$|\.md$/.test(n)) return "notas";
-  return "contratos";
-}
-
-function FormSubir({ archivo, onGuardar }) {
-  const [cat, setCat] = useState(() => sugerirCategoria(archivo.name));
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onGuardar(archivo, cat);
-      }}
-    >
-      <div className="flex items-center gap-3 rounded-xl bg-zinc-50 p-3 dark:bg-white/5">
-        <IconoPdf />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{archivo.name}</p>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">{archivo.size > 1048576 ? `${(archivo.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(archivo.size / 1024))} KB`}</p>
-        </div>
-      </div>
-      <fieldset className="mt-4">
-        <legend className="mb-2 text-sm font-semibold">¿En qué carpeta lo guardo?</legend>
-        <div className="grid grid-cols-2 gap-2">
-          {CATEGORIAS.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              aria-pressed={cat === c.id}
-              onClick={() => setCat(c.id)}
-              className={`flex items-center gap-2 rounded-xl p-2.5 text-left text-sm font-semibold ring-1 ${foco} ${cat === c.id ? `ring-2 ${c.anillo} bg-white dark:bg-white/5` : "ring-zinc-200 dark:ring-white/10"}`}
-            >
-              <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${c.color}`}>
-                <c.icono className="size-4" />
-              </span>
-              {c.nombre}
-            </button>
-          ))}
-        </div>
-      </fieldset>
-      <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">El archivo se queda en esta página: no se envía a ningún servidor. Al recargar, vuelven los datos de ejemplo.</p>
-      <button type="submit" className={`mt-4 w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white hover:bg-violet-700 ${foco}`}>
-        Guardar en {CAT[cat].nombre}
-      </button>
-    </form>
-  );
-}
-
-function FormRecordatorio({ documentos, onGuardar }) {
+function FormRecordatorio({ documentos, hoy, onGuardar }) {
   const [titulo, setTitulo] = useState("");
-  const [cuando, setCuando] = useState(() => iso(new Date(HOY.getTime() + 7 * 86_400_000)));
+  const [fecha, setFecha] = useState(sumarDias(hoy, 1));
   const [doc, setDoc] = useState("");
-  const valido = titulo.trim() && cuando;
+  const valido = titulo.trim() && fecha;
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (valido) onGuardar({ titulo: titulo.trim(), fecha: cuando, doc: doc || null });
+        if (valido) onGuardar({ titulo: titulo.trim(), fecha, doc: doc || null });
       }}
       className="grid grid-cols-1 gap-3"
     >
       <div>
-        <label htmlFor="rec-titulo" className="mb-1 block text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+        <label htmlFor="rec-titulo" className={etiqueta}>
           ¿De qué te aviso?
         </label>
-        <input id="rec-titulo" autoFocus value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej. Renovar el pasaporte" className={campo} />
+        <input id="rec-titulo" autoFocus value={titulo} onChange={(e) => setTitulo(e.target.value)} className={campo} />
       </div>
       <div>
-        <label htmlFor="rec-fecha" className="mb-1 block text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+        <label htmlFor="rec-fecha" className={etiqueta}>
           Fecha
         </label>
-        <input id="rec-fecha" type="date" min={iso(HOY)} value={cuando} onChange={(e) => setCuando(e.target.value)} className={campo} />
+        <input id="rec-fecha" type="date" min={hoy} value={fecha} onChange={(e) => setFecha(e.target.value)} className={campo} />
       </div>
       <div>
-        <label htmlFor="rec-doc" className="mb-1 block text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+        <label htmlFor="rec-doc" className={etiqueta}>
           Documento relacionado (opcional)
         </label>
         <select id="rec-doc" value={doc} onChange={(e) => setDoc(e.target.value)} className={campo}>
@@ -1745,53 +1512,8 @@ function FormRecordatorio({ documentos, onGuardar }) {
           ))}
         </select>
       </div>
-      <button type="submit" disabled={!valido} className={`mt-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-40 ${foco}`}>
+      <button type="submit" disabled={!valido} className={`mt-1 ${botonPrincipal}`}>
         Crear recordatorio
-      </button>
-    </form>
-  );
-}
-
-function FormNota({ etiquetas, onGuardar }) {
-  const [titulo, setTitulo] = useState("");
-  const [texto, setTexto] = useState("");
-  const [etiqueta, setEtiqueta] = useState("Ideas");
-  const valido = titulo.trim() && texto.trim();
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (valido) onGuardar({ titulo: titulo.trim(), texto: texto.trim(), etiqueta });
-      }}
-      className="grid grid-cols-1 gap-3"
-    >
-      <div>
-        <label htmlFor="nota-titulo" className="mb-1 block text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-          Título
-        </label>
-        <input id="nota-titulo" autoFocus value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej. Idea para el próximo reel" className={campo} />
-      </div>
-      <div>
-        <label htmlFor="nota-texto" className="mb-1 block text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-          Nota
-        </label>
-        <textarea id="nota-texto" rows={4} value={texto} onChange={(e) => setTexto(e.target.value)} className={`${campo} resize-none font-serif text-base`} />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {etiquetas.map((t) => (
-          <button
-            key={t}
-            type="button"
-            aria-pressed={etiqueta === t}
-            onClick={() => setEtiqueta(t)}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${foco} ${etiqueta === t ? "bg-violet-600 text-white ring-violet-600" : "ring-zinc-200 dark:ring-white/15"}`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      <button type="submit" disabled={!valido} className={`mt-1 rounded-xl bg-violet-600 py-3 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-40 ${foco}`}>
-        Guardar nota
       </button>
     </form>
   );

@@ -1,88 +1,70 @@
 // Entrenador IA: nutrición del día, rutina de gimnasio con sobrecarga progresiva y evolución física.
-// Un solo archivo: datos de ejemplo, estado y todas las vistas.
+// Un solo archivo. Arranca con lo que viene en el prompt y todo lo que añades se guarda.
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Activity,
-  Check,
-  ChevronRight,
-  Droplet,
-  Dumbbell,
-  Flame,
-  LineChart,
-  Moon,
-  Pause,
-  Play,
-  Plus,
-  RotateCcw,
-  Scale,
-  SlidersHorizontal,
-  Sun,
-  Timer,
-  TrendingDown,
-  TrendingUp,
-  Utensils,
-  X,
-  Zap,
-} from "lucide-react";
+import { Activity, Check, ChevronRight, Dumbbell, Flame, LineChart, Pencil, Plus, Scale, SlidersHorizontal, Trash2, TrendingDown, TrendingUp, Utensils, X, Zap } from "lucide-react";
 
-/* ───────────────────────── Datos de ejemplo ───────────────────────── */
+/* ───────────────────────── Fechas y números ───────────────────────── */
 
-const MANTENIMIENTO = 2850; // gasto calórico estimado
-const PROTEINA = 190; // g; se mantiene fija aunque cambien las calorías
-const BASE = { kcal: 2600, carbos: 280, grasas: 75 };
-
-const COMIDAS_INICIALES = [
-  {
-    id: "desayuno",
-    momento: "Desayuno",
-    hora: "08:00",
-    nombre: "Huevos con aguacate",
-    kcal: 620,
-    p: 35,
-    c: 48,
-    g: 26,
-    emoji: "🍳",
-    detalle: "3 huevos, ½ aguacate, 2 tostadas integrales y café",
-    hecha: true,
-  },
-  {
-    id: "comida",
-    momento: "Comida",
-    hora: "14:00",
-    nombre: "Pollo con arroz y verduras",
-    kcal: 850,
-    p: 65,
-    c: 120,
-    g: 12,
-    emoji: "🍗",
-    detalle: "200 g de pechuga, 150 g de arroz y verduras salteadas",
-    hecha: true,
-  },
-  { id: "cena", momento: "Cena", hora: "21:00", nombre: "Salmón con ensalada", kcal: 780, p: 55, c: 80, g: 23, emoji: "🐟", detalle: "180 g de salmón, ensalada verde y quinoa", hecha: true },
-  { id: "snack", momento: "Snack", hora: "18:00", nombre: "Batido de proteína", kcal: 200, p: 30, c: 12, g: 4, emoji: "🥤", detalle: "1 cacito de whey con leche desnatada", hecha: true },
-];
-
-const EJERCICIOS = [
-  { id: "banca", nombre: "Press de banca", series: 4, reps: 8, peso: "80 kg", sube: "+2.5 kg", musculo: "Pecho" },
-  { id: "inclinado", nombre: "Press inclinado con mancuernas", series: 3, reps: 10, peso: "30 kg", musculo: "Pecho" },
-  { id: "laterales", nombre: "Elevaciones laterales", series: 4, reps: 12, peso: "14 kg", musculo: "Hombro" },
-  { id: "fondos", nombre: "Fondos en paralelas", series: 3, reps: 10, peso: "Peso corporal", musculo: "Tríceps" },
-  { id: "triceps", nombre: "Extensión de tríceps en polea", series: 3, reps: 12, peso: "25 kg", musculo: "Tríceps" },
-  { id: "aperturas", nombre: "Aperturas en polea", series: 3, reps: 15, peso: "12 kg", musculo: "Pecho" },
-];
-
-// Rutina según los días de entrenamiento por semana; "Push" es la sesión de hoy.
-const RUTINAS = {
-  3: ["Pierna", "Pull", "Push"],
-  4: ["Pierna", "Pull", "Core y cardio", "Push"],
-  5: ["Pierna", "Pull", "Core y cardio", "Push", "Full body"],
-  6: ["Pierna", "Pull", "Core y cardio", "Push", "Full body", "Hombro y brazo"],
+const aISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const deISO = (s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
 };
+const hoyISO = () => aISO(new Date());
+const sumarDias = (iso, n) => {
+  const d = deISO(iso);
+  d.setDate(d.getDate() + n);
+  return aISO(d);
+};
+const diasEntre = (a, b) => Math.round((deISO(b) - deISO(a)) / 86_400_000);
+const fechaCorta = (iso) => new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short" }).format(deISO(iso)).replace(".", "");
+const nuevoId = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+const num = new Intl.NumberFormat("es-MX");
+const kg = (n) => String(Math.round(n * 10) / 10);
+const signo = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${kg(Math.abs(n))}`;
+const VENTANA = 56; // días: las últimas 8 semanas
 
-// Peso de las últimas 8 semanas (la última es esta).
-const PESOS_INICIALES = [81.0, 80.6, 80.3, 80.1, 79.6, 79.4, 79.0, 78.4];
-const GRASA = { actual: 15, cambio: -1.8 };
-const FUERZA = 12; // % de mejora media en los ejercicios básicos
+/* ───────────────────────── Datos del prompt ───────────────────────── */
+
+function estadoInicial() {
+  const hoy = hoyISO();
+  return {
+    config: { metaPeso: 75, kcal: 2600, dias: 5 },
+    macros: { p: 190, c: 280, g: 75 },
+    comidas: [
+      { id: "c1", momento: "Desayuno", nombre: "Huevos con aguacate", kcal: 620 },
+      { id: "c2", momento: "Comida", nombre: "Pollo con arroz y verduras", kcal: 850 },
+      { id: "c3", momento: "Cena", nombre: "Salmón con ensalada", kcal: 780 },
+    ],
+    comidasHechas: { fecha: hoy, ids: [] },
+    rutina: { nombre: "Push", musculos: "Pecho, Hombro, Tríceps", minutos: 55 },
+    // `cargas` es el historial de peso de cada ejercicio; sin cargas, el ejercicio es con peso corporal.
+    ejercicios: [
+      {
+        id: "e1",
+        nombre: "Press de banca",
+        series: 4,
+        reps: 8,
+        cargas: [
+          { fecha: sumarDias(hoy, -7), kg: 77.5 },
+          { fecha: hoy, kg: 80 },
+        ],
+      },
+      { id: "e2", nombre: "Press inclinado con mancuernas", series: 3, reps: 10, cargas: [{ fecha: hoy, kg: 30 }] },
+      { id: "e3", nombre: "Elevaciones laterales", series: 4, reps: 12, cargas: [{ fecha: hoy, kg: 14 }] },
+      { id: "e4", nombre: "Fondos en paralelas", series: 3, reps: 10, cargas: [] },
+    ],
+    ejerciciosHechos: { fecha: hoy, ids: [] },
+    ciclo: { dia: 4, completadoEl: null },
+    // Peso de hace 8 semanas, de la semana pasada y de hoy (−2.6 kg en total, −0.6 kg esta semana).
+    registros: [
+      { id: "r1", fecha: sumarDias(hoy, -49), peso: 81, grasa: 16.8 },
+      { id: "r2", fecha: sumarDias(hoy, -7), peso: 79, grasa: null },
+      { id: "r3", fecha: hoy, peso: 78.4, grasa: 15 },
+    ],
+    banner: null,
+  };
+}
 
 const TABS = [
   { id: "hoy", nombre: "Hoy", icono: Zap },
@@ -91,55 +73,99 @@ const TABS = [
   { id: "progreso", nombre: "Progreso", icono: LineChart },
 ];
 
-/* ───────────────────────── Utilidades ───────────────────────── */
+/* ───────────────────────── Guardado ───────────────────────── */
 
-const num = new Intl.NumberFormat("es-MX");
-const kg = (n) => n.toFixed(1);
-const kgCorto = (n) => kg(n).replace(/\.0$/, "");
-const signo = (n, dec = 1) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(dec)}`;
-const lunesDe = (d) => {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
-  return x;
-};
-const fechaCorta = (d) => new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short" }).format(d).replace(".", "");
+// En claude.ai los datos van a la parte privada de tu cuenta (capacidad `db`), así que los ves igual
+// en el móvil y en el ordenador. Fuera de claude.ai se guardan en este navegador.
+function useGuardado(clave, crearInicial) {
+  const [estado, setEstado] = useState(() => {
+    try {
+      const local = localStorage.getItem(clave);
+      if (local) return JSON.parse(local);
+    } catch {}
+    return crearInicial();
+  });
+  const ref = useRef(null);
+  const escrito = useRef(null);
+  const cola = useRef(Promise.resolve());
+  const actual = useRef(estado);
+  actual.current = estado;
 
-function objetivosDe(kcal) {
-  const f = kcal / BASE.kcal;
-  return { kcal, p: PROTEINA, c: Math.round(BASE.carbos * f), g: Math.round(BASE.grasas * f) };
+  const subir = useCallback((json) => {
+    escrito.current = json;
+    cola.current = cola.current.then(() => ref.current.set({ estado: JSON.parse(json) })).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      if (!window.claude?.use) return;
+      const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+      const id = db && user ? await user.id() : null;
+      if (!vivo || !id) return;
+      try {
+        const doc = db.doc(`data/users/${id}/${clave}`);
+        const snap = await doc.get();
+        if (!vivo) return;
+        ref.current = doc;
+        const remoto = snap.exists ? snap.data()?.estado : null;
+        if (remoto) {
+          escrito.current = JSON.stringify(remoto);
+          setEstado(remoto);
+        } else {
+          subir(JSON.stringify(actual.current));
+        }
+      } catch {}
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [clave, subir]);
+
+  useEffect(() => {
+    const json = JSON.stringify(estado);
+    try {
+      localStorage.setItem(clave, json);
+    } catch {}
+    if (!ref.current || json === escrito.current) return;
+    const t = setTimeout(() => subir(json), 500);
+    return () => clearTimeout(t);
+  }, [clave, estado, subir]);
+
+  return [estado, setEstado];
 }
 
-function useTema(clave) {
-  const leer = () => {
-    const t = document.documentElement.dataset.theme;
-    return t ? t === "dark" : !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+/* ───────────────────────── Cálculos ───────────────────────── */
+
+const cargaActual = (e) => e.cargas.at(-1)?.kg ?? null;
+const subidaCarga = (e) => (e.cargas.length > 1 ? e.cargas.at(-1).kg - e.cargas.at(-2).kg : 0);
+
+function progreso(d, hoy) {
+  const ordenados = [...d.registros].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const ventana = ordenados.filter((r) => diasEntre(r.fecha, hoy) <= VENTANA);
+  const ultimo = ordenados.at(-1) ?? null;
+  const primero = ventana[0] ?? null;
+  const conGrasa = ventana.filter((r) => r.grasa !== null && r.grasa !== undefined);
+  const semanaAntes = ultimo ? ordenados.filter((r) => diasEntre(r.fecha, ultimo.fecha) >= 6).at(-1) : null;
+  // Fuerza media: cambio medio de carga, en las últimas 8 semanas, de los ejercicios con historial.
+  const cambios = d.ejercicios
+    .map((e) => e.cargas.filter((c) => diasEntre(c.fecha, hoy) <= VENTANA))
+    .filter((c) => c.length > 1)
+    .map((c) => c.at(-1).kg / c[0].kg - 1);
+  return {
+    ventana,
+    pesoActual: ultimo?.peso ?? null,
+    cambioPeso: ultimo && primero && primero !== ultimo ? ultimo.peso - primero.peso : null,
+    cambioSemana: semanaAntes ? ultimo.peso - semanaAntes.peso : null,
+    grasa: conGrasa.at(-1)?.grasa ?? null,
+    cambioGrasa: conGrasa.length > 1 ? conGrasa.at(-1).grasa - conGrasa[0].grasa : null,
+    fuerza: cambios.length ? cambios.reduce((s, c) => s + c, 0) / cambios.length : null,
   };
-  const [oscuro, setOscuro] = useState(() => {
-    try {
-      const guardado = localStorage.getItem(clave);
-      if (guardado) document.documentElement.dataset.theme = guardado;
-    } catch {}
-    return leer();
-  });
-  useEffect(() => {
-    const sync = () => setOscuro(leer());
-    const mo = new MutationObserver(sync);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
-    mq?.addEventListener?.("change", sync);
-    return () => {
-      mo.disconnect();
-      mq?.removeEventListener?.("change", sync);
-    };
-  }, []);
-  const alternar = useCallback(() => {
-    const siguiente = leer() ? "light" : "dark";
-    document.documentElement.dataset.theme = siguiente;
-    try {
-      localStorage.setItem(clave, siguiente);
-    } catch {}
-  }, [clave]);
-  return [oscuro, alternar];
+}
+
+function diaDelCiclo(ciclo, dias, hoy) {
+  const dia = Math.min(ciclo.dia, dias);
+  return ciclo.completadoEl && ciclo.completadoEl < hoy ? (dia % dias) + 1 : dia;
 }
 
 /* ───────────────────────── Piezas de interfaz ───────────────────────── */
@@ -147,6 +173,8 @@ function useTema(clave) {
 const foco = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500";
 const campo =
   "w-full rounded-xl bg-zinc-50 px-3.5 py-2.5 text-[15px] font-semibold ring-1 ring-zinc-200 outline-none placeholder:font-medium placeholder:text-zinc-400 focus:ring-2 focus:ring-emerald-500 dark:bg-white/5 dark:ring-white/10";
+const etiqueta = "mb-1.5 block text-xs font-bold text-zinc-500 dark:text-zinc-400";
+const botonPrincipal = `rounded-2xl bg-emerald-600 py-3.5 text-[15px] font-bold text-white hover:bg-emerald-700 disabled:opacity-40 dark:bg-lime-300 dark:text-zinc-900 dark:hover:bg-lime-200 ${foco}`;
 
 function Tarjeta({ className = "", children }) {
   return (
@@ -206,17 +234,30 @@ function Anillo({ valor, tam = 140, grosor = 13, color = "text-emerald-500", chi
   );
 }
 
-function Casilla({ marcada, onClick, etiqueta, tam = "size-6" }) {
+function Casilla({ marcada, onClick, etiqueta: aria }) {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={marcada}
-      aria-label={etiqueta}
+      aria-label={aria}
       onClick={onClick}
-      className={`grid ${tam} shrink-0 place-items-center rounded-lg border-2 transition ${foco} ${marcada ? "border-emerald-500 bg-emerald-500 text-white" : "border-zinc-300 hover:border-emerald-400 dark:border-zinc-600"}`}
+      className={`grid size-6 shrink-0 place-items-center rounded-lg border-2 transition ${foco} ${marcada ? "border-emerald-500 bg-emerald-500 text-white" : "border-zinc-300 hover:border-emerald-400 dark:border-zinc-600"}`}
     >
       {marcada && <Check className="size-3.5 motion-safe:animate-pop" strokeWidth={3.5} />}
+    </button>
+  );
+}
+
+function BotonIcono({ onClick, etiqueta: aria, icono: Icono, peligro = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={aria}
+      className={`grid size-8 shrink-0 place-items-center rounded-lg text-zinc-400 ${peligro ? "hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10" : "hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-white/10 dark:hover:text-zinc-200"} ${foco}`}
+    >
+      <Icono className="size-4" />
     </button>
   );
 }
@@ -232,17 +273,17 @@ function Hoja({ abierta, onCerrar, titulo, icono: Icono, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={titulo}>
       <button type="button" aria-label="Cerrar" onClick={onCerrar} className="absolute inset-0 bg-[#0a0f0c]/50 backdrop-blur-[2px] motion-safe:animate-fade" />
-      <div className="relative max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white pt-5 pb-[max(20px,env(safe-area-inset-bottom))] shadow-2xl gutter-lg sm:max-w-md sm:rounded-3xl sm:pb-6 dark:bg-[#151e19] dark:ring-1 dark:ring-white/10 motion-safe:animate-sheet">
+      <div className="relative max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white pt-5 pb-[max(20px,env(safe-area-inset-bottom))] shadow-2xl gutter-lg motion-safe:animate-sheet sm:max-w-md sm:rounded-3xl sm:pb-6 dark:bg-[#151e19] dark:ring-1 dark:ring-white/10">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight">
-            {Icono && <Icono className="size-5 text-emerald-600 dark:text-emerald-400" />}
-            {titulo}
+          <h2 className="flex min-w-0 items-center gap-2 text-lg font-bold tracking-tight">
+            {Icono && <Icono className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />}
+            <span className="truncate">{titulo}</span>
           </h2>
           <button
             type="button"
             onClick={onCerrar}
             aria-label="Cerrar"
-            className={`grid size-9 place-items-center rounded-full text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-white/10 ${foco}`}
+            className={`grid size-9 shrink-0 place-items-center rounded-full text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-white/10 ${foco}`}
           >
             <X className="size-5" />
           </button>
@@ -256,73 +297,83 @@ function Hoja({ abierta, onCerrar, titulo, icono: Icono, children }) {
 /* ───────────────────────── App ───────────────────────── */
 
 export default function EntrenadorIA() {
-  const [oscuro, alternarTema] = useTema("entrenador-ia:tema");
+  const [datos, setDatos] = useGuardado("entrenador-ia", estadoInicial);
   const [tab, setTab] = useState("hoy");
-  const [config, setConfig] = useState({ meta: 75, kcal: 2600, dias: 5 });
-  const [comidas, setComidas] = useState(COMIDAS_INICIALES);
-  const [series, setSeries] = useState(() => Object.fromEntries(EJERCICIOS.map((e) => [e.id, Array(e.series).fill(false)])));
-  const [pesos, setPesos] = useState(() => {
-    const lunes = lunesDe(new Date());
-    return PESOS_INICIALES.map((kg, i) => {
-      const d = new Date(lunes);
-      d.setDate(d.getDate() - (PESOS_INICIALES.length - 1 - i) * 7);
-      return { fecha: d, kg };
-    });
-  });
-  const [agua, setAgua] = useState(5);
-  const [hoja, setHoja] = useState(null); // "objetivos" | "peso"
-  const [banner, setBanner] = useState(null); // texto tras ajustar objetivos
-  const [toast, setToast] = useState(null);
-  const toastRef = useRef();
-
-  const avisar = useCallback((texto) => {
-    clearTimeout(toastRef.current);
-    setToast(texto);
-    toastRef.current = setTimeout(() => setToast(null), 2600);
-  }, []);
+  const [hoja, setHoja] = useState(null); // "objetivos" | "registro" | "rutina" | "comida" | "ejercicio" | {comida} | {ejercicio}
+  const hoy = hoyISO();
   const cerrarHoja = useCallback(() => setHoja(null), []);
 
-  const objetivos = objetivosDe(config.kcal);
-  const comidasHechas = comidas.filter((c) => c.hecha);
-  const consumido = comidasHechas.reduce((s, c) => ({ kcal: s.kcal + c.kcal, p: s.p + c.p, c: s.c + c.c, g: s.g + c.g }), { kcal: 0, p: 0, c: 0, g: 0 });
-  const balance = config.kcal - MANTENIMIENTO;
-  const fase = balance <= -100 ? { texto: "Déficit calórico", tono: "verde" } : balance >= 100 ? { texto: "Superávit calórico", tono: "naranja" } : { texto: "Mantenimiento", tono: "azul" };
+  const { config } = datos;
+  const idsComidas = datos.comidasHechas.fecha === hoy ? datos.comidasHechas.ids : [];
+  const idsEjercicios = datos.ejerciciosHechos.fecha === hoy ? datos.ejerciciosHechos.ids : [];
+  const consumido = datos.comidas
+    .filter((c) => idsComidas.includes(c.id))
+    .reduce((s, c) => ({ kcal: s.kcal + c.kcal, p: s.p + (c.p || 0), c: s.c + (c.c || 0), g: s.g + (c.g || 0) }), { kcal: 0, p: 0, c: 0, g: 0 });
+  const prog = progreso(datos, hoy);
+  const fase =
+    prog.pesoActual === null || Math.abs(config.metaPeso - prog.pesoActual) < 0.05
+      ? { texto: "Mantenimiento", tono: "azul" }
+      : config.metaPeso < prog.pesoActual
+        ? { texto: "Déficit calórico", tono: "verde" }
+        : { texto: "Superávit calórico", tono: "naranja" };
+  const diaHoy = diaDelCiclo(datos.ciclo, config.dias, hoy);
 
-  const rutina = RUTINAS[config.dias];
-  const diaHoy = rutina.indexOf("Push") + 1;
-  const hechos = EJERCICIOS.filter((e) => series[e.id].every(Boolean)).length;
-
-  const ultimas = pesos.slice(-8);
-  const pesoActual = ultimas.at(-1).kg;
-  const cambioTotal = pesoActual - ultimas[0].kg;
-  const cambioSemana = pesoActual - ultimas.at(-2).kg;
-
-  const alternarComida = (id) => setComidas((cs) => cs.map((c) => (c.id === id ? { ...c, hecha: !c.hecha } : c)));
-  const alternarEjercicio = (id) => setSeries((s) => ({ ...s, [id]: s[id].map(() => !s[id].every(Boolean)) }));
-  const alternarSerie = (id, i) => setSeries((s) => ({ ...s, [id]: s[id].map((v, j) => (j === i ? !v : v)) }));
-  const anadirComida = (c) => {
-    setComidas((cs) => [...cs, { ...c, id: `extra-${Date.now()}`, momento: "Extra", hora: new Date().toTimeString().slice(0, 5), emoji: "🍽️", detalle: "Añadido a mano", hecha: true }]);
-    avisar(`${c.nombre} añadido: ${num.format(c.kcal)} kcal`);
+  const alternarEn = (ids, id) => ({ fecha: hoy, ids: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id] });
+  const acciones = {
+    alternarComida: (id) => setDatos((d) => ({ ...d, comidasHechas: alternarEn(idsComidas, id) })),
+    guardarComida: (c) => {
+      setDatos((d) => ({ ...d, comidas: c.id ? d.comidas.map((x) => (x.id === c.id ? c : x)) : [...d.comidas, { ...c, id: nuevoId() }] }));
+      cerrarHoja();
+    },
+    borrarComida: (id) => {
+      setDatos((d) => ({ ...d, comidas: d.comidas.filter((c) => c.id !== id) }));
+      cerrarHoja();
+    },
+    alternarEjercicio: (id) =>
+      setDatos((d) => {
+        const hechos = alternarEn(idsEjercicios, id);
+        const completo = d.ejercicios.length > 0 && d.ejercicios.every((e) => hechos.ids.includes(e.id));
+        const ciclo = completo ? { dia: diaHoy, completadoEl: hoy } : d.ciclo.completadoEl === hoy ? { dia: diaHoy, completadoEl: null } : d.ciclo;
+        return { ...d, ejerciciosHechos: hechos, ciclo };
+      }),
+    guardarEjercicio: ({ id, nombre, series, reps, peso }) => {
+      setDatos((d) => {
+        const anterior = d.ejercicios.find((e) => e.id === id);
+        let cargas = anterior?.cargas ?? [];
+        if (peso === null) cargas = [];
+        else if (cargaActual({ cargas }) !== peso) cargas = [...cargas, { fecha: hoy, kg: peso }].slice(-50);
+        const ejercicio = { id: id ?? nuevoId(), nombre, series, reps, cargas };
+        return { ...d, ejercicios: anterior ? d.ejercicios.map((e) => (e.id === id ? ejercicio : e)) : [...d.ejercicios, ejercicio] };
+      });
+      cerrarHoja();
+    },
+    borrarEjercicio: (id) => {
+      setDatos((d) => ({ ...d, ejercicios: d.ejercicios.filter((e) => e.id !== id) }));
+      cerrarHoja();
+    },
+    guardarRutina: (rutina) => {
+      setDatos((d) => ({ ...d, rutina }));
+      cerrarHoja();
+    },
+    guardarObjetivos: (nueva) => {
+      setDatos((d) => ({
+        ...d,
+        config: nueva,
+        ciclo: { ...d.ciclo, dia: Math.min(d.ciclo.dia, nueva.dias) },
+        banner: `${num.format(nueva.kcal)} kcal al día, ${nueva.dias} ${nueva.dias === 1 ? "día" : "días"} de entrenamiento por semana y meta de ${kg(nueva.metaPeso)} kg.`,
+      }));
+      cerrarHoja();
+    },
+    guardarRegistro: (r) => {
+      setDatos((d) => ({ ...d, registros: [...d.registros.filter((x) => x.fecha !== r.fecha), { ...r, id: nuevoId() }] }));
+      cerrarHoja();
+    },
+    borrarRegistro: (id) => setDatos((d) => ({ ...d, registros: d.registros.filter((r) => r.id !== id) })),
   };
-  const registrarPeso = (valor) => {
-    const hoy = new Date();
-    const lunes = lunesDe(hoy);
-    setPesos((ps) => (ps.at(-1).fecha.getTime() === lunes.getTime() ? [...ps.slice(0, -1), { fecha: lunes, kg: valor }] : [...ps, { fecha: lunes, kg: valor }]));
-    cerrarHoja();
-    avisar(`Peso registrado: ${kg(valor)} kg`);
-  };
-  const guardarObjetivos = (nueva) => {
-    setConfig(nueva);
-    cerrarHoja();
-    const o = objetivosDe(nueva.kcal);
-    setBanner(
-      `Ajusté tu plan a ${num.format(nueva.kcal)} kcal (${o.p} g de proteína, ${o.c} g de carbohidratos y ${o.g} g de grasas), ${nueva.dias} días de entrenamiento por semana y meta de ${kgCorto(nueva.meta)} kg.`,
-    );
-    setSeries(Object.fromEntries(EJERCICIOS.map((e) => [e.id, Array(e.series).fill(false)])));
-    avisar("Plan actualizado");
-  };
 
-  const datos = { config, objetivos, consumido, comidas, fase, rutina, diaHoy, series, hechos, ultimas, pesoActual, cambioTotal, cambioSemana };
+  const comidaAbierta = hoja?.comida ? datos.comidas.find((c) => c.id === hoja.comida) : null;
+  const ejercicioAbierto = hoja?.ejercicio ? datos.ejercicios.find((e) => e.id === hoja.ejercicio) : null;
+  const vista = { datos, consumido, idsComidas, idsEjercicios, prog, fase, diaHoy, hoy, acciones, abrir: setHoja };
 
   return (
     <div className="min-h-screen font-sans">
@@ -334,35 +385,22 @@ export default function EntrenadorIA() {
           <h1 className="font-display text-[22px] leading-none font-bold tracking-tight uppercase">Entrenador IA</h1>
           <p className="mt-0.5 text-xs leading-tight font-semibold text-zinc-500 dark:text-zinc-400">Nutrición y entrenamiento personalizado</p>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={alternarTema}
-            aria-label={oscuro ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-            className={`grid size-10 place-items-center rounded-full text-zinc-600 hover:bg-white dark:text-zinc-300 dark:hover:bg-white/10 ${foco}`}
-          >
-            {oscuro ? <Sun className="size-5" /> : <Moon className="size-5" />}
-          </button>
-          <span className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-sm font-bold text-white" aria-label="Diego">
-            D
-          </span>
-        </div>
       </header>
 
       <main className="mx-auto max-w-5xl gutter pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
         {tab === "hoy" && (
           <div className="grid grid-cols-1 gap-4">
-            <Banner texto={banner} cambioSemana={cambioSemana} onAjustar={() => setHoja("objetivos")} />
+            <Banner texto={datos.banner} prog={prog} meta={config.metaPeso} onAjustar={() => setHoja("objetivos")} />
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <TarjetaNutricion datos={datos} alternarComida={alternarComida} />
-              <TarjetaEntreno datos={datos} alternarEjercicio={alternarEjercicio} />
+              <TarjetaNutricion {...vista} />
+              <TarjetaEntreno {...vista} />
             </div>
-            <TarjetaProgreso datos={datos} verMas={() => setTab("progreso")} />
+            <TarjetaProgreso {...vista} verMas={() => setTab("progreso")} />
           </div>
         )}
-        {tab === "nutricion" && <VistaNutricion datos={datos} alternarComida={alternarComida} agua={agua} setAgua={setAgua} anadirComida={anadirComida} />}
-        {tab === "entrenamiento" && <VistaEntreno datos={datos} alternarEjercicio={alternarEjercicio} alternarSerie={alternarSerie} />}
-        {tab === "progreso" && <VistaProgreso datos={datos} pesos={pesos} onRegistrar={() => setHoja("peso")} />}
+        {tab === "nutricion" && <VistaNutricion {...vista} />}
+        {tab === "entrenamiento" && <VistaEntreno {...vista} />}
+        {tab === "progreso" && <VistaProgreso {...vista} />}
       </main>
 
       <nav
@@ -391,19 +429,25 @@ export default function EntrenadorIA() {
         </ul>
       </nav>
 
-      {toast && (
-        <div role="status" className="pointer-events-none fixed inset-x-0 bottom-[calc(84px+env(safe-area-inset-bottom,0px))] z-50 flex justify-center gutter">
-          <div className="flex items-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white shadow-lg motion-safe:animate-sheet dark:bg-lime-300 dark:text-zinc-900">
-            <Check className="size-4" /> {toast}
-          </div>
-        </div>
-      )}
-
       <Hoja abierta={hoja === "objetivos"} onCerrar={cerrarHoja} titulo="Tus objetivos" icono={SlidersHorizontal}>
-        <FormObjetivos config={config} pesoActual={pesoActual} onGuardar={guardarObjetivos} />
+        <FormObjetivos config={config} pesoActual={prog.pesoActual} onGuardar={acciones.guardarObjetivos} />
       </Hoja>
-      <Hoja abierta={hoja === "peso"} onCerrar={cerrarHoja} titulo="Registrar peso" icono={Scale}>
-        <FormPeso actual={pesoActual} onGuardar={registrarPeso} />
+      <Hoja abierta={hoja === "registro"} onCerrar={cerrarHoja} titulo="Registrar progreso" icono={Scale}>
+        <FormRegistro hoy={hoy} ultimo={prog.pesoActual} onGuardar={acciones.guardarRegistro} />
+      </Hoja>
+      <Hoja abierta={hoja === "rutina"} onCerrar={cerrarHoja} titulo="Entrenamiento de hoy" icono={Dumbbell}>
+        <FormRutina rutina={datos.rutina} onGuardar={acciones.guardarRutina} />
+      </Hoja>
+      <Hoja abierta={hoja === "comida" || !!comidaAbierta} onCerrar={cerrarHoja} titulo={comidaAbierta ? "Editar comida" : "Nueva comida"} icono={Utensils}>
+        <FormComida key={comidaAbierta?.id ?? "nueva"} comida={comidaAbierta} onGuardar={acciones.guardarComida} onBorrar={comidaAbierta ? () => acciones.borrarComida(comidaAbierta.id) : null} />
+      </Hoja>
+      <Hoja abierta={hoja === "ejercicio" || !!ejercicioAbierto} onCerrar={cerrarHoja} titulo={ejercicioAbierto ? "Editar ejercicio" : "Nuevo ejercicio"} icono={Dumbbell}>
+        <FormEjercicio
+          key={ejercicioAbierto?.id ?? "nuevo"}
+          ejercicio={ejercicioAbierto}
+          onGuardar={acciones.guardarEjercicio}
+          onBorrar={ejercicioAbierto ? () => acciones.borrarEjercicio(ejercicioAbierto.id) : null}
+        />
       </Hoja>
     </div>
   );
@@ -411,8 +455,9 @@ export default function EntrenadorIA() {
 
 /* ───────────────────────── Hoy ───────────────────────── */
 
-function Banner({ texto, cambioSemana, onAjustar }) {
-  const baja = cambioSemana < 0;
+function Banner({ texto, prog, meta, onAjustar }) {
+  const s = prog.cambioSemana;
+  const haciaLaMeta = s !== null && prog.pesoActual !== null && Math.sign(s) === Math.sign(meta - (prog.pesoActual - s)) && s !== 0;
   return (
     <div className="flex flex-col gap-3 rounded-3xl bg-emerald-50 p-4 ring-1 ring-emerald-200/70 sm:flex-row sm:items-center sm:p-5 dark:bg-emerald-500/10 dark:ring-emerald-500/25">
       <p className="min-w-0 flex-1 text-[15px] leading-snug text-emerald-950 dark:text-emerald-100">
@@ -420,10 +465,13 @@ function Banner({ texto, cambioSemana, onAjustar }) {
         <strong className="font-bold">Tu plan se ha actualizado:</strong>{" "}
         {texto ?? (
           <>
-            Ajusté tus calorías y rutina de hoy según tu progreso de esta semana{" "}
-            <span className="font-bold whitespace-nowrap">
-              ({signo(cambioSemana)} kg {baja ? "🎉" : "💪"})
-            </span>
+            Ajusté tus calorías y rutina de hoy según tu progreso de esta semana
+            {s !== null && (
+              <span className="font-bold whitespace-nowrap">
+                {" "}
+                ({signo(s)} kg{haciaLaMeta ? " 🎉" : ""})
+              </span>
+            )}
           </>
         )}
       </p>
@@ -455,83 +503,80 @@ function BarraMacro({ nombre, actual, objetivo, color }) {
   );
 }
 
-function ResumenCalorias({ consumido, objetivos }) {
-  const v = consumido.kcal / objetivos.kcal;
-  const pasado = consumido.kcal > objetivos.kcal;
+function ResumenCalorias({ consumido, datos }) {
+  const { kcal } = datos.config;
+  const { macros } = datos;
+  const pasado = consumido.kcal > kcal;
   return (
     <div className="grid grid-cols-1 items-center gap-5 sm:grid-cols-[auto_1fr]">
       <div className="mx-auto">
-        <Anillo valor={v} color={pasado ? "text-orange-500" : "text-emerald-500"}>
+        <Anillo valor={consumido.kcal / kcal} color={pasado ? "text-orange-500" : "text-emerald-500"}>
           <div>
             <Flame className={`mx-auto size-4 ${pasado ? "text-orange-500" : "text-emerald-500"}`} />
             <p className="font-display text-[30px] leading-none font-bold tabular-nums">{num.format(consumido.kcal)}</p>
-            <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">de {num.format(objetivos.kcal)} kcal</p>
+            <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">de {num.format(kcal)} kcal</p>
           </div>
         </Anillo>
-        <p className={`mt-2 text-center text-xs font-bold ${pasado ? "text-orange-600 dark:text-orange-400" : "text-zinc-500 dark:text-zinc-400"}`}>
-          {pasado ? `${num.format(consumido.kcal - objetivos.kcal)} kcal por encima` : `Te quedan ${num.format(objetivos.kcal - consumido.kcal)} kcal`}
-        </p>
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-3.5">
-        <BarraMacro nombre="Proteína" actual={consumido.p} objetivo={objetivos.p} color="bg-violet-500" />
-        <BarraMacro nombre="Carbohidratos" actual={consumido.c} objetivo={objetivos.c} color="bg-blue-500" />
-        <BarraMacro nombre="Grasas" actual={consumido.g} objetivo={objetivos.g} color="bg-orange-500" />
+        <BarraMacro nombre="Proteína" actual={consumido.p} objetivo={macros.p} color="bg-violet-500" />
+        <BarraMacro nombre="Carbohidratos" actual={consumido.c} objetivo={macros.c} color="bg-blue-500" />
+        <BarraMacro nombre="Grasas" actual={consumido.g} objetivo={macros.g} color="bg-orange-500" />
       </div>
     </div>
   );
 }
 
-function TarjetaComida({ comida: c, onClick }) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={c.hecha}
-      onClick={onClick}
-      className={`relative flex w-[172px] shrink-0 snap-start flex-col rounded-2xl p-3.5 text-left ring-1 transition ${foco} ${
-        c.hecha ? "bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30" : "bg-zinc-50 ring-zinc-200 hover:ring-emerald-300 dark:bg-white/5 dark:ring-white/10"
-      }`}
-    >
-      <span className="flex items-center justify-between">
-        <span className="text-2xl" aria-hidden="true">
-          {c.emoji}
-        </span>
-        <span className={`grid size-6 place-items-center rounded-full border-2 ${c.hecha ? "border-emerald-500 bg-emerald-500 text-white" : "border-zinc-300 dark:border-zinc-600"}`}>
-          {c.hecha && <Check className="size-3.5" strokeWidth={3.5} />}
-        </span>
-      </span>
-      <span className="mt-2 text-xs font-bold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-        {c.momento} · {c.hora}
-      </span>
-      <span className="mt-0.5 line-clamp-2 min-h-[40px] text-[15px] leading-tight font-bold">{c.nombre}</span>
-      <span className="mt-2 font-display text-xl leading-none font-bold tabular-nums">
-        {num.format(c.kcal)} <span className="text-sm text-zinc-500 dark:text-zinc-400">kcal</span>
-      </span>
-    </button>
-  );
-}
-
-function TarjetaNutricion({ datos, alternarComida }) {
-  const { consumido, objetivos, comidas, fase } = datos;
+function TarjetaNutricion({ datos, consumido, idsComidas, fase, acciones, abrir }) {
   return (
     <Tarjeta className="min-w-0 p-5">
       <Cabecera titulo="Tu nutrición de hoy" icono={Utensils}>
         <Insignia tono={fase.tono}>{fase.texto}</Insignia>
       </Cabecera>
       <div className="mt-4">
-        <ResumenCalorias consumido={consumido} objetivos={objetivos} />
+        <ResumenCalorias consumido={consumido} datos={datos} />
       </div>
       <h3 className="mt-5 mb-2 text-sm font-bold">Comidas de hoy</h3>
       <div className="no-scrollbar -mx-5 flex snap-x snap-mandatory scroll-px-5 gap-3 overflow-x-auto px-5 pb-1">
-        {comidas.map((c) => (
-          <TarjetaComida key={c.id} comida={c} onClick={() => alternarComida(c.id)} />
-        ))}
+        {datos.comidas.map((c) => {
+          const hecha = idsComidas.includes(c.id);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              role="checkbox"
+              aria-checked={hecha}
+              onClick={() => acciones.alternarComida(c.id)}
+              className={`relative flex w-[168px] shrink-0 snap-start flex-col rounded-2xl p-3.5 text-left ring-1 transition ${foco} ${hecha ? "bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30" : "bg-zinc-50 ring-zinc-200 hover:ring-emerald-300 dark:bg-white/5 dark:ring-white/10"}`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">{c.momento}</span>
+                <span className={`grid size-6 shrink-0 place-items-center rounded-full border-2 ${hecha ? "border-emerald-500 bg-emerald-500 text-white" : "border-zinc-300 dark:border-zinc-600"}`}>
+                  {hecha && <Check className="size-3.5" strokeWidth={3.5} />}
+                </span>
+              </span>
+              <span className="mt-1.5 line-clamp-2 min-h-[40px] text-[15px] leading-tight font-bold">{c.nombre}</span>
+              <span className="mt-2 font-display text-xl leading-none font-bold tabular-nums">
+                {num.format(c.kcal)} <span className="text-sm text-zinc-500 dark:text-zinc-400">kcal</span>
+              </span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => abrir("comida")}
+          className={`flex w-[120px] shrink-0 snap-start flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-zinc-200 p-3.5 text-sm font-bold text-zinc-500 hover:border-emerald-300 hover:text-emerald-700 dark:border-white/10 dark:text-zinc-400 ${foco}`}
+        >
+          <Plus className="size-5" /> Añadir comida
+        </button>
       </div>
     </Tarjeta>
   );
 }
 
-function FilaEjercicio({ ejercicio: e, hecho, onToggle }) {
+function FilaEjercicio({ ejercicio: e, hecho, onToggle, onEditar }) {
+  const carga = cargaActual(e);
+  const subida = subidaCarga(e);
   return (
     <div className="flex items-center gap-3 py-3">
       <Casilla marcada={hecho} onClick={onToggle} etiqueta={e.nombre} />
@@ -540,22 +585,24 @@ function FilaEjercicio({ ejercicio: e, hecho, onToggle }) {
           className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-tight font-bold ${hecho ? "text-zinc-400 line-through decoration-zinc-300 dark:text-zinc-500 dark:decoration-zinc-600" : ""}`}
         >
           {e.nombre}
-          {e.sube && (
+          {subida > 0 && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[11px] font-bold text-emerald-800 no-underline dark:bg-emerald-500/20 dark:text-emerald-300">
-              <TrendingUp className="size-3" /> {e.sube}
+              <TrendingUp className="size-3" /> +{kg(subida)} kg
             </span>
           )}
         </p>
         <p className="mt-0.5 text-sm text-zinc-500 tabular-nums dark:text-zinc-400">
-          {e.series} series × {e.reps} reps • {e.peso}
+          {e.series} series × {e.reps} reps • {carga === null ? "Peso corporal" : `${kg(carga)} kg`}
         </p>
       </div>
+      {onEditar && <BotonIcono onClick={onEditar} etiqueta={`Editar ${e.nombre}`} icono={Pencil} />}
     </div>
   );
 }
 
-function TarjetaEntreno({ datos, alternarEjercicio }) {
-  const { diaHoy, config, series, hechos } = datos;
+function TarjetaEntreno({ datos, idsEjercicios, diaHoy, acciones }) {
+  const { rutina, ejercicios, config } = datos;
+  const hechos = ejercicios.filter((e) => idsEjercicios.includes(e.id)).length;
   return (
     <Tarjeta className="min-w-0 p-5">
       <Cabecera titulo="Entrenamiento de hoy" icono={Dumbbell}>
@@ -563,23 +610,17 @@ function TarjetaEntreno({ datos, alternarEjercicio }) {
           Día {diaHoy} de {config.dias}
         </Insignia>
       </Cabecera>
-      <p className="mt-1 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Push (Pecho, Hombro, Tríceps) • 55 min • {EJERCICIOS.length} ejercicios</p>
-      <div className="mt-3 flex items-center gap-3">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10">
-          <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${(hechos / EJERCICIOS.length) * 100}%` }} />
-        </div>
-        <span className="text-xs font-bold tabular-nums">
-          {hechos}/{EJERCICIOS.length}
-        </span>
-      </div>
+      <p className="mt-1 text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+        {rutina.nombre} ({rutina.musculos}) • {rutina.minutos} min • {ejercicios.length} {ejercicios.length === 1 ? "ejercicio" : "ejercicios"}
+      </p>
       <div className="mt-1 divide-y divide-zinc-100 dark:divide-white/5">
-        {EJERCICIOS.map((e) => (
-          <FilaEjercicio key={e.id} ejercicio={e} hecho={series[e.id].every(Boolean)} onToggle={() => alternarEjercicio(e.id)} />
+        {ejercicios.map((e) => (
+          <FilaEjercicio key={e.id} ejercicio={e} hecho={idsEjercicios.includes(e.id)} onToggle={() => acciones.alternarEjercicio(e.id)} />
         ))}
       </div>
-      {hechos === EJERCICIOS.length && (
+      {ejercicios.length > 0 && hechos === ejercicios.length && (
         <p className="mt-2 rounded-2xl bg-emerald-50 p-3 text-center text-sm font-bold text-emerald-800 motion-safe:animate-pop dark:bg-emerald-500/10 dark:text-emerald-200">
-          ¡Entrenamiento completado! Buen trabajo 💪
+          ¡Entrenamiento completado! 💪
         </p>
       )}
     </Tarjeta>
@@ -599,32 +640,32 @@ function useAncho(inicial = 340) {
   return [ref, ancho];
 }
 
-function GraficoPeso({ ultimas, meta, alto = 200 }) {
+function GraficoPeso({ registros, meta, hoy, alto = 200 }) {
   const [ref, W] = useAncho();
   const H = alto;
-  const izq = 34;
-  const der = 14;
-  const arr = 14;
-  const aba = 24;
-  const valores = ultimas.map((p) => p.kg);
+  const [izq, der, arr, aba] = [34, 16, 16, 24];
+  if (!registros.length) {
+    return (
+      <div ref={ref} className="rounded-2xl bg-zinc-50 p-6 text-center text-sm text-zinc-500 dark:bg-white/5 dark:text-zinc-400">
+        Registra tu peso para ver la gráfica.
+      </div>
+    );
+  }
+  const inicio = sumarDias(hoy, -VENTANA);
+  const valores = registros.map((r) => r.peso);
   const min = Math.floor(Math.min(...valores, meta) - 0.5);
-  const max = Math.ceil(Math.max(...valores) + 0.5);
-  const x = (i) => izq + (i / (ultimas.length - 1)) * (W - izq - der);
+  const max = Math.ceil(Math.max(...valores, meta) + 0.5);
+  const x = (fecha) => izq + (diasEntre(inicio, fecha) / VENTANA) * (W - izq - der);
   const y = (v) => arr + (1 - (v - min) / (max - min)) * (H - arr - aba);
-  const linea = valores.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const paso = max - min > 6 ? 2 : 1;
+  const linea = registros.map((r, i) => `${i ? "L" : "M"}${x(r.fecha).toFixed(1)},${y(r.peso).toFixed(1)}`).join(" ");
+  const paso = max - min > 8 ? 2 : 1;
   const ticks = [];
   for (let v = min; v <= max; v += paso) ticks.push(v);
+  const semanas = Array.from({ length: 9 }, (_, i) => sumarDias(inicio, i * 7));
+  const ultimo = registros.at(-1);
   return (
     <div ref={ref}>
-      <svg
-        width={W}
-        height={H}
-        viewBox={`0 0 ${W} ${H}`}
-        className="block max-w-full"
-        role="img"
-        aria-label={`Peso de las últimas ${ultimas.length} semanas: de ${kg(valores[0])} a ${kg(valores.at(-1))} kg. Meta: ${kg(meta)} kg.`}
-      >
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block max-w-full" role="img" aria-label={`Peso de las últimas 8 semanas. Último: ${kg(ultimo.peso)} kg. Meta: ${kg(meta)} kg.`}>
         <defs>
           <linearGradient id="area-peso" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#10b981" stopOpacity="0.28" />
@@ -641,28 +682,28 @@ function GraficoPeso({ ultimas, meta, alto = 200 }) {
         ))}
         <line x1={izq} x2={W - der} y1={y(meta)} y2={y(meta)} stroke="currentColor" className="text-orange-500" strokeWidth="1.5" strokeDasharray="5 5" />
         <text x={W - der} y={y(meta) - 6} textAnchor="end" fill="currentColor" className="text-orange-600 dark:text-orange-400" fontSize="11.5" fontWeight="700">
-          Meta: {kgCorto(meta)} kg
+          Meta: {kg(meta)} kg
         </text>
-        <path d={`${linea} L${x(valores.length - 1)},${H - aba} L${x(0)},${H - aba} Z`} fill="url(#area-peso)" />
-        <path d={linea} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        {valores.map((v, i) => (
+        {registros.length > 1 && <path d={`${linea} L${x(ultimo.fecha)},${H - aba} L${x(registros[0].fecha)},${H - aba} Z`} fill="url(#area-peso)" />}
+        {registros.length > 1 && <path d={linea} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+        {registros.map((r) => (
           <circle
-            key={i}
-            cx={x(i)}
-            cy={y(v)}
-            r={i === valores.length - 1 ? 5 : 3}
-            fill={i === valores.length - 1 ? "#10b981" : "currentColor"}
+            key={r.id}
+            cx={x(r.fecha)}
+            cy={y(r.peso)}
+            r={r === ultimo ? 5 : 3.5}
+            fill={r === ultimo ? "#10b981" : "currentColor"}
             stroke="#10b981"
             strokeWidth="2"
             className="text-white dark:text-[#121a16]"
           />
         ))}
-        <text x={x(valores.length - 1)} y={y(valores.at(-1)) - 11} textAnchor="end" fill="currentColor" className="text-zinc-900 dark:text-white" fontSize="12" fontWeight="700">
-          {kg(valores.at(-1))}
+        <text x={x(ultimo.fecha)} y={y(ultimo.peso) - 11} textAnchor="end" fill="currentColor" className="text-zinc-900 dark:text-white" fontSize="12" fontWeight="700">
+          {kg(ultimo.peso)}
         </text>
-        {ultimas.map((p, i) => (
-          <text key={i} x={x(i)} y={H - 6} textAnchor="middle" fill="currentColor" className="text-zinc-400 dark:text-zinc-500" fontSize="10" fontWeight="600">
-            {i === ultimas.length - 1 ? "Hoy" : fechaCorta(p.fecha)}
+        {semanas.map((s, i) => (
+          <text key={s} x={x(s)} y={H - 6} textAnchor="middle" fill="currentColor" className="text-zinc-400 dark:text-zinc-500" fontSize="10" fontWeight="600">
+            {i === semanas.length - 1 ? "Hoy" : i % 2 === 0 ? fechaCorta(s) : ""}
           </text>
         ))}
       </svg>
@@ -670,73 +711,80 @@ function GraficoPeso({ ultimas, meta, alto = 200 }) {
   );
 }
 
-function Indicador({ etiqueta, valor, cambio, bueno, icono: Icono }) {
+function Indicador({ etiqueta: titulo, valor, cambio, bueno, icono: Icono }) {
   return (
     <div className="min-w-0 rounded-2xl bg-zinc-50 p-3 dark:bg-white/5">
-      <p className="text-xs leading-tight font-bold text-zinc-500 dark:text-zinc-400">{etiqueta}</p>
+      <p className="text-xs leading-tight font-bold text-zinc-500 dark:text-zinc-400">{titulo}</p>
       <p className="mt-1 font-display text-[24px] leading-none font-bold tabular-nums sm:text-[26px]">{valor}</p>
-      <p className={`mt-1.5 flex items-start gap-1 text-xs leading-tight font-bold ${bueno ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}>
-        <Icono className="size-3.5 shrink-0" /> <span>{cambio}</span>
-      </p>
+      {cambio && (
+        <p className={`mt-1.5 flex items-start gap-1 text-xs leading-tight font-bold ${bueno ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}>
+          {Icono && <Icono className="size-3.5 shrink-0" />} <span>{cambio}</span>
+        </p>
+      )}
     </div>
   );
 }
 
-function proyeccion(ultimas, meta) {
-  const ritmo = (ultimas.at(-1).kg - ultimas[0].kg) / (ultimas.length - 1); // kg por semana
-  const falta = ultimas.at(-1).kg - meta;
-  if (Math.abs(falta) < 0.05) return "¡Has llegado a tu meta! 🎉";
-  if (falta > 0 && ritmo < 0) return `A este ritmo (${signo(ritmo, 2)} kg/semana) llegarás a ${kgCorto(meta)} kg en unas ${Math.ceil(falta / -ritmo)} semanas.`;
-  if (falta < 0 && ritmo > 0) return `A este ritmo (${signo(ritmo, 2)} kg/semana) llegarás a ${kgCorto(meta)} kg en unas ${Math.ceil(-falta / ritmo)} semanas.`;
-  return "Tu tendencia va en sentido contrario a la meta: revisa las calorías en «Ajustar objetivos».";
-}
-
-function TarjetaProgreso({ datos, verMas }) {
-  const { ultimas, pesoActual, cambioTotal, config } = datos;
+function TarjetaProgreso({ datos, prog, hoy, verMas }) {
+  const { config } = datos;
+  const quiereBajar = prog.pesoActual !== null && config.metaPeso < prog.pesoActual;
   return (
     <Tarjeta className="p-5">
       <Cabecera titulo="Tu progreso" icono={Activity}>
-        <button
-          type="button"
-          onClick={verMas}
-          className={`flex items-center gap-0.5 rounded-full px-2 py-1 text-xs font-bold text-zinc-500 hover:text-emerald-700 dark:text-zinc-400 dark:hover:text-lime-300 ${foco}`}
-        >
-          Últimas {ultimas.length} semanas <ChevronRight className="size-4" />
-        </button>
+        {verMas && (
+          <button
+            type="button"
+            onClick={verMas}
+            className={`flex items-center gap-0.5 rounded-full px-2 py-1 text-xs font-bold text-zinc-500 hover:text-emerald-700 dark:text-zinc-400 dark:hover:text-lime-300 ${foco}`}
+          >
+            Últimas 8 semanas <ChevronRight className="size-4" />
+          </button>
+        )}
       </Cabecera>
       <div className="mt-4 grid grid-cols-3 gap-2.5">
         <Indicador
           etiqueta="Peso actual"
-          valor={`${kg(pesoActual)} kg`}
-          cambio={`${signo(cambioTotal)} kg`}
-          bueno={cambioTotal < 0 === config.meta < ultimas[0].kg}
-          icono={cambioTotal <= 0 ? TrendingDown : TrendingUp}
+          valor={prog.pesoActual === null ? "—" : `${kg(prog.pesoActual)} kg`}
+          cambio={prog.cambioPeso === null ? null : `${signo(prog.cambioPeso)} kg`}
+          bueno={prog.cambioPeso !== null && (quiereBajar ? prog.cambioPeso <= 0 : prog.cambioPeso >= 0)}
+          icono={prog.cambioPeso <= 0 ? TrendingDown : TrendingUp}
         />
-        <Indicador etiqueta="Grasa corporal" valor={`${GRASA.actual}%`} cambio={`${signo(GRASA.cambio)}%`} bueno icono={TrendingDown} />
-        <Indicador etiqueta="Fuerza media" valor={`+${FUERZA}%`} cambio="En aumento" bueno icono={TrendingUp} />
+        <Indicador
+          etiqueta="Grasa corporal"
+          valor={prog.grasa === null ? "—" : `${kg(prog.grasa)}%`}
+          cambio={prog.cambioGrasa === null ? null : `${signo(prog.cambioGrasa)}%`}
+          bueno={prog.cambioGrasa <= 0}
+          icono={prog.cambioGrasa <= 0 ? TrendingDown : TrendingUp}
+        />
+        <Indicador
+          etiqueta="Fuerza media"
+          valor={prog.fuerza === null ? "—" : `${prog.fuerza >= 0 ? "+" : "−"}${Math.round(Math.abs(prog.fuerza) * 100)}%`}
+          cambio={prog.fuerza === null ? null : prog.fuerza > 0 ? "En aumento" : prog.fuerza < 0 ? "Bajando" : "Estable"}
+          bueno={prog.fuerza >= 0}
+          icono={prog.fuerza > 0 ? TrendingUp : prog.fuerza < 0 ? TrendingDown : null}
+        />
       </div>
       <div className="mt-4">
-        <GraficoPeso ultimas={ultimas} meta={config.meta} />
+        <GraficoPeso registros={prog.ventana} meta={config.metaPeso} hoy={hoy} />
       </div>
-      <p className="mt-2 text-sm font-semibold text-zinc-600 dark:text-zinc-300">{proyeccion(ultimas, config.meta)}</p>
     </Tarjeta>
   );
 }
 
 /* ───────────────────────── Formularios ───────────────────────── */
 
-function Paso({ id, etiqueta, valor, setValor, paso, min, max, unidad, decimales = 0 }) {
-  const cambiar = (d) => setValor(Math.min(max, Math.max(min, +(valor + d).toFixed(decimales))));
+function Paso({ id, etiqueta: titulo, valor, setValor, paso, min, max, unidad, decimales = 0 }) {
+  const cambiar = (d) => setValor(Math.min(max, Math.max(min, +(Number(valor) + d).toFixed(decimales))));
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-bold text-zinc-500 dark:text-zinc-400">
-        {etiqueta}
+      <label htmlFor={id} className={etiqueta}>
+        {titulo}
       </label>
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => cambiar(-paso)}
-          aria-label={`Bajar ${etiqueta.toLowerCase()}`}
+          aria-label={`Bajar ${titulo.toLowerCase()}`}
           className={`grid size-11 shrink-0 place-items-center rounded-xl bg-zinc-100 text-xl font-bold hover:bg-zinc-200 dark:bg-white/10 dark:hover:bg-white/15 ${foco}`}
         >
           −
@@ -750,7 +798,7 @@ function Paso({ id, etiqueta, valor, setValor, paso, min, max, unidad, decimales
             min={min}
             max={max}
             value={valor}
-            onChange={(e) => setValor(e.target.value === "" ? min : Number(e.target.value))}
+            onChange={(e) => setValor(e.target.value === "" ? "" : Number(e.target.value))}
             className={`${campo} text-center font-display text-2xl font-bold tabular-nums`}
           />
           <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm font-bold text-zinc-400">{unidad}</span>
@@ -758,7 +806,7 @@ function Paso({ id, etiqueta, valor, setValor, paso, min, max, unidad, decimales
         <button
           type="button"
           onClick={() => cambiar(paso)}
-          aria-label={`Subir ${etiqueta.toLowerCase()}`}
+          aria-label={`Subir ${titulo.toLowerCase()}`}
           className={`grid size-11 shrink-0 place-items-center rounded-xl bg-zinc-100 text-xl font-bold hover:bg-zinc-200 dark:bg-white/10 dark:hover:bg-white/15 ${foco}`}
         >
           +
@@ -769,34 +817,25 @@ function Paso({ id, etiqueta, valor, setValor, paso, min, max, unidad, decimales
 }
 
 function FormObjetivos({ config, pesoActual, onGuardar }) {
-  const [meta, setMeta] = useState(config.meta);
+  const [metaPeso, setMetaPeso] = useState(config.metaPeso);
   const [kcal, setKcal] = useState(config.kcal);
   const [dias, setDias] = useState(config.dias);
-  const o = objetivosDe(kcal);
-  const balance = kcal - MANTENIMIENTO;
-  const valido = meta >= 40 && meta <= 200 && kcal >= 1400 && kcal <= 4500;
+  const valido = metaPeso > 0 && kcal > 0;
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (valido) onGuardar({ meta, kcal, dias });
+        if (valido) onGuardar({ metaPeso: Number(metaPeso), kcal: Math.round(Number(kcal)), dias });
       }}
       className="grid grid-cols-1 gap-4"
     >
-      <Paso id="obj-meta" etiqueta="Meta de peso" valor={meta} setValor={setMeta} paso={0.5} min={40} max={200} unidad="kg" decimales={1} />
-      <p className="-mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-        Pesas {kg(pesoActual)} kg:{" "}
-        {meta < pesoActual ? `te faltan ${kg(pesoActual - meta)} kg por bajar` : meta > pesoActual ? `te faltan ${kg(meta - pesoActual)} kg por subir` : "ya estás en tu meta"}.
-      </p>
-      <Paso id="obj-kcal" etiqueta="Calorías objetivo" valor={kcal} setValor={setKcal} paso={50} min={1400} max={4500} unidad="kcal" />
-      <p className="-mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-        Tu mantenimiento estimado es {num.format(MANTENIMIENTO)} kcal:{" "}
-        {balance < -100 ? `déficit de ${num.format(-balance)} kcal/día` : balance > 100 ? `superávit de ${num.format(balance)} kcal/día` : "comerías para mantener el peso"}.
-      </p>
+      <Paso id="obj-meta" etiqueta="Meta de peso" valor={metaPeso} setValor={setMetaPeso} paso={0.5} min={30} max={250} unidad="kg" decimales={1} />
+      {pesoActual !== null && <p className="-mt-2 text-xs text-zinc-500 dark:text-zinc-400">Tu último peso registrado es {kg(pesoActual)} kg.</p>}
+      <Paso id="obj-kcal" etiqueta="Calorías objetivo" valor={kcal} setValor={setKcal} paso={50} min={800} max={6000} unidad="kcal" />
       <fieldset>
         <legend className="mb-1.5 text-xs font-bold text-zinc-500 dark:text-zinc-400">Días de entrenamiento por semana</legend>
-        <div className="grid grid-cols-4 gap-2">
-          {[3, 4, 5, 6].map((d) => (
+        <div className="grid grid-cols-7 gap-1.5">
+          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
             <button
               key={d}
               type="button"
@@ -808,46 +847,212 @@ function FormObjetivos({ config, pesoActual, onGuardar }) {
             </button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Rutina: {RUTINAS[dias].join(" · ")}</p>
       </fieldset>
-      <div className="grid grid-cols-3 gap-2 rounded-2xl bg-zinc-50 p-3 text-center dark:bg-white/5">
-        {[
-          ["Proteína", o.p, "text-violet-600 dark:text-violet-400"],
-          ["Carbohidratos", o.c, "text-blue-600 dark:text-blue-400"],
-          ["Grasas", o.g, "text-orange-600 dark:text-orange-400"],
-        ].map(([n, v, c]) => (
-          <div key={n}>
-            <p className={`font-display text-xl font-bold ${c}`}>{v} g</p>
-            <p className="text-[11px] font-bold text-zinc-500 dark:text-zinc-400">{n}</p>
-          </div>
-        ))}
-      </div>
-      <button
-        type="submit"
-        disabled={!valido}
-        className={`rounded-2xl bg-emerald-600 py-3.5 text-[15px] font-bold text-white hover:bg-emerald-700 disabled:opacity-40 dark:bg-lime-300 dark:text-zinc-900 ${foco}`}
-      >
-        Guardar y recalcular plan
+      <button type="submit" disabled={!valido} className={botonPrincipal}>
+        Guardar objetivos
       </button>
     </form>
   );
 }
 
-function FormPeso({ actual, onGuardar }) {
-  const [valor, setValor] = useState(actual);
+function FormRegistro({ hoy, ultimo, onGuardar }) {
+  const [fecha, setFecha] = useState(hoy);
+  const [peso, setPeso] = useState(ultimo ?? "");
+  const [grasa, setGrasa] = useState("");
+  const valido = fecha && Number(peso) > 0;
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (valor >= 30 && valor <= 250) onGuardar(+valor.toFixed(1));
+        if (valido) onGuardar({ fecha, peso: Math.round(Number(peso) * 10) / 10, grasa: grasa === "" ? null : Math.round(Number(grasa) * 10) / 10 });
       }}
       className="grid grid-cols-1 gap-4"
     >
-      <Paso id="peso-hoy" etiqueta="Tu peso de hoy" valor={valor} setValor={setValor} paso={0.1} min={30} max={250} unidad="kg" decimales={1} />
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">Pésate por la mañana, en ayunas y después de ir al baño. Si ya registraste esta semana, se actualiza el dato.</p>
-      <button type="submit" className={`rounded-2xl bg-emerald-600 py-3.5 text-[15px] font-bold text-white hover:bg-emerald-700 dark:bg-lime-300 dark:text-zinc-900 ${foco}`}>
-        Guardar peso
+      <div>
+        <label htmlFor="reg-fecha" className={etiqueta}>
+          Fecha
+        </label>
+        <input id="reg-fecha" type="date" max={hoy} value={fecha} onChange={(e) => setFecha(e.target.value)} className={campo} />
+      </div>
+      <Paso id="reg-peso" etiqueta="Peso" valor={peso} setValor={setPeso} paso={0.1} min={30} max={250} unidad="kg" decimales={1} />
+      <div>
+        <label htmlFor="reg-grasa" className={etiqueta}>
+          Grasa corporal (opcional)
+        </label>
+        <div className="relative">
+          <input id="reg-grasa" inputMode="decimal" value={grasa} onChange={(e) => setGrasa(e.target.value.replace(/[^\d.]/g, ""))} className={campo} />
+          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm font-bold text-zinc-400">%</span>
+        </div>
+      </div>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">Si ya hay un registro en esa fecha, se sustituye.</p>
+      <button type="submit" disabled={!valido} className={botonPrincipal}>
+        Guardar
       </button>
+    </form>
+  );
+}
+
+function FormRutina({ rutina, onGuardar }) {
+  const [nombre, setNombre] = useState(rutina.nombre);
+  const [musculos, setMusculos] = useState(rutina.musculos);
+  const [minutos, setMinutos] = useState(String(rutina.minutos));
+  const valido = nombre.trim() && Number(minutos) > 0;
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valido) onGuardar({ nombre: nombre.trim(), musculos: musculos.trim(), minutos: Math.round(Number(minutos)) });
+      }}
+      className="grid grid-cols-1 gap-4"
+    >
+      <div>
+        <label htmlFor="rut-nombre" className={etiqueta}>
+          Nombre
+        </label>
+        <input id="rut-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} className={campo} />
+      </div>
+      <div>
+        <label htmlFor="rut-musculos" className={etiqueta}>
+          Músculos
+        </label>
+        <input id="rut-musculos" value={musculos} onChange={(e) => setMusculos(e.target.value)} className={campo} />
+      </div>
+      <div>
+        <label htmlFor="rut-minutos" className={etiqueta}>
+          Duración (min)
+        </label>
+        <input id="rut-minutos" inputMode="numeric" value={minutos} onChange={(e) => setMinutos(e.target.value.replace(/\D/g, ""))} className={campo} />
+      </div>
+      <button type="submit" disabled={!valido} className={botonPrincipal}>
+        Guardar
+      </button>
+    </form>
+  );
+}
+
+function FormComida({ comida, onGuardar, onBorrar }) {
+  const [f, setF] = useState(() => ({ momento: comida?.momento ?? "", nombre: comida?.nombre ?? "", kcal: comida?.kcal ?? "", p: comida?.p ?? "", c: comida?.c ?? "", g: comida?.g ?? "" }));
+  const valido = f.momento.trim() && f.nombre.trim() && Number(f.kcal) > 0;
+  const n = (v) => (v === "" || v === null ? null : Math.round(Number(v)));
+  const campoNum = (k, titulo) => (
+    <div>
+      <label htmlFor={`comida-${k}`} className={etiqueta}>
+        {titulo}
+      </label>
+      <input id={`comida-${k}`} inputMode="numeric" value={f[k] ?? ""} onChange={(e) => setF({ ...f, [k]: e.target.value.replace(/\D/g, "") })} className={campo} />
+    </div>
+  );
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valido) onGuardar({ id: comida?.id, momento: f.momento.trim(), nombre: f.nombre.trim(), kcal: n(f.kcal), p: n(f.p), c: n(f.c), g: n(f.g) });
+      }}
+      className="grid grid-cols-1 gap-4"
+    >
+      <div className="grid grid-cols-[1fr_2fr] gap-3">
+        <div>
+          <label htmlFor="comida-momento" className={etiqueta}>
+            Momento
+          </label>
+          <input id="comida-momento" value={f.momento} onChange={(e) => setF({ ...f, momento: e.target.value })} className={campo} />
+        </div>
+        <div>
+          <label htmlFor="comida-nombre" className={etiqueta}>
+            Comida
+          </label>
+          <input id="comida-nombre" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} className={campo} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {campoNum("kcal", "Calorías")}
+        {campoNum("p", "Proteína (g)")}
+        {campoNum("c", "Carbohidratos (g)")}
+        {campoNum("g", "Grasas (g)")}
+      </div>
+      <p className="-mt-1 text-xs text-zinc-500 dark:text-zinc-400">Los gramos son opcionales: si los pones, cuentan en las barras de macros.</p>
+      <button type="submit" disabled={!valido} className={botonPrincipal}>
+        Guardar comida
+      </button>
+      {onBorrar && (
+        <button
+          type="button"
+          onClick={onBorrar}
+          className={`rounded-2xl py-2.5 text-sm font-bold text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:text-zinc-400 dark:hover:bg-red-500/10 ${foco}`}
+        >
+          Eliminar comida
+        </button>
+      )}
+    </form>
+  );
+}
+
+function FormEjercicio({ ejercicio, onGuardar, onBorrar }) {
+  const carga = ejercicio ? cargaActual(ejercicio) : null;
+  const [nombre, setNombre] = useState(ejercicio?.nombre ?? "");
+  const [series, setSeries] = useState(String(ejercicio?.series ?? ""));
+  const [reps, setReps] = useState(String(ejercicio?.reps ?? ""));
+  const [corporal, setCorporal] = useState(ejercicio ? carga === null : false);
+  const [peso, setPeso] = useState(carga === null ? "" : String(carga));
+  const valido = nombre.trim() && Number(series) > 0 && Number(reps) > 0 && (corporal || Number(peso) > 0);
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valido) onGuardar({ id: ejercicio?.id, nombre: nombre.trim(), series: Number(series), reps: Number(reps), peso: corporal ? null : Math.round(Number(peso) * 10) / 10 });
+      }}
+      className="grid grid-cols-1 gap-4"
+    >
+      <div>
+        <label htmlFor="ej-nombre" className={etiqueta}>
+          Ejercicio
+        </label>
+        <input id="ej-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} className={campo} />
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label htmlFor="ej-series" className={etiqueta}>
+            Series
+          </label>
+          <input id="ej-series" inputMode="numeric" value={series} onChange={(e) => setSeries(e.target.value.replace(/\D/g, ""))} className={campo} />
+        </div>
+        <div>
+          <label htmlFor="ej-reps" className={etiqueta}>
+            Reps
+          </label>
+          <input id="ej-reps" inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value.replace(/\D/g, ""))} className={campo} />
+        </div>
+        <div>
+          <label htmlFor="ej-peso" className={etiqueta}>
+            Peso (kg)
+          </label>
+          <input
+            id="ej-peso"
+            inputMode="decimal"
+            disabled={corporal}
+            value={corporal ? "" : peso}
+            onChange={(e) => setPeso(e.target.value.replace(/[^\d.]/g, ""))}
+            className={`${campo} disabled:opacity-40`}
+          />
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm font-semibold">
+        <input type="checkbox" checked={corporal} onChange={(e) => setCorporal(e.target.checked)} className="size-4 accent-emerald-600" />
+        Peso corporal
+      </label>
+      {ejercicio && <p className="-mt-1 text-xs text-zinc-500 dark:text-zinc-400">Si subes el peso, aparece la insignia verde con la diferencia.</p>}
+      <button type="submit" disabled={!valido} className={botonPrincipal}>
+        Guardar ejercicio
+      </button>
+      {onBorrar && (
+        <button
+          type="button"
+          onClick={onBorrar}
+          className={`rounded-2xl py-2.5 text-sm font-bold text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:text-zinc-400 dark:hover:bg-red-500/10 ${foco}`}
+        >
+          Eliminar ejercicio
+        </button>
+      )}
     </form>
   );
 }
@@ -866,288 +1071,104 @@ function TituloVista({ titulo, subtitulo, children }) {
   );
 }
 
-function VistaNutricion({ datos, alternarComida, agua, setAgua, anadirComida }) {
-  const { consumido, objetivos, comidas, fase } = datos;
-  const [form, setForm] = useState({ nombre: "", kcal: "", p: "", c: "", g: "" });
-  const valido = form.nombre.trim() && Number(form.kcal) > 0;
-  const enviar = (e) => {
-    e.preventDefault();
-    if (!valido) return;
-    anadirComida({ nombre: form.nombre.trim(), kcal: Math.round(Number(form.kcal)), p: Math.round(Number(form.p) || 0), c: Math.round(Number(form.c) || 0), g: Math.round(Number(form.g) || 0) });
-    setForm({ nombre: "", kcal: "", p: "", c: "", g: "" });
-  };
+function BotonAnadir({ onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-emerald-700 dark:bg-lime-300 dark:text-zinc-900 ${foco}`}
+    >
+      <Plus className="size-4" /> {children}
+    </button>
+  );
+}
+
+function VistaNutricion({ datos, consumido, idsComidas, fase, acciones, abrir }) {
   return (
     <div>
-      <TituloVista titulo="Nutrición" subtitulo={`${fase.texto} · objetivo ${num.format(objetivos.kcal)} kcal`} />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Tarjeta className="p-5">
-          <ResumenCalorias consumido={consumido} objetivos={objetivos} />
-        </Tarjeta>
-        <Tarjeta className="p-5">
-          <Cabecera titulo="Agua" icono={Droplet}>
-            <span className="text-sm font-bold text-sky-600 tabular-nums dark:text-sky-400">{(agua * 0.25).toLocaleString("es-MX", { maximumFractionDigits: 2 })} / 2.5 L</span>
-          </Cabecera>
-          <div className="mt-4 grid grid-cols-5 gap-2 sm:grid-cols-10 lg:grid-cols-5">
-            {Array.from({ length: 10 }, (_, i) => (
-              <button
-                key={i}
-                type="button"
-                aria-label={`${i + 1} ${i ? "vasos" : "vaso"}`}
-                aria-pressed={i < agua}
-                onClick={() => setAgua(i + 1 === agua ? i : i + 1)}
-                className={`grid h-12 place-items-center rounded-xl ring-1 transition ${foco} ${i < agua ? "bg-sky-500 text-white ring-sky-500" : "text-sky-300 ring-zinc-200 hover:ring-sky-300 dark:text-sky-800 dark:ring-white/10"}`}
-              >
-                <Droplet className="size-5" fill={i < agua ? "currentColor" : "none"} />
-              </button>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Cada gota es un vaso de 250 ml. {agua >= 10 ? "¡Objetivo cumplido! 💧" : `Te faltan ${10 - agua} vasos.`}</p>
-        </Tarjeta>
-      </div>
-
+      <TituloVista titulo="Nutrición" subtitulo={`${fase.texto} · objetivo ${num.format(datos.config.kcal)} kcal`}>
+        <BotonAnadir onClick={() => abrir("comida")}>Añadir comida</BotonAnadir>
+      </TituloVista>
+      <Tarjeta className="p-5">
+        <ResumenCalorias consumido={consumido} datos={datos} />
+      </Tarjeta>
       <Tarjeta className="mt-4 p-5">
-        <Cabecera titulo="Comidas de hoy" icono={Utensils}>
-          <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Toca para marcar</span>
-        </Cabecera>
+        <Cabecera titulo="Comidas de hoy" icono={Utensils} />
         <ul className="mt-2 divide-y divide-zinc-100 dark:divide-white/5">
-          {comidas.map((c) => (
+          {datos.comidas.map((c) => (
             <li key={c.id} className="flex items-center gap-3 py-3">
-              <Casilla marcada={c.hecha} onClick={() => alternarComida(c.id)} etiqueta={`${c.momento}: ${c.nombre}`} />
-              <span className="text-2xl" aria-hidden="true">
-                {c.emoji}
-              </span>
+              <Casilla marcada={idsComidas.includes(c.id)} onClick={() => acciones.alternarComida(c.id)} etiqueta={`${c.momento}: ${c.nombre}`} />
               <div className="min-w-0 flex-1">
                 <p className="text-[15px] leading-tight font-bold">
                   {c.nombre} <span className="font-semibold text-zinc-400">· {c.momento}</span>
                 </p>
-                <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">{c.detalle}</p>
-                <p className="mt-1 flex gap-2 text-[11px] font-bold tabular-nums">
-                  <span className="text-violet-600 dark:text-violet-400">P {c.p}g</span>
-                  <span className="text-blue-600 dark:text-blue-400">C {c.c}g</span>
-                  <span className="text-orange-600 dark:text-orange-400">G {c.g}g</span>
+                <p className="mt-1 flex flex-wrap gap-x-2 text-[11px] font-bold tabular-nums">
+                  <span className="text-violet-600 dark:text-violet-400">P {c.p ?? "—"}g</span>
+                  <span className="text-blue-600 dark:text-blue-400">C {c.c ?? "—"}g</span>
+                  <span className="text-orange-600 dark:text-orange-400">G {c.g ?? "—"}g</span>
                 </p>
               </div>
               <p className="shrink-0 font-display text-xl font-bold tabular-nums">{num.format(c.kcal)}</p>
+              <BotonIcono onClick={() => abrir({ comida: c.id })} etiqueta={`Editar ${c.nombre}`} icono={Pencil} />
             </li>
           ))}
         </ul>
-        <form onSubmit={enviar} className="mt-3 grid grid-cols-1 gap-2 rounded-2xl bg-zinc-50 p-3 dark:bg-white/5">
-          <p className="text-sm font-bold">Añadir alimento</p>
-          <div className="grid grid-cols-[1fr_96px] gap-2">
-            <label htmlFor="ali-nombre" className="sr-only">
-              Alimento
-            </label>
-            <input id="ali-nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Ej. Plátano" className={`${campo} bg-white dark:bg-white/5`} />
-            <label htmlFor="ali-kcal" className="sr-only">
-              Calorías
-            </label>
-            <input
-              id="ali-kcal"
-              inputMode="numeric"
-              value={form.kcal}
-              onChange={(e) => setForm({ ...form, kcal: e.target.value.replace(/\D/g, "") })}
-              placeholder="kcal"
-              className={`${campo} bg-white dark:bg-white/5`}
-            />
-          </div>
-          <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
-            {[
-              ["p", "Proteína (g)", "P g"],
-              ["c", "Carbohidratos (g)", "C g"],
-              ["g", "Grasas (g)", "G g"],
-            ].map(([k, etiqueta, ph]) => (
-              <span key={k}>
-                <label htmlFor={`ali-${k}`} className="sr-only">
-                  {etiqueta}
-                </label>
-                <input
-                  id={`ali-${k}`}
-                  inputMode="numeric"
-                  value={form[k]}
-                  onChange={(e) => setForm({ ...form, [k]: e.target.value.replace(/\D/g, "") })}
-                  placeholder={ph}
-                  className={`${campo} bg-white px-2.5 dark:bg-white/5`}
-                />
-              </span>
-            ))}
-            <button
-              type="submit"
-              disabled={!valido}
-              aria-label="Añadir alimento"
-              className={`grid size-[46px] place-items-center rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 dark:bg-lime-300 dark:text-zinc-900 ${foco}`}
-            >
-              <Plus className="size-5" strokeWidth={3} />
-            </button>
-          </div>
-        </form>
+        {datos.comidas.length === 0 && <p className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">No tienes comidas. Añade la primera.</p>}
       </Tarjeta>
     </div>
   );
 }
 
-function Descanso() {
-  const [restante, setRestante] = useState(90);
-  const [activo, setActivo] = useState(false);
-  useEffect(() => {
-    if (!activo) return;
-    const t = setInterval(() => setRestante((r) => Math.max(r - 1, 0)), 1000);
-    return () => clearInterval(t);
-  }, [activo]);
-  useEffect(() => {
-    if (restante === 0) setActivo(false);
-  }, [restante]);
-  const mmss = `${Math.floor(restante / 60)}:${String(restante % 60).padStart(2, "0")}`;
-  return (
-    <div className="flex items-center gap-3 rounded-2xl bg-zinc-900 p-3 pl-4 text-white dark:bg-lime-300 dark:text-zinc-900">
-      <Timer className="size-5 shrink-0" />
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-bold opacity-70">Descanso entre series</p>
-        <p className="font-display text-2xl leading-none font-bold tabular-nums" aria-live="polite">
-          {restante === 0 ? "¡A por la siguiente!" : mmss}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => {
-          if (restante === 0) setRestante(90);
-          setActivo((a) => !a);
-        }}
-        aria-label={activo ? "Pausar descanso" : "Iniciar descanso"}
-        className={`grid size-11 place-items-center rounded-xl bg-white/15 hover:bg-white/25 dark:bg-zinc-900/10 dark:hover:bg-zinc-900/20 ${foco}`}
-      >
-        {activo ? <Pause className="size-5" /> : <Play className="size-5" />}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setActivo(false);
-          setRestante(90);
-        }}
-        aria-label="Reiniciar descanso"
-        className={`grid size-11 place-items-center rounded-xl bg-white/15 hover:bg-white/25 dark:bg-zinc-900/10 dark:hover:bg-zinc-900/20 ${foco}`}
-      >
-        <RotateCcw className="size-5" />
-      </button>
-    </div>
-  );
-}
-
-function VistaEntreno({ datos, alternarEjercicio, alternarSerie }) {
-  const { rutina, diaHoy, config, series, hechos } = datos;
+function VistaEntreno({ datos, idsEjercicios, diaHoy, acciones, abrir }) {
+  const { rutina, ejercicios, config } = datos;
   return (
     <div>
-      <TituloVista titulo="Entrenamiento" subtitulo={`${config.dias} días por semana · hoy toca Push`} />
-      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        {rutina.map((r, i) => {
-          const hoy = i + 1 === diaHoy;
-          const hecho = i + 1 < diaHoy;
-          return (
-            <div
-              key={r}
-              className={`flex min-w-[104px] shrink-0 flex-col rounded-2xl p-3 ring-1 ${
-                hoy ? "bg-emerald-600 text-white ring-emerald-600 dark:bg-lime-300 dark:text-zinc-900 dark:ring-lime-300" : "bg-white ring-zinc-200 dark:bg-[#121a16] dark:ring-white/10"
-              }`}
-            >
-              <span className={`text-[11px] font-bold uppercase ${hoy ? "opacity-80" : "text-zinc-500 dark:text-zinc-400"}`}>Día {i + 1}</span>
-              <span className="mt-0.5 font-display text-lg leading-tight font-bold">{r}</span>
-              <span className={`mt-1 text-[11px] font-bold ${hoy ? "" : hecho ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>{hoy ? "Hoy" : hecho ? "✓ Hecho" : "Pendiente"}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="grid grid-cols-1 gap-3">
-          {EJERCICIOS.map((e, idx) => {
-            const s = series[e.id];
-            const hecho = s.every(Boolean);
-            return (
-              <Tarjeta key={e.id} className="p-4">
-                <div className="flex items-start gap-3">
-                  <span className={`grid size-9 shrink-0 place-items-center rounded-xl font-display text-lg font-bold ${hecho ? "bg-emerald-500 text-white" : "bg-zinc-100 dark:bg-white/10"}`}>
-                    {hecho ? <Check className="size-5" strokeWidth={3} /> : idx + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 text-[15px] leading-tight font-bold">
-                      {e.nombre}
-                      {e.sube && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[11px] font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
-                          <TrendingUp className="size-3" /> {e.sube}
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                      {e.musculo} · {e.series} series × {e.reps} reps • {e.peso}
-                    </p>
-                  </div>
-                  <Casilla marcada={hecho} onClick={() => alternarEjercicio(e.id)} etiqueta={`Completar ${e.nombre}`} />
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 pl-12">
-                  {s.map((v, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      aria-pressed={v}
-                      onClick={() => alternarSerie(e.id, i)}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-bold tabular-nums ring-1 transition ${foco} ${v ? "bg-emerald-500 text-white ring-emerald-500" : "ring-zinc-200 hover:ring-emerald-300 dark:ring-white/10"}`}
-                    >
-                      Serie {i + 1} · {e.reps}
-                    </button>
-                  ))}
-                </div>
-              </Tarjeta>
-            );
-          })}
-        </div>
-        <div className="grid h-fit grid-cols-1 gap-3 lg:sticky lg:top-4">
-          <Descanso />
-          <Tarjeta className="p-4">
-            <p className="text-sm font-bold">Progreso de la sesión</p>
-            <p className="mt-1 font-display text-4xl leading-none font-bold tabular-nums">
-              {hechos}/{EJERCICIOS.length}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Ejercicios completados · 55 min estimados</p>
-            <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-100">
-              💡 Sobrecarga progresiva: la semana pasada completaste 4 × 8 con 77.5 kg en press de banca, así que hoy subimos a 80 kg.
-            </p>
-          </Tarjeta>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function VistaProgreso({ datos, pesos, onRegistrar }) {
-  const historial = [...pesos].reverse();
-  return (
-    <div>
-      <TituloVista titulo="Progreso" subtitulo={`Meta: ${kgCorto(datos.config.meta)} kg`}>
-        <button
-          type="button"
-          onClick={onRegistrar}
-          className={`flex items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-emerald-700 dark:bg-lime-300 dark:text-zinc-900 ${foco}`}
-        >
-          <Scale className="size-4" /> Registrar peso
-        </button>
+      <TituloVista titulo="Entrenamiento" subtitulo={`Día ${diaHoy} de ${config.dias} · ${rutina.minutos} min`}>
+        <BotonAnadir onClick={() => abrir("ejercicio")}>Añadir ejercicio</BotonAnadir>
       </TituloVista>
-      <TarjetaProgreso datos={datos} verMas={onRegistrar} />
+      <Tarjeta className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-display text-2xl leading-none font-bold">{rutina.nombre}</p>
+            <p className="mt-1 text-sm font-semibold text-zinc-500 dark:text-zinc-400">{rutina.musculos}</p>
+          </div>
+          <BotonIcono onClick={() => abrir("rutina")} etiqueta="Editar el entrenamiento" icono={Pencil} />
+        </div>
+        <div className="mt-2 divide-y divide-zinc-100 dark:divide-white/5">
+          {ejercicios.map((e) => (
+            <FilaEjercicio key={e.id} ejercicio={e} hecho={idsEjercicios.includes(e.id)} onToggle={() => acciones.alternarEjercicio(e.id)} onEditar={() => abrir({ ejercicio: e.id })} />
+          ))}
+        </div>
+        {ejercicios.length === 0 && <p className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">No tienes ejercicios. Añade el primero.</p>}
+      </Tarjeta>
+    </div>
+  );
+}
+
+function VistaProgreso(vista) {
+  const { datos, acciones, abrir } = vista;
+  const registros = [...datos.registros].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return (
+    <div>
+      <TituloVista titulo="Progreso" subtitulo={`Meta: ${kg(datos.config.metaPeso)} kg`}>
+        <BotonAnadir onClick={() => abrir("registro")}>Registrar</BotonAnadir>
+      </TituloVista>
+      <TarjetaProgreso {...vista} />
       <Tarjeta className="mt-4 p-5">
-        <Cabecera titulo="Historial de peso" icono={Scale} />
+        <Cabecera titulo="Registros" icono={Scale} />
         <ul className="mt-2 divide-y divide-zinc-100 dark:divide-white/5">
-          {historial.map((p, i) => {
-            const previo = historial[i + 1];
-            const d = previo ? p.kg - previo.kg : 0;
-            return (
-              <li key={p.fecha.getTime()} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                <span className="font-semibold">Semana del {fechaCorta(p.fecha)}</span>
-                <span className="flex items-center gap-3 tabular-nums">
-                  {previo && <span className={`text-xs font-bold ${d <= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}>{signo(d)} kg</span>}
-                  <span className="w-16 text-right font-display text-lg font-bold">{kg(p.kg)} kg</span>
-                </span>
-              </li>
-            );
-          })}
+          {registros.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+              <span className="font-semibold">{new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "long", year: "numeric" }).format(deISO(r.fecha))}</span>
+              <span className="flex items-center gap-3 tabular-nums">
+                {r.grasa !== null && r.grasa !== undefined && <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">{kg(r.grasa)}% grasa</span>}
+                <span className="font-display text-lg font-bold">{kg(r.peso)} kg</span>
+                <BotonIcono onClick={() => acciones.borrarRegistro(r.id)} etiqueta="Borrar registro" icono={Trash2} peligro />
+              </span>
+            </li>
+          ))}
         </ul>
+        {registros.length === 0 && <p className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">No tienes registros.</p>}
       </Tarjeta>
     </div>
   );

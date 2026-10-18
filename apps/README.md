@@ -1,13 +1,50 @@
 # Apps IA
 
-Cuatro apps de ejemplo hechas con React, Tailwind CSS y `lucide-react`. Cada app es un solo componente en un solo archivo `.jsx`, con diseño mobile-first, modo claro y oscuro, y datos de ejemplo que reaccionan a lo que haces.
+Cuatro apps hechas con React, Tailwind CSS y `lucide-react`. Cada app es un solo componente en un solo archivo `.jsx`, con diseño mobile-first.
 
-| App | Archivo | Qué hace |
+Cada app arranca solo con lo que viene en su prompt y no trae nada más. Todo lo que añades, marcas o borras se guarda, y los números (contadores, porcentajes y gráficas) salen de tus datos.
+
+| App | Archivo | Qué puedes hacer |
 |---|---|---|
-| Mi Vida | `mi-vida/MiVida.jsx` | Saludo y fecha, métricas rápidas, últimos correos, agenda de hoy, tareas con «+ Nueva tarea», herramientas conectadas, avance del día y resumen matutino IA en un modal. Pestañas: Inicio, Calendario, Tareas, Correo y Ajustes. |
-| Asesor Financiero | `asesor-financiero/AsesorFinanciero.jsx` | Saldo con sparkline, gastos del mes con dona y desglose por categoría, alertas de presupuesto, meta «Viaje a Europa» con aportes, próximos pagos y formulario de gasto. Pestañas: Inicio, Transacciones, Metas y Chat IA. |
-| Entrenador IA | `entrenador-ia/EntrenadorIA.jsx` | Banner de plan actualizado con configurador de objetivos, calorías y macros, comidas marcables, rutina Push con sobrecarga progresiva y gráfica de peso de 8 semanas. Pestañas: Hoy, Nutrición, Entrenamiento y Progreso. |
-| Segundo Cerebro | `segundo-cerebro/SegundoCerebro.jsx` | Categorías de documentos, chat que responde citando documento y página, recordatorios, subida de archivos con el clip, buscador y notas. Pestañas: Inicio, Segundo Cerebro, Documentos y Recordatorios. |
+| Mi Vida | `mi-vida/MiVida.jsx` | Añadir y marcar tareas, añadir y borrar eventos por día, añadir correos y marcarlos como leídos, y ver el resumen matutino generado con tus datos. Tiene modo oscuro. |
+| Asesor Financiero | `asesor-financiero/AsesorFinanciero.jsx` | Registrar gastos, asignar un presupuesto a cada categoría, actualizar el saldo, aportar a metas y crear metas nuevas, añadir pagos y marcarlos como pagados, y preguntar al chat por tus datos. Tiene modo oscuro. |
+| Entrenador IA | `entrenador-ia/EntrenadorIA.jsx` | Cambiar objetivos, marcar comidas y ejercicios del día, editar comidas, ejercicios y cargas, y registrar peso y grasa corporal. |
+| Segundo Cerebro | `segundo-cerebro/SegundoCerebro.jsx` | Subir documentos a sus carpetas, añadirles vencimiento y datos clave, preguntar al chat por ellos, crear notas y recordatorios, y buscar. |
+
+## Dónde se guardan tus datos
+
+- **Publicadas en claude.ai:** en la parte privada de tu cuenta, así que ves lo mismo en el móvil y en el ordenador. Nadie más ve tus datos, aunque compartas el enlace: cada persona tiene los suyos. En Segundo Cerebro los archivos que subes (PDF, imágenes y texto) se guardan en la propia página.
+- **En tu ordenador (con `npm run dev` o los archivos de `dist/`):** en el navegador.
+
+Si un archivo de Segundo Cerebro no se puede subir a claude.ai (por ejemplo, un `.docx`), se guarda solo en el navegador donde lo subiste y la app lo indica.
+
+## Cómo se calculan los números
+
+| App | Dato | Cálculo |
+|---|---|---|
+| Mi Vida | Eventos hoy, correos sin leer, tareas listas | Se cuentan tus eventos de hoy, tus correos sin leer y tus tareas de hoy. Las tareas pendientes de días anteriores pasan a hoy. |
+| Mi Vida | Productividad | Tareas hechas sobre tareas totales de la semana (de lunes a domingo). |
+| Mi Vida | Avance del día | Tareas de hoy hechas sobre tareas de hoy. |
+| Asesor Financiero | +12.4 % y ↑ 8 % | Comparan con el mes anterior. El primer mes, el saldo y el gasto del mes anterior se deducen de esos porcentajes del prompt. Después se guarda el cierre real de cada mes. |
+| Asesor Financiero | Alerta de presupuesto | Sale cuando una categoría supera el presupuesto que le asignes. Al principio no hay presupuestos. |
+| Asesor Financiero | En buen camino y meses que faltan | La meta empieza hoy con el ahorro del prompt y vence dentro de 4 meses. Vas en buen camino si llevas lo que tocaría a estas alturas para llegar a tiempo. |
+| Entrenador IA | Calorías y macros | Suma de las comidas que marcas hoy. Los gramos de cada comida son opcionales: las del prompt no los traen, así que hay que añadirlos editando la comida. |
+| Entrenador IA | Peso, grasa y gráfica | Registros de peso de las últimas 8 semanas. Arranca con 81 kg hace 7 semanas, 79 kg la semana pasada y 78.4 kg hoy, deducidos de −2.6 kg y −0.6 kg. |
+| Entrenador IA | Fuerza media | Cambio medio de carga de los ejercicios con historial en las últimas 8 semanas. Al principio solo hay historial en press de banca (de 77.5 a 80 kg). |
+| Entrenador IA | Día 4 de 5 | Avanza un día cada vez que completas todos los ejercicios y vuelve a 1 al pasar del número de días por semana. |
+| Segundo Cerebro | Número de documentos y notas | Se cuentan los que tienes en cada carpeta. |
+
+## Diferencias con los prompts
+
+Algunas cifras de los prompts no cuadran con los elementos que traen. Como las apps no inventan datos, se ven distintas hasta que añades los tuyos:
+
+- **Mi Vida:** 3 eventos, 3 correos sin leer, 0/3 tareas listas y 0 % de avance (el prompt dice 2, 5, 3/7, 85 % y 72 %). La hora de los 3 correos es la de la primera vez que abres la app, porque el prompt no la indica.
+- **Asesor Financiero:** el desplegable «Este mes» muestra los meses de los que hay gastos.
+- **Entrenador IA:** el anillo de calorías empieza en 0 porque ninguna comida está marcada. Si las marcas todas suman 2,250 kcal, no 2,450. Las barras de macros empiezan en 0 g. El entrenamiento dice «4 ejercicios», los que trae el prompt, y la fuerza media sale +3 %, no +12 %.
+- **Segundo Cerebro:** Contratos 0, Seguros 1, Impuestos 0 y Notas 0 (el prompt dice 12, 5, 8 y 34). El seguro vence el 14 de marzo de 2026, como dice el prompt, pero esa fecha ya pasó: el chat dice «venció» y propone actualizar la fecha. Cuando la cambias, aparece el botón «🔔 Activar recordatorio».
+- **Selector «Mi Vida» de la cabecera:** solo tiene la opción «Mi Vida», porque el prompt no dice qué más debe tener.
+
+Las respuestas «IA» (el resumen matutino, el chat financiero y el chat de documentos) son simuladas, como piden los prompts: se construyen solo con tus datos.
 
 ## Verlas en tu ordenador
 
@@ -31,7 +68,7 @@ Crea `dist/<app>/index.html`: cada app en un único archivo HTML con todo dentro
 npm run build:artifact
 ```
 
-Crea `dist-artifact/<app>.html`, la versión para publicar como artefacto en claude.ai: carga React desde cdnjs y deja que claude.ai ponga el `<html>`, `<head>` y `<body>`.
+Crea `dist-artifact/<app>.html`, la versión para publicar como artefacto en claude.ai: carga React desde cdnjs y deja que claude.ai ponga el `<html>`, `<head>` y `<body>`. Al publicarla hay que declarar las capacidades `db` y `user` (y `assets` en Segundo Cerebro) para que los datos se guarden en la cuenta.
 
 Para generar solo una app, añade su nombre: `npm run build -- mi-vida`.
 
@@ -42,17 +79,3 @@ Cada `.jsx` exporta un componente por defecto y solo depende de `react` y `lucid
 1. Copia el `.jsx`.
 2. Copia `shared/base.css` e impórtalo junto a Tailwind (define la variante `dark:`, el margen lateral `gutter` y las animaciones).
 3. Define `--page` y `--ink` en `:root` como en el `styles.css` de la app, y la fuente si quieres la misma.
-
-## Cómo funcionan
-
-- **Datos de ejemplo.** Todo vive en el estado de React: al recargar la página vuelve al estado inicial. No se envía nada a ningún servidor; los archivos que subes en Segundo Cerebro solo se listan.
-- **IA simulada.** El resumen matutino, el chat financiero y el chat de documentos responden con reglas a partir de los datos de la propia app, así que las cifras cuadran con lo que ves (por ejemplo, si registras un gasto, el chat lo tiene en cuenta).
-- **Modo oscuro.** Sigue al sistema y el botón de luna o sol lo cambia. La elección se recuerda en el navegador.
-- **Fechas.** Las fechas de vencimiento, pagos y semanas se calculan desde hoy.
-
-## Decisiones respecto a los prompts originales
-
-- **Mi Vida.** El saludo cambia con la hora («Buenos días», «Buenas tardes» o «Buenas noches»). «2 eventos hoy» cuenta las reuniones; «Editar contenido» a las 16:00 es un bloque de foco. El avance del día es el tiempo de tareas hecho sobre el planificado, que da el 72 % de partida, y la productividad del 85 % es semanal.
-- **Asesor Financiero.** La categoría Vivienda tiene un presupuesto de $24,000 porque incluye la renta de $12,000 que vence en 16 días. Pagar la tarjeta BBVA no cuenta como gasto nuevo (los gastos ya están en las categorías).
-- **Entrenador IA.** El subtítulo dice 6 ejercicios, así que a los 4 del prompt se suman extensión de tríceps y aperturas en polea. Las grasas salen al 87 % (65 de 75 g redondeado) en vez del 86 %. Hay una cuarta comida (batido de proteína, 200 kcal) para que las comidas sumen las 2,450 kcal del anillo.
-- **Segundo Cerebro.** El prompt dice que el seguro vence el 14 de marzo de 2026, pero esa fecha ya ha pasado: la app usa el próximo 14 de marzo para que el recordatorio de un mes antes tenga sentido.
