@@ -61,7 +61,10 @@ import {
   aFecha,
   aNumero,
   analizarTabla,
+  beneficioExcel,
   categoriaDe,
+  CASAS_BASE,
+  completarBase,
   claveSugerida,
   coincide,
   comercio,
@@ -73,6 +76,8 @@ import {
   estadoInicial,
   filasAMovimientos,
   hoyISO,
+  leerExcelMB,
+  leerExtractoBetfair,
   leerNorma43,
   mesAnterior,
   mesSiguiente,
@@ -81,6 +86,7 @@ import {
   prepararImportacion,
   recurrentes,
   redondear,
+  resumenExcelMB,
   resumenMB,
   resumenMes,
   saldoEn,
@@ -97,7 +103,8 @@ const fmtEur0 = new Intl.NumberFormat("es-ES", { style: "currency", currency: "E
 const eur = (n) => fmtEur.format(n).replace("-", "−");
 const eurCorto = (n) => fmtEur0.format(n).replace("-", "−");
 const conSigno = (n) => `${n > 0 ? "+" : ""}${eur(n)}`;
-const nMovs = (n) => (n === 1 ? "1 movimiento" : `${n} movimientos`);
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+const nMovs = (n) => plural(n, "movimiento", "movimientos");
 const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const nombreMes = (mes) => capital(new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric" }).format(deISO(`${mes}-01`)));
 const mesCorto = (mes) => new Intl.DateTimeFormat("es-ES", { month: "short" }).format(deISO(`${mes}-01`)).replace(".", "");
@@ -164,7 +171,10 @@ function useFinanzas() {
   const [datos, setDatos] = useState(() => {
     try {
       const local = localStorage.getItem(CLAVE_LOCAL);
-      if (local) return JSON.parse(local);
+      if (local) {
+        const d = JSON.parse(local);
+        return { ...d, base: completarBase(d.base) };
+      }
     } catch {}
     return estadoInicial();
   });
@@ -217,7 +227,7 @@ function useFinanzas() {
         if (remota) {
           const docs = [...sm.docs].sort((a, b) => a.id.localeCompare(b.id));
           escrito.current = { base: JSON.stringify(remota), meses: Object.fromEntries(docs.map((d) => [d.id, JSON.stringify(d.data()?.movs ?? [])])) };
-          setDatos({ base: remota, movimientos: docs.flatMap((d) => d.data()?.movs ?? []) });
+          setDatos({ base: completarBase(remota), movimientos: docs.flatMap((d) => d.data()?.movs ?? []) });
         } else {
           subir(actual.current);
         }
@@ -349,13 +359,18 @@ async function leerArchivo(archivo) {
   if (["xls", "xlsx", "ods"].includes(ext)) {
     const XLSX = await cargarXLSX();
     const libro = XLSX.read(buffer, { type: "array", cellDates: true });
-    const hojas = libro.SheetNames.map((n) => XLSX.utils.sheet_to_json(libro.Sheets[n], { header: 1, raw: true, defval: "" }));
-    return { filas: hojas.find((f) => analizarTabla(f)) ?? hojas[0] ?? [] };
+    const hojas = libro.SheetNames.map((n) => ({ nombre: n, filas: XLSX.utils.sheet_to_json(libro.Sheets[n], { header: 1, raw: true, defval: "" }) }));
+    const excelMB = leerExcelMB(hojas);
+    if (excelMB) return { excelMB };
+    const tablas = hojas.map((h) => h.filas);
+    return { filas: tablas.find((f) => analizarTabla(f)) ?? tablas[0] ?? [] };
   }
   if (ext === "pdf") throw new Error("Los PDF no se pueden leer directamente. Descarga el extracto en Excel o CSV, o haz capturas de pantalla y súbelas con «Capturas de pantalla».");
   const texto = decodificar(buffer);
   if (esNorma43(texto)) return { norma43: leerNorma43(texto) };
-  return { filas: trocearCSV(texto) };
+  const filas = trocearCSV(texto);
+  const betfair = leerExtractoBetfair(filas);
+  return betfair ? { betfair } : { filas };
 }
 
 function adivinarCuenta(nombre, formato, cuentas) {
@@ -743,6 +758,25 @@ export default function AsesorFinanciero() {
     aplicarIA: (asignaciones) => {
       setDatos((d) => ({ ...d, movimientos: d.movimientos.map((m) => (!m.categoria && asignaciones[m.id] ? { ...m, categoria: asignaciones[m.id] } : m)) }));
     },
+    importarMB: (mb) => {
+      if (mb.tipo === "betfair") {
+        setDatos((d) => {
+          const porMes = new Map((d.base.betfair?.meses ?? []).map((m) => [m.desde, m]));
+          for (const m of mb.meses) porMes.set(m.desde, m);
+          const meses = [...porMes.values()].sort((a, b) => a.desde.localeCompare(b.desde));
+          const ultimo = meses.at(-1);
+          let casas = d.base.casas.some((c) => c.id === "betfair") ? d.base.casas : [...d.base.casas, CASAS_BASE.find((c) => c.id === "betfair")];
+          casas = casas.map((c) => (c.id === "betfair" && (!c.saldoFecha || ultimo.hasta >= c.saldoFecha) ? { ...c, saldo: ultimo.saldoFinal, saldoFecha: ultimo.hasta } : c));
+          return { ...d, base: { ...d.base, casas, betfair: { meses } } };
+        });
+        avisar(mb.meses.length === 1 ? "Mes de Betfair guardado" : `${mb.meses.length} meses de Betfair guardados`);
+      } else {
+        cambiarBase((b) => ({ ...b, mbExcel: { ...mb.excel, archivo: mb.nombre, fecha: hoyISO() } }));
+        avisar("Excel de matched betting guardado");
+      }
+      cerrarHoja();
+      setTab("mb");
+    },
     guardarCasa: (casa) => {
       cambiarBase((b) => ({ ...b, casas: b.casas.some((c) => c.id === casa.id) ? b.casas.map((c) => (c.id === casa.id ? casa : c)) : [...b.casas, casa] }));
       setDatos((d) => ({ ...d, movimientos: d.movimientos.map((m) => (!m.manual && !m.categoria && casa.claves.some((k) => coincide(normalizar(m.concepto), k)) ? { ...m, categoria: "mb" } : m)) }));
@@ -848,7 +882,7 @@ export default function AsesorFinanciero() {
       )}
 
       <Hoja abierta={hoja === "importar"} onCerrar={cerrarHoja} titulo="Importar movimientos" icono={Upload} ancha>
-        <Importador datos={datos} sample={sample} onImportar={acciones.importar} />
+        <Importador datos={datos} sample={sample} onImportar={acciones.importar} onImportarMB={acciones.importarMB} />
       </Hoja>
 
       <Hoja abierta={hoja === "ajustes"} onCerrar={cerrarHoja} titulo="Ajustes" icono={Settings} ancha>
@@ -1588,8 +1622,9 @@ function FormMovimiento({ base, hoy, onGuardar }) {
 
 const ROLES_MANUALES = ["", "fecha", "concepto", "importe", "cargo", "abono", "saldo"];
 
-function Importador({ datos, sample, onImportar }) {
-  const [paso, setPaso] = useState("elegir"); // elegir | texto | columnas | ia | revisar
+function Importador({ datos, sample, onImportar, onImportarMB }) {
+  const [paso, setPaso] = useState("elegir"); // elegir | texto | columnas | ia | revisar | mb
+  const [mb, setMb] = useState(null); // { tipo: "betfair", meses, nombres } | { tipo: "excel", excel, nombre }
   const [error, setError] = useState(null);
   const [leyendo, setLeyendo] = useState(false);
   const [fuente, setFuente] = useState(null); // { nombre, formato }
@@ -1634,7 +1669,13 @@ function Importador({ datos, sample, onImportar }) {
     setLeyendo(true);
     try {
       const r = await leerArchivo(archivo);
-      if (r.norma43) {
+      if (r.betfair) {
+        setMb({ tipo: "betfair", meses: [r.betfair], nombres: [archivo.name] });
+        setPaso("mb");
+      } else if (r.excelMB) {
+        setMb({ tipo: "excel", excel: r.excelMB, nombre: archivo.name });
+        setPaso("mb");
+      } else if (r.norma43) {
         setFuente({ nombre: archivo.name, formato: "norma43" });
         setLectura({ movs: r.norma43.movs, omitidos: { pendientes: 0, divisas: 0, huchas: 0, invalidos: 0 }, saldo: r.norma43.saldo });
         setCuenta(adivinarCuenta(archivo.name, "norma43", datos.base.cuentas));
@@ -1644,6 +1685,24 @@ function Importador({ datos, sample, onImportar }) {
       } else conTabla(r.filas, archivo.name);
     } catch (e) {
       setError(e?.message || "No se pudo leer el archivo.");
+    } finally {
+      setLeyendo(false);
+    }
+  };
+
+  const leerVarios = async (archivos) => {
+    setError(null);
+    setLeyendo(true);
+    try {
+      const leidos = await Promise.all(archivos.map((a) => leerArchivo(a)));
+      if (!leidos.every((r) => r.betfair)) {
+        setError("Varios archivos a la vez solo vale para los extractos de actividad de Betfair. Los del banco y el Excel, súbelos de uno en uno.");
+        return;
+      }
+      setMb({ tipo: "betfair", meses: leidos.map((r) => r.betfair), nombres: archivos.map((a) => a.name) });
+      setPaso("mb");
+    } catch (e) {
+      setError(e?.message || "No se pudieron leer los archivos.");
     } finally {
       setLeyendo(false);
     }
@@ -1707,6 +1766,8 @@ No inventes movimientos ni cifras: si algo no se lee bien, omite ese movimiento.
       </div>
     );
   }
+
+  if (paso === "mb" && mb) return <RevisarMB mb={mb} setMb={setMb} onGuardar={onImportarMB} onVolver={() => setPaso("elegir")} />;
 
   if (paso === "columnas" && tabla) {
     return (
@@ -1773,7 +1834,7 @@ No inventes movimientos ni cifras: si algo no se lee bien, omite ese movimiento.
             <FileSpreadsheet className="size-7 shrink-0" />
             <span>
               <span className="block font-extrabold">{leyendo ? "Leyendo el archivo…" : "Archivo del banco"}</span>
-              <span className="block text-sm text-violet-100">CSV o Excel de Revolut y Ruralvía, o Norma 43</span>
+              <span className="block text-sm text-violet-100">Revolut, Ruralvía o Norma 43; extractos de Betfair o tu Excel de matched betting</span>
             </span>
           </button>
           <button
@@ -1804,10 +1865,12 @@ No inventes movimientos ni cifras: si algo no se lee bien, omite ese movimiento.
             ref={archivoRef}
             type="file"
             accept=".csv,.txt,.tsv,.xls,.xlsx,.ods,.n43,.aeb,.q43,.csb,.pdf"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) leer(f);
+              const fs = [...(e.target.files ?? [])];
+              if (fs.length > 1) leerVarios(fs);
+              else if (fs[0]) leer(fs[0]);
               e.target.value = "";
             }}
           />
@@ -1834,11 +1897,109 @@ No inventes movimientos ni cifras: si algo no se lee bien, omite ese movimiento.
                 <strong className="font-extrabold text-slate-900 dark:text-white">Ruralvía:</strong> en ruralvia.com, entra en la cuenta, abre los movimientos, elige las fechas y usa la opción de
                 descargar o exportar (Excel o Norma 43). Si solo tienes la app del móvil, haz capturas de la lista o cópiala y pégala.
               </p>
+              <p>
+                <strong className="font-extrabold text-slate-900 dark:text-white">Betfair:</strong> sube los «Extractos de actividad» de cada mes en CSV. Puedes elegir varios a la vez. Con ellos la
+                app sabe tu saldo en Betfair y lo que ganas o pierdes allí cada mes.
+              </p>
+              <p>
+                <strong className="font-extrabold text-slate-900 dark:text-white">Tu Excel de matched betting:</strong> la hoja con Persona, Casas de Apuestas, Estado, Fase 1, Fase 2, Beneficio Neto y
+                Pagado, en .xlsx. Si está en Google Drive, elígelo desde el selector de archivos o descárgalo como Excel. Al subirlo otra vez, se sustituye por la versión nueva.
+              </p>
               <p>Puedes importar periodos que se solapen: los movimientos que ya estaban no se repiten.</p>
             </div>
           </details>
         </>
       )}
+    </div>
+  );
+}
+
+function RevisarMB({ mb, setMb, onGuardar, onVolver }) {
+  const botones = (texto) => (
+    <div className="flex flex-wrap gap-2">
+      <button type="button" onClick={() => onGuardar(mb)} className={botonPrincipal}>
+        {texto}
+      </button>
+      <button type="button" onClick={onVolver} className={botonSuave}>
+        Volver
+      </button>
+    </div>
+  );
+  if (mb.tipo === "betfair") {
+    const meses = [...mb.meses].sort((a, b) => a.desde.localeCompare(b.desde));
+    const ultimo = meses.at(-1);
+    const pyg = redondear(meses.reduce((s, m) => s + m.pyg, 0));
+    return (
+      <div className="grid grid-cols-1 gap-4">
+        <div className="rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5">
+          <p className="font-extrabold">{mb.nombres.length === 1 ? mb.nombres[0] : `${mb.nombres.length} archivos`}</p>
+          <p className="mt-0.5 text-slate-500 dark:text-slate-400">Extracto de actividad de Betfair</p>
+        </div>
+        <Tarjeta className="px-4 py-1">
+          <ul className="divide-y divide-slate-100 dark:divide-white/5">
+            {meses.map((m) => (
+              <li key={m.desde} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <span className="font-bold">{nombreMes(m.desde.slice(0, 7))}</span>
+                <span className="text-right tabular-nums">
+                  <span className={`block font-extrabold ${m.pyg >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{conSigno(m.pyg)}</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">saldo {eur(m.saldoFinal)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Tarjeta>
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          Resultado en Betfair en estos meses: <strong className="font-extrabold">{conSigno(pyg)}</strong>. El saldo de Betfair queda en {eur(ultimo.saldoFinal)} el {fechaCorta(ultimo.hasta)}; lo que
+          metas o saques después se suma o se resta solo.
+        </p>
+        {botones(meses.length === 1 ? "Guardar el mes" : `Guardar ${meses.length} meses`)}
+      </div>
+    );
+  }
+  const { excel } = mb;
+  const ben = beneficioExcel(excel);
+  const nombres = [...new Set(excel.hojas.flatMap((h) => h.reparto.map((r) => r.nombre)))];
+  return (
+    <div className="grid grid-cols-1 gap-4">
+      <div className="rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5">
+        <p className="font-extrabold">{mb.nombre}</p>
+        <p className="mt-0.5 text-slate-500 dark:text-slate-400">Hoja de control de matched betting</p>
+      </div>
+      <Tarjeta className="px-4 py-1">
+        <ul className="divide-y divide-slate-100 dark:divide-white/5">
+          {excel.hojas.map((h) => (
+            <li key={h.nombre} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+              <span className="min-w-0">
+                <span className="block font-bold">Hoja {h.nombre}</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                  {plural(h.ops.filter((o) => o.neto).length, "bono", "bonos")} con resultado · {plural(new Set(h.ops.map((o) => o.persona)).size, "persona", "personas")}
+                </span>
+              </span>
+              <span className="shrink-0 font-extrabold tabular-nums">{h.total === null ? "sin TOTAL" : eur(h.total)}</span>
+            </li>
+          ))}
+        </ul>
+      </Tarjeta>
+      {nombres.length > 0 && (
+        <div>
+          <label htmlFor="excel-yo" className={etiqueta}>
+            ¿Quién eres tú en el reparto?
+          </label>
+          <select id="excel-yo" value={excel.yo ?? ""} onChange={(e) => setMb({ ...mb, excel: { ...excel, yo: e.target.value } })} className={campo}>
+            {nombres.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div className="rounded-2xl bg-amber-50 p-4 dark:bg-amber-400/10">
+        <p className="text-sm font-bold text-amber-900 dark:text-amber-200">Tu beneficio según el Excel</p>
+        <p className="mt-0.5 text-2xl font-extrabold tabular-nums">{conSigno(ben.total)}</p>
+        <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-100/80">{ben.partes.map((p) => `${p.hoja}: ${eur(p.valor)}${p.valor !== p.total ? ` de ${eur(p.total)}` : ""}`).join(" · ")}</p>
+      </div>
+      {botones("Guardar")}
     </div>
   );
 }
@@ -1935,7 +2096,7 @@ function Revisar({ datos, fuente, lectura, cuenta, setCuenta, onVolver, onImport
   const fechas = prep.nuevos.map((m) => m.fecha);
   const saldo = lectura.saldo ?? (usarSaldo ? lectura.saldoSugerido : null);
   const omitidos = Object.entries(lectura.omitidos).filter(([, n]) => n);
-  const textosOmitidos = { pendientes: "pendientes o rechazados", divisas: "en otra divisa", huchas: "de huchas", invalidos: "filas sin fecha o importe" };
+  const textosOmitidos = { pendientes: "pendientes, rechazados o devueltos", divisas: "en otra divisa", huchas: "de huchas", invalidos: "filas sin fecha o importe" };
   const sinCat = prep.nuevos.filter((m) => !m.categoria).length;
   const mbN = prep.nuevos.filter((m) => cats[m.categoria]?.tipo === "mb").length;
   return (
@@ -2015,10 +2176,15 @@ function Revisar({ datos, fuente, lectura, cuenta, setCuenta, onVolver, onImport
 
 /* ───────────────────────── Matched betting ───────────────────────── */
 
-function VistaMB({ base, mb, abrir, verMovimientos, hoyMes }) {
+function VistaMB({ base, movimientos, mb, abrir, verMovimientos, hoyMes }) {
+  const excel = base.mbExcel;
+  const segunExcel = useMemo(() => beneficioExcel(excel), [excel]);
+  const resExcel = useMemo(() => (excel ? resumenExcelMB(excel) : null), [excel]);
+  const mesesBetfair = base.betfair?.meses ?? [];
   let acumulado = 0;
   const puntos = mb.porMes.map((p) => ({ mes: p.mes, acumulado: (acumulado = redondear(acumulado + p.neto)) }));
   const esteMes = mb.porMes.find((p) => p.mes === hoyMes)?.neto ?? 0;
+  const estimadas = mb.casas.filter((c) => c.saldoFecha && c.despues);
   return (
     <div className="grid grid-cols-1 gap-4">
       <div className="flex items-end justify-between gap-3 pt-2">
@@ -2029,27 +2195,46 @@ function VistaMB({ base, mb, abrir, verMovimientos, hoyMes }) {
       </div>
       <section className="rounded-3xl bg-gradient-to-br from-amber-400 to-orange-500 p-5 text-amber-950 shadow-xl shadow-orange-500/20">
         <p className="flex items-center gap-2 text-sm font-extrabold">
-          <Trophy className="size-4" /> Beneficio total
+          <Trophy className="size-4" /> {segunExcel ? "Beneficio según tu Excel" : "Beneficio total"}
         </p>
-        <p className="mt-1 text-[34px] leading-none font-extrabold tracking-tight tabular-nums">{conSigno(mb.beneficio)}</p>
-        <p className="mt-2 text-sm font-bold">Este mes: {conSigno(esteMes)}</p>
+        <p className="mt-1 text-[34px] leading-none font-extrabold tracking-tight tabular-nums">{conSigno(segunExcel ? segunExcel.total : mb.beneficio)}</p>
+        {segunExcel ? (
+          <p className="mt-2 text-sm font-bold">{segunExcel.partes.map((p) => `${p.hoja}: ${eur(p.valor)}${p.valor !== p.total ? ` (tu parte de ${eur(p.total)})` : ""}`).join(" · ")}</p>
+        ) : (
+          <p className="mt-2 text-sm font-bold">Este mes: {conSigno(esteMes)}</p>
+        )}
       </section>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Dato etiqueta="Depositado en casas" valor={eur(mb.depositado)} />
-        <Dato etiqueta="Retirado de casas" valor={eur(mb.retirado)} />
-        <Dato etiqueta="Herramientas" valor={eur(mb.herramientas)} />
-        <Dato etiqueta="Saldo en casas" valor={eur(mb.saldoCasas)} />
-      </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        Beneficio = retirado − depositado − herramientas + saldo que tienes ahora en las casas − saldo que tenías al empezar. Actualiza el saldo de cada casa para que salga exacto.
-      </p>
+
+      {resExcel && <TarjetaExcel res={resExcel} excel={excel} abrir={abrir} />}
+      {mesesBetfair.length > 0 && <TarjetaBetfair meses={mesesBetfair} movimientos={movimientos} base={base} />}
+
+      <Tarjeta className="p-5">
+        <Titulo>{segunExcel ? "Según el dinero de tus cuentas" : "De dónde sale"}</Titulo>
+        {segunExcel && <p className="mt-1 text-2xl font-extrabold tabular-nums">{conSigno(mb.beneficio)}</p>}
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Dato etiqueta="Depositado en casas" valor={eur(mb.depositado)} />
+          <Dato etiqueta="Retirado de casas" valor={eur(mb.retirado)} />
+          <Dato etiqueta="Herramientas" valor={eur(mb.herramientas)} />
+          <Dato etiqueta="Saldo en casas hoy" valor={eur(mb.saldoCasas)} />
+        </div>
+        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          Beneficio = retirado − depositado − herramientas + saldo que tienes ahora en las casas − saldo que tenías al empezar. Solo cuenta lo que pasa por tus cuentas: el dinero que mueves con otras
+          personas entra si lo clasificas como matched betting.
+        </p>
+        {estimadas.length > 0 && (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {estimadas.map((c) => `${c.nombre}: ${eur(c.saldo)} el ${fechaCorta(c.saldoFecha)} ${c.despues > 0 ? "+" : "−"} ${eur(Math.abs(c.despues))} metidos o sacados después`).join(" · ")}. No
+            incluye lo que hayas ganado o perdido allí desde esa fecha.
+          </p>
+        )}
+      </Tarjeta>
       {puntos.length > 1 && (
         <Tarjeta className="p-5">
-          <Titulo>Beneficio acumulado</Titulo>
+          <Titulo>Dinero que entra y sale de las casas</Titulo>
           <div className="mt-3">
             <LineaAcumulada puntos={puntos} />
           </div>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Solo cuenta lo que ha entrado y salido de tus cuentas, sin el saldo de las casas.</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Acumulado de lo que ha entrado y salido de tus cuentas, sin el saldo de las casas.</p>
         </Tarjeta>
       )}
       <Tarjeta className="p-5">
@@ -2079,7 +2264,7 @@ function VistaMB({ base, mb, abrir, verMovimientos, hoyMes }) {
                     <span className="block truncate text-sm font-bold">{c.nombre}</span>
                     <span className="block text-xs text-slate-500 tabular-nums dark:text-slate-400">
                       −{eur(c.depositado)} · +{eur(c.retirado)}
-                      {c.saldo ? ` · saldo ${eur(c.saldo)}` : ""}
+                      {c.saldo || c.despues ? ` · saldo ${eur(c.saldoHoy)}${c.despues ? " (estimado)" : ""}` : ""}
                     </span>
                   </span>
                   <span className={`shrink-0 text-sm font-extrabold tabular-nums ${c.neto >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
@@ -2097,7 +2282,7 @@ function VistaMB({ base, mb, abrir, verMovimientos, hoyMes }) {
       </Tarjeta>
       {mb.porMes.length > 0 && (
         <Tarjeta className="p-5">
-          <Titulo>Por mes</Titulo>
+          <Titulo>Por mes (dinero que entra y sale)</Titulo>
           <ul className="mt-2 divide-y divide-slate-100 dark:divide-white/5">
             {[...mb.porMes].reverse().map((p) => (
               <li key={p.mes} className="flex items-center justify-between py-2 text-sm">
@@ -2109,6 +2294,172 @@ function VistaMB({ base, mb, abrir, verMovimientos, hoyMes }) {
         </Tarjeta>
       )}
     </div>
+  );
+}
+
+function ListaPlegable({ items, inicial = 6, render }) {
+  const [todas, setTodas] = useState(false);
+  const visibles = todas ? items : items.slice(0, inicial);
+  return (
+    <>
+      <ul className="mt-2 divide-y divide-slate-100 dark:divide-white/5">{visibles.map(render)}</ul>
+      {items.length > inicial && (
+        <button type="button" onClick={() => setTodas(!todas)} className={`mt-1 text-sm font-bold text-violet-700 dark:text-violet-300 ${foco}`}>
+          {todas ? "Ver menos" : `Ver las ${items.length}`}
+        </button>
+      )}
+    </>
+  );
+}
+
+function TarjetaExcel({ res, excel, abrir }) {
+  const color = (n) => (n >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400");
+  return (
+    <Tarjeta className="p-5">
+      <Titulo
+        accion={
+          <button type="button" onClick={() => abrir("importar")} className={botonChip}>
+            <Upload className="size-3.5" /> Actualizar
+          </button>
+        }
+      >
+        Tu Excel
+      </Titulo>
+      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+        {excel.archivo} · subido el {fechaCorta(excel.fecha)}
+        {excel.yo ? ` · en el reparto eres «${excel.yo}»` : ""}
+      </p>
+      <ul className="mt-3 grid grid-cols-1 gap-2">
+        {res.hojas.map((h) => (
+          <li key={h.nombre} className="rounded-2xl bg-slate-50 p-3.5 text-sm dark:bg-white/5">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-extrabold">Hoja {h.nombre}</span>
+              <span className="font-extrabold tabular-nums">{h.total === null ? "sin TOTAL" : eur(h.total)}</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500 tabular-nums dark:text-slate-400">
+              Suma de los bonos {eur(h.sumaNeto)}
+              {h.descontado ? ` − ${eur(h.descontado)} descontados (${h.pagados === 1 ? "1 bono marcado como pagado" : `${h.pagados} bonos marcados como pagados`})` : ""}
+              {h.reparto.length > 0 && ` · reparto: ${h.reparto.map((r) => `${r.nombre} ${eur(r.valor)}`).join(", ")}`}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      <h3 className="mt-4 text-sm font-extrabold">Por persona</h3>
+      <ListaPlegable
+        items={res.personas}
+        render={(p) => (
+          <li key={`${p.hoja}|${p.persona}`} className="flex items-center gap-3 py-2">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
+              <Users className="size-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-bold">{p.persona}</span>
+              <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                {plural(p.hechas, "bono", "bonos")}
+                {p.porHacer ? ` · ${plural(p.porHacer, "casa", "casas")} por hacer` : ""}
+                {res.hojas.length > 1 ? ` · hoja ${p.hoja}` : ""}
+                {p.notas.length ? ` · ${p.notas.join(", ")}` : ""}
+              </span>
+            </span>
+            <span className={`shrink-0 text-sm font-extrabold tabular-nums ${color(p.neto)}`}>{conSigno(p.neto)}</span>
+          </li>
+        )}
+      />
+
+      <h3 className="mt-4 text-sm font-extrabold">Por casa</h3>
+      <ListaPlegable
+        items={res.casas}
+        render={(c) => (
+          <li key={c.casa} className="flex items-center justify-between gap-3 py-2 text-sm">
+            <span className="min-w-0 truncate font-bold">
+              {c.casa} <span className="font-semibold text-slate-500 dark:text-slate-400">· {plural(c.veces, "bono", "bonos")}</span>
+            </span>
+            <span className={`shrink-0 font-extrabold tabular-nums ${color(c.neto)}`}>{conSigno(c.neto)}</span>
+          </li>
+        )}
+      />
+
+      {res.pendientes.length > 0 && (
+        <>
+          <h3 className="mt-4 text-sm font-extrabold">Sin cerrar</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">En proceso o hechos sin la fase 2 apuntada: su resultado aún puede cambiar.</p>
+          <ul className="mt-1 divide-y divide-slate-100 dark:divide-white/5">
+            {res.pendientes.map((o) => (
+              <li key={`${o.hoja}|${o.persona}|${o.casa}`} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <span className="min-w-0 truncate">
+                  <span className="font-bold">{o.persona}</span> · {o.casa} <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{o.estado?.toLowerCase()}</span>
+                </span>
+                <span className={`shrink-0 font-extrabold tabular-nums ${color(o.neto)}`}>{conSigno(o.neto)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {res.descuadres.length > 0 && (
+        <div className="mt-4 rounded-2xl bg-rose-50 p-3.5 text-sm text-rose-900 dark:bg-rose-500/10 dark:text-rose-100">
+          <p className="flex items-center gap-2 font-extrabold">
+            <AlertTriangle className="size-4 shrink-0" /> No cuadra en el Excel
+          </p>
+          <ul className="mt-1 grid grid-cols-1 gap-1">
+            {res.descuadres.map((o) => (
+              <li key={`${o.hoja}|${o.persona}|${o.casa}`}>
+                {o.persona} · {o.casa}: fase 1 + fase 2 = {eur(o.descuadre)}, pero el beneficio neto pone {eur(o.neto)}.
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Tarjeta>
+  );
+}
+
+function TarjetaBetfair({ meses, movimientos, base }) {
+  const ordenados = [...meses].sort((a, b) => a.desde.localeCompare(b.desde));
+  const desde = ordenados[0].desde;
+  const hasta = ordenados.at(-1).hasta;
+  const suma = (k) => redondear(ordenados.reduce((s, m) => s + m[k], 0));
+  const betfair = base.casas.find((c) => c.id === "betfair");
+  const enBanco = movimientos.filter((m) => m.categoria === "mb" && m.fecha >= desde && m.fecha <= hasta && betfair?.claves.some((k) => coincide(normalizar(m.concepto), k)));
+  const bancoDep = redondear(enBanco.filter((m) => m.importe < 0).reduce((s, m) => s - m.importe, 0));
+  const bancoRet = redondear(enBanco.filter((m) => m.importe > 0).reduce((s, m) => s + m.importe, 0));
+  const cuadra = Math.abs(bancoDep - suma("depositado")) < 0.01 && Math.abs(bancoRet - suma("retirado")) < 0.01;
+  return (
+    <Tarjeta className="p-5">
+      <Titulo>Betfair</Titulo>
+      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+        Extractos de actividad del {fechaCorta(desde)} al {fechaCorta(hasta)} de {hasta.slice(0, 4)}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Dato etiqueta="Ganado o perdido" valor={conSigno(suma("pyg"))} />
+        <Dato etiqueta="Saldo final" valor={eur(ordenados.at(-1).saldoFinal)} />
+        <Dato etiqueta="Depositado" valor={eur(suma("depositado"))} />
+        <Dato etiqueta="Retirado" valor={eur(suma("retirado"))} />
+      </div>
+      <ul className="mt-3 divide-y divide-slate-100 dark:divide-white/5">
+        {[...ordenados].reverse().map((m) => (
+          <li key={m.desde} className="flex items-center justify-between gap-3 py-2 text-sm">
+            <span className="font-bold">{nombreMes(m.desde.slice(0, 7))}</span>
+            <span className="text-right tabular-nums">
+              <span className={`block font-extrabold ${m.pyg >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{conSigno(m.pyg)}</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">saldo {eur(m.saldoFinal)}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {enBanco.length > 0 && (
+        <p
+          className={`mt-3 flex gap-2 rounded-2xl p-3 text-sm font-semibold ${cuadra ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-100" : "bg-amber-50 text-amber-900 dark:bg-amber-400/10 dark:text-amber-100"}`}
+        >
+          {cuadra ? <Check className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}
+          {cuadra
+            ? "Los depósitos y las retiradas cuadran con tus movimientos del banco."
+            : `Betfair dice ${eur(suma("depositado"))} depositados y ${eur(suma("retirado"))} retirados; en tu banco salen ${eur(bancoDep)} y ${eur(bancoRet)}. Puede ser una retirada que llegó al banco al día siguiente de cerrar el mes, o movimientos sin importar.`}
+        </p>
+      )}
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">En matched betting Betfair suele perder cuando ganas en la casa y al revés: el beneficio sale de sumar las dos partes.</p>
+    </Tarjeta>
   );
 }
 
@@ -2133,6 +2484,7 @@ function FormCasa({ casa, onGuardar, onBorrar }) {
           claves: lista.length ? lista : [normalizar(nombre)],
           saldo: aNumero(saldo) ?? 0,
           saldoInicial: aNumero(saldoInicial) ?? 0,
+          saldoFecha: (aNumero(saldo) ?? 0) !== (casa?.saldo ?? 0) ? hoyISO() : (casa?.saldoFecha ?? null),
         });
       }}
       className="grid grid-cols-1 gap-4"
@@ -2155,6 +2507,7 @@ function FormCasa({ casa, onGuardar, onBorrar }) {
             Saldo ahora en la casa
           </label>
           <CampoImporte id="casa-saldo" valor={saldo} setValor={setSaldo} />
+          {casa?.saldoFecha && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Apuntado el {fechaCorta(casa.saldoFecha)}. Lo que metas o saques después se suma o se resta solo.</p>}
         </div>
         <div>
           <label htmlFor="casa-inicial" className={etiqueta}>
@@ -2457,7 +2810,23 @@ function contextoIA({ base, movimientos, cats, hoy, mb, fijos }) {
     objetivoAhorroMensual: base.objetivoAhorro,
     metas: base.metas.map((m) => ({ nombre: m.nombre, objetivo: m.objetivo, ahorrado: m.ahorrado, fecha: m.fecha })),
     matchedBetting: {
-      beneficioTotal: mb.beneficio,
+      beneficioSegunExcel: base.mbExcel
+        ? (() => {
+            const b = beneficioExcel(base.mbExcel);
+            const r = resumenExcelMB(base.mbExcel);
+            return {
+              total: b.total,
+              eresEnElReparto: base.mbExcel.yo,
+              porHoja: r.hojas,
+              porPersona: r.personas.map((p) => [p.persona, p.neto, p.hechas, p.porHacer]),
+              porCasa: r.casas,
+              sinCerrar: r.pendientes,
+              noCuadra: r.descuadres,
+            };
+          })()
+        : null,
+      betfairPorMes: base.betfair?.meses ?? [],
+      beneficioSegunDineroDeTusCuentas: mb.beneficio,
       depositado: mb.depositado,
       retirado: mb.retirado,
       herramientas: mb.herramientas,
@@ -2475,10 +2844,14 @@ function contextoIA({ base, movimientos, cats, hoy, mb, fijos }) {
 }
 
 // Sin IA (fuera de claude.ai) el chat responde con reglas sencillas a partir de los mismos datos.
-function responderSinIA(pregunta, { movimientos, cats, hoy, mb, fijos }) {
+function responderSinIA(pregunta, { base, movimientos, cats, hoy, mb, fijos }) {
   const q = normalizar(pregunta);
   const mes = hoy.slice(0, 7);
   const r = resumenMes(movimientos, cats, mes);
+  if (/matched|apuesta|casa|mb|bet/.test(q) && base.mbExcel) {
+    const b = beneficioExcel(base.mbExcel);
+    return `Según tu Excel llevas **${conSigno(b.total)}** con el matched betting (${b.partes.map((p) => `${p.hoja}: ${eur(p.valor)}`).join(", ")}). Contando solo el dinero que pasa por tus cuentas salen ${conSigno(mb.beneficio)}.`;
+  }
   if (!movimientos.length) return "Aún no hay movimientos. Importa tus extractos con el botón de subir de arriba.";
   if (/matched|apuesta|casa|mb|bet/.test(q))
     return `Con el matched betting llevas **${conSigno(mb.beneficio)}** en total (${conSigno(r.mb)} este mes). Has depositado ${eur(mb.depositado)} y retirado ${eur(mb.retirado)}.`;
@@ -2534,7 +2907,7 @@ function VistaChat(v) {
     ctlRef.current = ctl;
     const instrucciones = `Eres el asesor financiero personal de Diego, que vive en España. Respondes en español de España, claro y breve (6-8 líneas como mucho salvo que pida detalle), con cifras en euros en formato español (1.234,56 €). Puedes usar **negritas** y viñetas con «•».
 Usa SOLO los datos de abajo, que salen de sus extractos de Revolut (sobre todo matched betting) y Ruralvía (gastos del día a día). Si un dato no está, dilo; no lo inventes.
-Contexto: "matched betting" son depósitos y retiradas en casas de apuestas; su beneficio es retirado − depositado − herramientas + saldo en casas. Los traspasos entre sus cuentas no son gasto ni ingreso. El ahorro de un mes es ingresos − gastos + matched betting.
+Contexto: "matched betting" son depósitos y retiradas en casas de apuestas; su beneficio es retirado − depositado − herramientas + saldo en casas. Si hay "beneficioSegunExcel", es su hoja de control de bonos (por persona y casa, con lo que se reparte) y es la referencia de cuánto gana; "beneficioSegunDineroDeTusCuentas" solo cuenta lo que pasa por sus cuentas. "betfairPorMes" son sus extractos de Betfair: en matched betting Betfair pierde cuando gana la casa y al revés. Los traspasos entre sus cuentas no son gasto ni ingreso. El ahorro de un mes es ingresos − gastos + matched betting.
 DATOS (JSON):
 ${contextoIA(vRef.current)}`;
     try {

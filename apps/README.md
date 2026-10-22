@@ -60,8 +60,17 @@ Ni Revolut ni Ruralvía tienen una conexión que la app pueda usar, así que los
 | Norma 43 (`.n43`, `.aeb`, `.q43`, `.txt`) | El formato estándar de los bancos españoles. Ruralvía lo ofrece al exportar movimientos. |
 | Texto pegado | Copia la lista de movimientos de la web o de la app y pégala. |
 | Capturas de pantalla | Si solo tienes la app del móvil, haz capturas de la lista y la IA las lee. Revisas los movimientos antes de importarlos. Solo funciona en claude.ai. |
+| Extractos de actividad de Betfair (CSV) | Uno por mes; se pueden subir varios a la vez. Guardan el resultado y el saldo de Betfair de cada mes, y la app comprueba que los depósitos y las retiradas cuadran con el banco. |
+| Hoja de control de matched betting (.xlsx) | Columnas Persona, Casas de Apuestas, Fecha, Estado, Fase 1, Fase 2, Beneficio Neto y Pagado, con el TOTAL y su reparto a la derecha. Puede tener varias hojas. Al subirla otra vez se sustituye. |
 
 Los PDF no se pueden leer: descarga el extracto en Excel, CSV o Norma 43, o haz capturas.
+
+Los movimientos de Revolut pendientes, rechazados o devueltos no se importan.
+
+### Beneficio del matched betting
+
+- **Según tu Excel:** tu parte del TOTAL de cada hoja (la cantidad con tu nombre en el reparto o, si la hoja no reparte, su TOTAL). Es la cifra principal cuando hay Excel. La pestaña MB enseña también el desglose por persona y por casa, los bonos sin cerrar y las filas donde fase 1 + fase 2 no da el beneficio neto.
+- **Según el dinero de tus cuentas:** retirado − depositado − herramientas + saldo en las casas − saldo al empezar. El saldo de una casa es el último que apuntaste (o el del último extracto de Betfair) más lo que hayas metido o sacado después. Solo cuenta el dinero que pasa por tus cuentas: lo que mueves con otras personas entra si lo clasificas como matched betting.
 
 ### Cómo clasifica los movimientos
 

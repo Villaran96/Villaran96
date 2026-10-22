@@ -164,7 +164,19 @@ export const CASAS_BASE = [
   ["Suertia", "suertia"],
   ["Enracha", "enracha"],
   ["Botemanía", "botemania"],
-].map(([nombre, claves]) => ({ id: normalizar(nombre).replace(/ /g, "-"), nombre, claves: claves.split("|"), saldo: 0, saldoInicial: 0 }));
+  ["Dazn Bet", "dazn bet|daznbet"],
+  ["Ekasa Apuestas", "ekasa"],
+  ["Entain", "entain"],
+].map(([nombre, claves]) => ({ id: normalizar(nombre).replace(/ /g, "-"), nombre, claves: claves.split("|"), saldo: 0, saldoInicial: 0, saldoFecha: null }));
+
+// Casas que se añadieron después: se suman a los datos que ya estaban guardados.
+const CASAS_V2 = ["dazn-bet", "ekasa-apuestas", "entain"];
+
+export function completarBase(base) {
+  if ((base.v ?? 1) >= 2) return base;
+  const ids = new Set(base.casas.map((c) => c.id));
+  return { ...base, v: 2, casas: [...base.casas, ...CASAS_BASE.filter((c) => CASAS_V2.includes(c.id) && !ids.has(c.id))] };
+}
 
 // Palabras que delatan la categoría. El orden importa: se usa la primera que coincide.
 export const REGLAS_BASE = [
@@ -177,7 +189,7 @@ export const REGLAS_BASE = [
   ],
   [
     "suscripciones",
-    "netflix|spotify|hbo|disney|prime video|amazon prime|amzn prime|apple com bill|icloud|google one|youtube premium|dazn|twitch|playstation plus|xbox game pass|chatgpt|openai|anthropic|claude ai|adobe|canva",
+    "netflix|spotify|hbo|disney|prime video|amazon prime|amzn prime|apple com bill|icloud|google one|youtube premium|dazn|twitch|playstation plus|xbox game pass|chatgpt|openai|anthropic|claude|adobe|canva|patreon",
   ],
   [
     "supermercado",
@@ -190,9 +202,9 @@ export const REGLAS_BASE = [
   ["viajes", "ryanair|vueling|iberia|air europa|easyjet|booking|airbnb|hotel|expedia|edreams|trainline|ouigo|iryo"],
   [
     "compras",
-    "amazon|amzn|aliexpress|shein|temu|zara|pull bear|bershka|stradivarius|primark|h m|mango|decathlon|fnac|mediamarkt|media markt|pccomponentes|el corte ingles|ikea|leroy merlin|vinted|wallapop|sprinter|jd sports|foot locker|nike|adidas",
+    "amazon|amzn|aliexpress|alibaba|shein|temu|zara|pull bear|bershka|stradivarius|primark|h m|mango|decathlon|fnac|mediamarkt|media markt|pccomponentes|el corte ingles|ikea|leroy merlin|vinted|wallapop|sprinter|jd sports|foot locker|nike|adidas",
   ],
-  ["ocio", "cine|cinesa|yelmo|kinepolis|ocine|ticketmaster|eventbrite|entradas|steam|epic games|nintendo|playstation|discoteca"],
+  ["ocio", "cine|cinesa|yelmo|kinepolis|ocine|ticketmaster|eventbrite|entradas|steam|valve|epic games|fortnite|nintendo|playstation|g2a|eneba|seagm|tebex|instant gaming|discoteca"],
   ["salud", "farmacia|clinica|dentista|optica|hospital|quiron|sanitas|adeslas|fisioterapia"],
   ["deporte", "gimnasio|gym|basic fit|mcfit|altafit|anytime fitness|synergym|go fit|padel|playtomic"],
   ["educacion", "universidad|academia|matricula|udemy|coursera|libreria|casa del libro|papeleria"],
@@ -213,7 +225,7 @@ export const CUENTAS_BASE = [
 
 export function estadoInicial() {
   return {
-    base: { v: 1, cuentas: CUENTAS_BASE, categorias: CATEGORIAS_BASE, reglas: [], casas: CASAS_BASE, metas: [], objetivoAhorro: null },
+    base: { v: 2, cuentas: CUENTAS_BASE, categorias: CATEGORIAS_BASE, reglas: [], casas: CASAS_BASE, metas: [], objetivoAhorro: null },
     movimientos: [],
   };
 }
@@ -243,7 +255,8 @@ export function categoriaAuto(mov, base, tipoBanco = "") {
   for (const r of base.reglas) if (coincide(t, r.clave)) return r.categoria;
   if (casaDe(t, base.casas)) return "mb";
   const tb = normalizar(tipoBanco);
-  if (/^(topup|top up|recarga|exchange|cambio)/.test(tb)) return "traspaso";
+  const deTercero = /^(pago de|payment from|transferencia de)\b/.test(t) || coincide(t, "bizum");
+  if (/^(topup|top up|recarga|exchange|cambio)/.test(tb) && !deTercero) return "traspaso";
   if (mov.cuenta === "ruralvia" && coincide(t, "revolut")) return "traspaso";
   if (mov.cuenta === "revolut" && ["caja rural", "ruralvia", "rural"].some((k) => coincide(t, k))) return "traspaso";
   for (const r of REGLAS_BASE) if ((!r.signo || r.signo === signo) && r.claves.some((k) => coincide(t, k))) return r.categoria;
@@ -464,7 +477,7 @@ export function filasAMovimientos(filas, cabecera, mapa) {
   const celda = (fila, i) => (i === undefined || i === null ? "" : (fila[i] ?? ""));
   filas.slice(cabecera + 1).forEach((fila, orden) => {
     const estado = normalizar(celda(fila, mapa.estado));
-    if (estado && /pend|revert|declin|rechaz|fail|fallid|cancel/.test(estado)) return omitidos.pendientes++;
+    if (estado && /pend|revert|devuel|anulad|declin|rechaz|fail|fallid|cancel/.test(estado)) return omitidos.pendientes++;
     const divisa = String(celda(fila, mapa.divisa)).trim().toUpperCase();
     if (divisa && !["EUR", "€", "EURO", "EUROS"].includes(divisa)) return omitidos.divisas++;
     if (/saving|ahorro|hucha|deposit|vault/.test(normalizar(celda(fila, mapa.producto)))) return omitidos.huchas++;
@@ -548,6 +561,179 @@ export function prepararImportacion(crudos, cuenta, datos) {
   return { nuevos, duplicados };
 }
 
+/* ───────────────────────── Betfair y hoja de control de matched betting ───────────────────────── */
+
+// Extracto de actividad mensual de Betfair en CSV: una fila de cabecera y otra con los totales del mes.
+export function leerExtractoBetfair(filas) {
+  const i = filas.findIndex((f) => f.some((c) => normalizar(c) === "saldo de perdidas y ganancias"));
+  if (i < 0 || !filas[i + 1]) return null;
+  const valor = (nombre) => {
+    const j = filas[i].findIndex((c) => normalizar(c) === nombre);
+    return j < 0 ? null : filas[i + 1][j];
+  };
+  const desde = aFecha(valor("desde la fecha"));
+  const hasta = aFecha(valor("hasta la fecha"));
+  const numero = (nombre) => redondear(aNumero(valor(nombre)) ?? 0);
+  if (!desde || !hasta) return null;
+  return {
+    desde,
+    hasta,
+    saldoInicial: numero("saldo inicial"),
+    saldoFinal: numero("saldo al cerrar la cuenta"),
+    pyg: numero("saldo de perdidas y ganancias"),
+    apostado: numero("cantidad apostada"),
+    depositado: numero("importe total depositado"),
+    retirado: numero("importe total retirado"),
+  };
+}
+
+const COLUMNAS_MB = {
+  persona: ["persona", "titular", "nombre"],
+  casa: ["casas de apuestas", "casa de apuestas", "casas", "casa"],
+  fecha: ["fecha"],
+  estado: ["estado"],
+  fase1: ["fase 1", "perdida", "perdidas"],
+  fase2: ["fase 2", "ganancia", "ganancias"],
+  neto: ["beneficio neto", "beneficio", "neto", "total"],
+  pagado: ["pagado", "pagada"],
+};
+const esSi = (v) => v === true || /^(true|verdadero|si|x|pagado|pagada)$/.test(normalizar(v));
+const celdaNumero = (v) => (v === "" || v === null || v === undefined || typeof v === "boolean" ? null : aNumero(v));
+
+// Una hoja de control: por cada persona, una fila por casa con las fases del bono y lo que deja.
+// A la derecha, «TOTAL» con su valor y, debajo, cómo se reparte (nombre y cantidad).
+export function leerHojaMB(nombre, filas) {
+  for (let h = 0; h < Math.min(filas.length, 15); h++) {
+    const cab = filas[h].map((c) => normalizar(c));
+    const col = {};
+    for (const [rol, nombres] of Object.entries(COLUMNAS_MB)) {
+      const j = cab.findIndex((c) => nombres.some((n) => c === n || c.endsWith(` ${n}`)));
+      if (j >= 0) col[rol] ??= j;
+    }
+    if (col.persona === undefined || col.casa === undefined || col.neto === undefined) continue;
+
+    const ops = [];
+    const notas = {};
+    let persona = null;
+    for (let r = h + 1; r < filas.length; r++) {
+      const f = filas[r];
+      const casa = String(f[col.casa] ?? "").trim();
+      const quien = String(f[col.persona] ?? "").trim();
+      if (!casa) {
+        persona = null; // una fila sin casa separa a una persona de la siguiente
+        continue;
+      }
+      if (quien) {
+        if (!persona) persona = quien;
+        else (notas[persona] ??= []).push(quien);
+      }
+      if (!persona) continue;
+      const estadoCelda = col.estado === undefined ? "" : f[col.estado];
+      const estado = typeof estadoCelda === "string" ? estadoCelda.trim().toUpperCase() : "";
+      const fase1 = col.fase1 === undefined ? null : celdaNumero(f[col.fase1]);
+      const fase2 = col.fase2 === undefined ? null : celdaNumero(f[col.fase2]);
+      const neto = celdaNumero(f[col.neto]);
+      if (!estado && !fase1 && !fase2 && !neto) continue;
+      const op = { persona, casa, estado: estado || null, fase1, fase2, neto: redondear(neto ?? (fase1 ?? 0) + (fase2 ?? 0)), pagado: col.pagado !== undefined && esSi(f[col.pagado]) };
+      const fecha = col.fecha === undefined ? "" : f[col.fecha];
+      if (fecha) op.fecha = fecha instanceof Date ? aISO(fecha) : String(fecha).trim();
+      if (fase1 !== null && fase2 !== null && Math.abs(fase1 + fase2 - op.neto) > 0.005) op.descuadre = redondear(fase1 + fase2);
+      ops.push(op);
+    }
+
+    // TOTAL y reparto, a la derecha de la tabla.
+    const derecha = Math.max(...Object.values(col)) + 1;
+    const numeroTras = (fila, j) => {
+      for (let k = j + 1; k <= j + 2; k++) {
+        const n = celdaNumero(fila[k]);
+        if (n !== null) return n;
+      }
+      return null;
+    };
+    let total = null;
+    const reparto = [];
+    for (let r = 0; r < filas.length && total === null; r++) {
+      for (let j = derecha; j < filas[r].length; j++) {
+        if (!normalizar(filas[r][j]).startsWith("total")) continue;
+        const v = numeroTras(filas[r], j);
+        if (v === null) continue;
+        total = redondear(v);
+        for (let k = r + 1; k < filas.length; k++) {
+          const quien = String(filas[k][j] ?? "").trim();
+          const cantidad = numeroTras(filas[k], j);
+          if (!quien || cantidad === null) break;
+          reparto.push({ nombre: quien, valor: redondear(cantidad) });
+        }
+        break;
+      }
+    }
+    const sumaNeto = redondear(ops.reduce((s, o) => s + o.neto, 0));
+    return { nombre, ops, notas, total, reparto, sumaNeto, pagados: ops.filter((o) => o.pagado && o.neto).length };
+  }
+  return null;
+}
+
+// Libro con una o varias hojas de control. Propone quién eres: el nombre que sale en el reparto de todas las hojas.
+export function leerExcelMB(hojas) {
+  const leidas = hojas.map(({ nombre, filas }) => leerHojaMB(nombre, filas)).filter(Boolean);
+  if (!leidas.length) return null;
+  const conteo = new Map();
+  for (const h of leidas) for (const r of h.reparto) conteo.set(r.nombre, (conteo.get(r.nombre) ?? 0) + 1);
+  const yo = [...conteo.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return { hojas: leidas, yo };
+}
+
+// Lo que te toca según la hoja: tu parte del reparto o, si la hoja no reparte, su total.
+export function beneficioExcel(excel) {
+  if (!excel) return null;
+  const yo = normalizar(excel.yo ?? "");
+  const partes = excel.hojas.map((h) => {
+    const mia = h.reparto.find((r) => normalizar(r.nombre) === yo);
+    return { hoja: h.nombre, valor: mia ? mia.valor : h.reparto.length ? 0 : (h.total ?? h.sumaNeto), total: h.total ?? h.sumaNeto };
+  });
+  return { total: redondear(partes.reduce((s, p) => s + p.valor, 0)), partes };
+}
+
+// Resumen de la hoja por persona y por casa, con lo que queda pendiente o no cuadra.
+export function resumenExcelMB(excel) {
+  const personas = new Map();
+  const casas = new Map();
+  const pendientes = [];
+  const descuadres = [];
+  for (const h of excel.hojas) {
+    for (const o of h.ops) {
+      const clave = `${h.nombre}|${o.persona}`;
+      const p = personas.get(clave) ?? { hoja: h.nombre, persona: o.persona, neto: 0, hechas: 0, porHacer: 0, notas: h.notas[o.persona] ?? [] };
+      p.neto = redondear(p.neto + o.neto);
+      if (o.neto) p.hechas++;
+      else if (o.estado && !/hecha|proceso/i.test(o.estado)) p.porHacer++;
+      personas.set(clave, p);
+      if (o.neto) {
+        const c = casas.get(o.casa) ?? { casa: o.casa, neto: 0, veces: 0 };
+        c.neto = redondear(c.neto + o.neto);
+        c.veces++;
+        casas.set(o.casa, c);
+      }
+      if (/proceso/i.test(o.estado ?? "") || (/hecha/i.test(o.estado ?? "") && o.fase2 === null)) pendientes.push({ hoja: h.nombre, ...o });
+      if (o.descuadre !== undefined) descuadres.push({ hoja: h.nombre, ...o });
+    }
+  }
+  return {
+    personas: [...personas.values()].filter((p) => p.hechas || p.porHacer).sort((a, b) => b.neto - a.neto),
+    casas: [...casas.values()].sort((a, b) => b.neto - a.neto),
+    pendientes,
+    descuadres,
+    hojas: excel.hojas.map((h) => ({
+      nombre: h.nombre,
+      total: h.total,
+      sumaNeto: h.sumaNeto,
+      descontado: h.total === null ? 0 : redondear(h.sumaNeto - h.total),
+      pagados: h.pagados,
+      reparto: h.reparto,
+    })),
+  };
+}
+
 /* ───────────────────────── Cálculos ───────────────────────── */
 
 export function categoriaDe(m, cats) {
@@ -624,11 +810,19 @@ export function resumenMB(movs, base, cats) {
     else destino.retirado += m.importe;
     destino.veces++;
   }
-  const saldoCasas = base.casas.reduce((s, c) => s + (c.saldo || 0), 0);
+  // El saldo apuntado de una casa es el de su fecha: lo metido o sacado después se suma o se resta.
+  for (const m of movs) {
+    if (m.categoria !== "mb") continue;
+    const casa = casaDe(normalizar(m.concepto), base.casas);
+    const c = casa && porCasa.get(casa.id);
+    if (c?.saldoFecha && m.fecha > c.saldoFecha) c.despues = (c.despues ?? 0) - m.importe;
+  }
+  for (const c of porCasa.values()) c.saldoHoy = redondear((c.saldo || 0) + (c.despues ?? 0));
+  const saldoCasas = [...porCasa.values()].reduce((s, c) => s + c.saldoHoy, 0);
   const saldoInicial = base.casas.reduce((s, c) => s + (c.saldoInicial || 0), 0);
   const casas = [...porCasa.values(), sinCasa]
     .filter((c) => c.veces || c.saldo || c.saldoInicial)
-    .map((c) => ({ ...c, neto: redondear(c.retirado - c.depositado + (c.saldo || 0) - (c.saldoInicial || 0)) }));
+    .map((c) => ({ ...c, neto: redondear(c.retirado - c.depositado + (c.saldoHoy ?? 0) - (c.saldoInicial || 0)) }));
   return {
     depositado: redondear(depositado),
     retirado: redondear(retirado),
