@@ -66,7 +66,7 @@ Los PDF no se pueden leer: descarga el extracto en Excel, CSV o Norma 43, o haz 
 ### Cómo clasifica los movimientos
 
 1. Tus reglas: cuando cambias la categoría de un movimiento, puedes decir «usar siempre esta categoría para los que contengan…». La regla se aplica a lo que ya tienes y a lo que importes después.
-2. Casas de apuestas: los depósitos y retiradas de las casas que tienes en la pestaña Matched van a matched betting. Puedes añadir casas y sus palabras clave.
+2. Casas de apuestas: los depósitos y retiradas de las casas que tienes en la pestaña MB van a matched betting. Puedes añadir casas y sus palabras clave.
 3. Traspasos entre tus cuentas: las recargas de Revolut, los cargos de Revolut en Ruralvía y los movimientos opuestos del mismo importe entre tus dos cuentas en 3 días se marcan como traspaso y no cuentan como gasto ni como ingreso.
 4. Palabras habituales (Mercadona, Glovo, Bizum, recibos, cajeros…).
 5. Lo que quede sin categoría sale avisado, y puedes clasificarlo a mano o con la IA.

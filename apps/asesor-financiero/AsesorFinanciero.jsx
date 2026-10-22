@@ -136,7 +136,7 @@ const PALETA = ["#8b5cf6", "#0ea5e9", "#f97316", "#10b981", "#e11d48", "#eab308"
 const TABS = [
   { id: "inicio", nombre: "Inicio", icono: House },
   { id: "movimientos", nombre: "Movimientos", icono: Receipt },
-  { id: "mb", nombre: "Matched", icono: Trophy },
+  { id: "mb", nombre: "MB", icono: Trophy },
   { id: "ahorro", nombre: "Ahorro", icono: PiggyBank },
   { id: "chat", nombre: "Chat IA", icono: MessageCircle },
 ];
@@ -1221,7 +1221,7 @@ const FILTROS = [
   ["todos", "Todos"],
   ["gasto", "Gastos"],
   ["ingreso", "Ingresos"],
-  ["mb", "Matched"],
+  ["mb", "MB"],
   ["interna", "Traspasos"],
   ["sin", "Sin categoría"],
 ];
