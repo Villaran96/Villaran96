@@ -23,6 +23,7 @@ import math
 import re
 import subprocess
 import sys
+import tempfile
 import unicodedata
 import wave
 from pathlib import Path
@@ -80,6 +81,25 @@ def trim_silence(x: np.ndarray, sr: int, thr: float = 0.012, keep: float = 0.05)
     return x[a:b], a / sr
 
 
+def stretch(path: Path, tempo: float, semitones: float) -> Path:
+    """Acelera (sin cambiar el tono) y/o desplaza el tono de un audio con rubberband de ffmpeg."""
+    out = Path(tempfile.mkdtemp()) / "x.wav"
+    af = f"rubberband=tempo={tempo:.4f}:pitch={2 ** (semitones / 12):.5f}:formant=preserved:pitchq=quality"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-af", af, "-ac", "1", "-ar", str(SR), str(out)], check=True)
+    return out
+
+
+def median_f0(path: Path) -> float:
+    """Tono medio (Hz) de un audio, con Praat. Requiere praat-parselmouth."""
+    import parselmouth
+
+    tmp = Path(tempfile.mkdtemp()) / "x.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-ac", "1", "-ar", "16000", str(tmp)], check=True)
+    f0 = parselmouth.Sound(str(tmp)).to_pitch(time_step=0.01, pitch_floor=70, pitch_ceiling=400).selected_array["frequency"]
+    f0 = f0[f0 > 0]
+    return float(np.median(f0)) if f0.size else 0.0
+
+
 def load_audio(path: Path) -> np.ndarray:
     """Cualquier formato (wav, mp3, m4a…) → float32 mono a 44,1 kHz, con PyAV."""
     import av
@@ -112,8 +132,20 @@ def synth_all(scenes: list[dict], meta: dict, args: argparse.Namespace) -> list[
             found = [p for ext in ("wav", "mp3", "m4a", "ogg", "flac") if (p := Path(args.voices_dir) / f"{s['id']}.{ext}").exists()]
             if not found:
                 sys.exit(f"Falta el audio de la escena «{s['id']}» en {args.voices_dir} (<id>.wav/.mp3/.m4a)")
-            out.append(load_audio(found[0]))
-        return out
+            out.append(found[0])
+        shifts = [0.0] * len(out)
+        if args.match_pitch:
+            f0s = [median_f0(p) for p in out]
+            target = args.target_f0 or float(np.median([f for f in f0s if f > 0]))
+            # Mismo locutor, pero cada toma sale con un tono algo distinto: se acercan al tono común (máx. ±2 st).
+            shifts = [max(-2.0, min(2.0, 12 * math.log2(target / f))) if f > 0 else 0.0 for f in f0s]
+            shifts = [x if abs(x) >= 0.6 else 0.0 for x in shifts]
+            print("  ajuste de tono (st): " + ", ".join(f"{s_['id']} {x:+.1f}" for s_, x in zip(scenes, shifts)))
+        audios = []
+        for p, st in zip(out, shifts):
+            src = stretch(p, args.tempo, st) if (args.tempo != 1.0 or st) else p
+            audios.append(load_audio(src))
+        return audios
 
     from piper import PiperVoice, SynthesisConfig
 
@@ -235,6 +267,9 @@ def main() -> None:
     ap.add_argument("--kind", default="explainer", choices=["explainer", "story"], help="Carpeta de public/: explainer (tutoriales) o story (historias animadas)")
     ap.add_argument("--voice", help="Voz de Piper (por defecto meta.voice o es_ES-davefx-medium)")
     ap.add_argument("--speed", type=float, help="1 = normal; 1.1 = un 10 % más rápido")
+    ap.add_argument("--tempo", type=float, default=1.0, help="Con --voices-dir: acelera la locución sin cambiar el tono (1.08 = +8 %%)")
+    ap.add_argument("--target-f0", type=float, default=0.0, help="Con --match-pitch: tono objetivo en Hz (por defecto, la mediana de las tomas)")
+    ap.add_argument("--match-pitch", action="store_true", help="Con --voices-dir: iguala el tono medio entre escenas (±2 semitonos como máximo)")
     ap.add_argument("--voices-dir", help="Carpeta con un audio por escena (<id>.wav/.mp3…) en vez de usar Piper")
     ap.add_argument("--whisper", default="small", help="Modelo de Whisper para alinear (tiny/base/small/medium)")
     ap.add_argument("--lang", default="es")

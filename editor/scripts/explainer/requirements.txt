@@ -3,3 +3,4 @@ piper-tts>=1.3
 faster-whisper>=1.1
 av<17          # faster-whisper no es compatible con PyAV 17+
 numpy
+praat-parselmouth  # opcional: --match-pitch (iguala el tono entre tomas de una voz externa)

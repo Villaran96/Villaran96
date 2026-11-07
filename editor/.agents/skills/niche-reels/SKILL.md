@@ -45,6 +45,24 @@ Define y guarda: nombre del canal y promesa en una frase · público · tono · 
 
 Un vídeo por cada idea de la biblia. **Varía de verdad**: gancho distinto, escenas distintas, ritmo distinto, no solo cambiar el texto de la misma plantilla. Si un vídeo necesita un elemento visual que el kit no tiene (un animal, un edificio, un planeta con anillos, una gráfica), créalo en `src/story/kit/` en vez de forzar uno que no encaja, y revisa el resultado con `StoryKit` (composición de catálogo del kit).
 
+
+## Voz de producción (no usar Piper para publicar)
+
+Piper (la voz por defecto de `build-voice.py`) es sólo para borradores: entona la mitad que un locutor real (variación de tono σ ≈ 2,8 semitonos frente a ≈ 5,4) y suena sin vida. Para publicar:
+
+1. **Elegir voz midiendo, no a ojo.** `scripts/explainer/voice-metrics.py referencia.wav candidata1.mp3 …` compara tono medio, variación y rango. Con las previsualizaciones de Higgsfield (`list_voices`) el preset más cercano al vídeo de referencia del usuario fue **Arthur**.
+2. **Generar por escenas** con Higgsfield (`generate_audio_batch`, modelo `elevenlabs_v4`, `stability` 0,4, `similarity_boost` 0,75). Por escenas, para repetir solo la que cambie y gastar menos créditos. Coste medido: ≈ 0,46 créditos por 100 caracteres (v4) y ≈ 0,31 (v4 turbo).
+3. **Descargar** los MP3 a `public/story/<slug>/voice-src/<id-escena>.mp3`.
+4. **Montar:** `.venv/bin/python scripts/explainer/build-voice.py <slug> --kind story --voices-dir public/story/<slug>/voice-src --tempo 1.08 --match-pitch --target-f0 145`.
+5. **Comprobar** con `voice-metrics.py`: σ ≥ 5 st y rango ≥ 16 st; y que Whisper transcriba ≥ 90 % del guion (dicción correcta).
+
+Límites del entorno que ya han dado problemas:
+- El proxy bloquea por defecto los servidores de Higgsfield (`d1xarpci4ikg0w.cloudfront.net`, `cdn.higgsfield.ai`, `d8j0ntlcm91z4.cloudfront.net`): hay que añadirlos con `update_environment` (pide aprobación al usuario).
+- Higgsfield limita el ritmo (`429 rate_limit_reached`): un lote de 6 aceptó 3. Reenviar solo las rechazadas, de una en una; las rechazadas no cobran.
+- La cuenta gratuita tiene pocos créditos: consultar `balance` y `get_cost` antes y decir cuánto se va a gastar.
+- **No se clona la voz de una persona real** a partir de un vídeo suyo sin su permiso. Se elige la voz de biblioteca más parecida o el usuario graba la suya.
+- Si no hay créditos: `ELEVENLABS_API_KEY` del usuario (con `request_credential`) o, como último recurso, Piper marcando el vídeo como borrador.
+
 ## Zonas seguras del lienzo (1080 × 1920)
 
 | Zona | y | Contenido |
@@ -58,6 +76,7 @@ El borde derecho (x > 940) lo ocupa la regla del medidor de profundidad si está
 
 ## Kit disponible (`src/story/kit/`)
 
+- **Escala/espacio** (`space.tsx`, `scenes/scale.tsx`): `Earth`, `Jupiter`, `Sun`, `Betelgeuse`, `SpaceBg`, `Measure`, `OrbitRing`, `PulseRing`, `BodyLabel`; cámara de «alejar» continua entre escenas.
 - **Fondos**: `DeepWater` (profundidad 0–11.000 m: color, rayos, burbujas, nieve marina con parallax) · `StarField`, `Moon`, `Planet` (`sky.tsx`).
 - **Criaturas/objetos**: `Whale`, `FishSchool`, `Jelly`, `Squid`, `Angler`, `Sub` (`water.tsx`). Todos reciben `x, y, s, flip, t, op`.
 - **HUD**: `DepthMeter`, `BigStat` (cifra grande con cuenta), `Callout` (etiqueta con línea), `Gauge` (manómetro), `Banner` (sello rotulado).
@@ -90,4 +109,7 @@ El borde derecho (x > 940) lo ocupa la regla del medidor de profundidad si está
 | Whisper alinea mal una escena | `--whisper medium` en `build-voice.py`, o frases más cortas |
 | Chromium no arranca | `ls /opt/pw-browsers`; `remotion.config.ts` busca `chromium_headless_shell-*` |
 | `metadata_errors` en faster-whisper | `pip install "av<17"` (ya fijado en `requirements.txt`) |
-| Quiero otra voz | `--voice es_MX-claude-high` (se descarga sola) o `--voices-dir` con un audio por escena (ElevenLabs, etc.) |
+| Quiero otra voz | ver «Voz de producción»: `--voices-dir` con un audio por escena (ElevenLabs/Higgsfield) |
+| `429 rate_limit_reached` en Higgsfield | reenviar solo las escenas rechazadas, de una en una |
+| `CONNECT tunnel failed, response 403` al bajar audio | añadir el host del resultado con `update_environment` |
+| El audio se recorta (pico 0 dB) | bajar el `volume` del efecto en `sfx` (el `boom` a ≤ 0,45) |

@@ -1,0 +1,111 @@
+{
+  "meta": {
+    "title": "La Tierra, el Sol y Betelgeuse a escala real",
+    "channel": "A Escala",
+    "episode": 1,
+    "accent": "#ffb23f",
+    "voice": "elevenlabs:Arthur",
+    "music": "story/music/space.wav",
+    "musicVolume": 0.3,
+    "pronounce": {}
+  },
+  "scenes": [
+    {
+      "id": "gancho",
+      "scene": "scale-zoom",
+      "props": {
+        "focus": "earth",
+        "from": "earth"
+      },
+      "narration": "Esta es la *Tierra*. Parece enorme... hasta que ves *esto*.",
+      "pad": 0.15
+    },
+    {
+      "id": "jupiter",
+      "scene": "scale-zoom",
+      "props": {
+        "focus": "jupiter",
+        "from": "earth"
+      },
+      "narration": "*Júpiter* es *once veces* más ancho. Dentro caben *más de mil* Tierras.",
+      "sfx": [
+        {
+          "name": "whoosh",
+          "at": 0.1,
+          "volume": 0.5
+        },
+        {
+          "name": "pop",
+          "atWord": 2,
+          "volume": 0.5
+        }
+      ]
+    },
+    {
+      "id": "sol",
+      "scene": "scale-zoom",
+      "props": {
+        "focus": "sun",
+        "from": "jupiter"
+      },
+      "narration": "Y el *Sol* es casi *diez veces* más ancho que Júpiter. Dentro caben *más de un millón* de Tierras.",
+      "sfx": [
+        {
+          "name": "whoosh",
+          "at": 0.1,
+          "volume": 0.5
+        },
+        {
+          "name": "boom",
+          "atWord": 11,
+          "volume": 0.45
+        }
+      ]
+    },
+    {
+      "id": "punto",
+      "scene": "scale-zoom",
+      "props": {
+        "focus": "sun",
+        "from": "sun"
+      },
+      "narration": "¿Dónde está la Tierra? Es ese *puntito*.",
+      "sfx": [
+        {
+          "name": "ping",
+          "atWord": 5,
+          "volume": 0.5
+        }
+      ]
+    },
+    {
+      "id": "betelgeuse",
+      "scene": "scale-zoom",
+      "props": {
+        "focus": "betelgeuse",
+        "from": "sun"
+      },
+      "narration": "Pero el Sol se queda pequeño al lado de *Betelgeuse*. Mide unas *setecientas veces* más. Puesta en nuestro sistema solar, llegaría *más allá de Marte*.",
+      "sfx": [
+        {
+          "name": "boom",
+          "at": 0.15,
+          "volume": 0.45
+        }
+      ]
+    },
+    {
+      "id": "cierre",
+      "scene": "scale-cta",
+      "props": {},
+      "narration": "Y es solo una estrella más. *Mañana*: cuánto tardarías en llegar al Sol *conduciendo*. Te adelanto: a cien por hora, más de *ciento setenta años*. Sigue el canal.",
+      "sfx": [
+        {
+          "name": "pop",
+          "atWord": 6,
+          "volume": 0.5
+        }
+      ]
+    }
+  ]
+}

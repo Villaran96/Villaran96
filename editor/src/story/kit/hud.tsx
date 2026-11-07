@@ -63,7 +63,8 @@ export const BigStat: React.FC<{
   accent?: string;
   size?: number;
   countFor?: number;
-}> = ({ t, at = 0, text, from = 0, to, unit, label, x = 540, y = 600, accent = "#ffd34d", size = 250, countFor = 1.6 }) => {
+  labelColor?: string;
+}> = ({ t, at = 0, text, from = 0, to, unit, label, x = 540, y = 600, accent = "#ffd34d", size = 250, countFor = 1.6, labelColor }) => {
   const p = usePopAt(t, at);
   const v = to === undefined ? undefined : from + (to - from) * ramp(t, at + 0.1, at + 0.1 + countFor);
   const shown = text ?? (v === undefined ? "" : fmt(v));
@@ -73,7 +74,7 @@ export const BigStat: React.FC<{
         {shown}
         {unit ? <span style={{ fontSize: size * 0.4, marginLeft: 12, color: accent }}>{unit}</span> : null}
       </div>
-      <div style={{ fontFamily: F.sans, fontWeight: 800, fontSize: 44, letterSpacing: "0.04em", textTransform: "uppercase", color: accent, textShadow: "0 3px 10px rgba(0,0,0,.6)", marginTop: 6 }}>{label}</div>
+      <div style={{ fontFamily: F.sans, fontWeight: 800, fontSize: 44, letterSpacing: "0.04em", textTransform: "uppercase", color: labelColor ?? accent, textShadow: `${OUTLINE.replace(/6\.0px|-6\.0px/g, "3px")}, 0 3px 10px rgba(0,0,0,.6)`, marginTop: 6 }}>{label}</div>
     </div>
   );
 };
