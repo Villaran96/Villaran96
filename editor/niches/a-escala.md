@@ -5,8 +5,8 @@
 **Tono:** asombro directo, ritmo rápido, cero relleno. Cada dato se enseña con un dibujo a escala, no solo se dice.
 **Aspecto:** espacio oscuro, cuerpos celestes vectoriales con proporciones reales, reglas de medida y cifras enormes, subtítulos ámbar.
 **Acento:** `#ffb23f` · **Música:** `story/music/space.wav` (0,3)
-**Voz:** Higgsfield `elevenlabs_v4`, preset **Arthur** (`30fc8796-ceb6-4a66-b3a7-4a145ef7f346`), `stability 0.4`, `similarity_boost 0.75`.
-Post: `build-voice.py … --voices-dir … --tempo 1.08 --match-pitch --target-f0 145`.
+**Voz:** Higgsfield `elevenlabs_v4`, preset **Arthur** (`30fc8796-ceb6-4a66-b3a7-4a145ef7f346`), una sola toma, `stability 0.25`, `similarity_boost 0.75`, puntuación expresiva (¡ ! ¿ ?).
+Post: `build-voice.py … --full-audio public/story/<slug>/voice-take/take.mp3 --match-pitch --target-f0 150` (un único ajuste global para mantener el tono de siempre).
 **Fórmula:** gancho en 2 s («Esta es la Tierra. Parece enorme… hasta que ves esto.») → escalado continuo con una cifra por escena → un momento de asombro emocional («¿Dónde está la Tierra? Es ese puntito») → teaser del siguiente vídeo.
 **Regla de oro:** las proporciones del dibujo son las reales; si un dato tiene rango de medición, se dice («unas 700 veces») y se anota la fuente.
 

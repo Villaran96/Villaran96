@@ -4,7 +4,7 @@
     "channel": "A Escala",
     "episode": 1,
     "accent": "#ffb23f",
-    "voice": "elevenlabs:Arthur",
+    "voice": "elevenlabs:Arthur (una sola toma, stability 0.25)",
     "music": "story/music/space.wav",
     "musicVolume": 0.3,
     "pronounce": {}
@@ -17,7 +17,7 @@
         "focus": "earth",
         "from": "earth"
       },
-      "narration": "Esta es la *Tierra*. Parece enorme... hasta que ves *esto*.",
+      "narration": "¡Esta es la *Tierra*! Parece enorme... ¡hasta que ves *esto*!",
       "pad": 0.15
     },
     {
@@ -27,7 +27,7 @@
         "focus": "jupiter",
         "from": "earth"
       },
-      "narration": "*Júpiter* es *once veces* más ancho. Dentro caben *más de mil* Tierras.",
+      "narration": "*¡Júpiter* es *once veces* más ancho! Dentro caben *más de mil* Tierras.",
       "sfx": [
         {
           "name": "whoosh",
@@ -48,7 +48,7 @@
         "focus": "sun",
         "from": "jupiter"
       },
-      "narration": "Y el *Sol* es casi *diez veces* más ancho que Júpiter. Dentro caben *más de un millón* de Tierras.",
+      "narration": "¡Y el *Sol* es casi *diez veces* más ancho que Júpiter! Dentro caben... *¡más de un millón* de Tierras!",
       "sfx": [
         {
           "name": "whoosh",
@@ -69,7 +69,7 @@
         "focus": "sun",
         "from": "sun"
       },
-      "narration": "¿Dónde está la Tierra? Es ese *puntito*.",
+      "narration": "¿Dónde está la Tierra? ¡Es ese *puntito*!",
       "sfx": [
         {
           "name": "ping",
@@ -85,7 +85,7 @@
         "focus": "betelgeuse",
         "from": "sun"
       },
-      "narration": "Pero el Sol se queda pequeño al lado de *Betelgeuse*. Mide unas *setecientas veces* más. Puesta en nuestro sistema solar, llegaría *más allá de Marte*.",
+      "narration": "Pero el Sol se queda pequeño al lado de *Betelgeuse*. ¡Mide unas *setecientas veces* más! Puesta en nuestro sistema solar, llegaría... *más allá de Marte*.",
       "sfx": [
         {
           "name": "boom",
@@ -98,7 +98,7 @@
       "id": "cierre",
       "scene": "scale-cta",
       "props": {},
-      "narration": "Y es solo una estrella más. *Mañana*: cuánto tardarías en llegar al Sol *conduciendo*. Te adelanto: a cien por hora, más de *ciento setenta años*. Sigue el canal.",
+      "narration": "Y es solo una estrella más. *Mañana*: ¿cuánto tardarías en llegar al Sol *conduciendo*? Te adelanto: a cien por hora, ¡más de *ciento setenta años*! Sigue el canal.",
       "sfx": [
         {
           "name": "pop",

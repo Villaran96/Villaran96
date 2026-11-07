@@ -51,9 +51,11 @@ Un vídeo por cada idea de la biblia. **Varía de verdad**: gancho distinto, esc
 Piper (la voz por defecto de `build-voice.py`) es sólo para borradores: entona la mitad que un locutor real (variación de tono σ ≈ 2,8 semitonos frente a ≈ 5,4) y suena sin vida. Para publicar:
 
 1. **Elegir voz midiendo, no a ojo.** `scripts/explainer/voice-metrics.py referencia.wav candidata1.mp3 …` compara tono medio, variación y rango. Con las previsualizaciones de Higgsfield (`list_voices`) el preset más cercano al vídeo de referencia del usuario fue **Arthur**.
-2. **Generar por escenas** con Higgsfield (`generate_audio_batch`, modelo `elevenlabs_v4`, `stability` 0,4, `similarity_boost` 0,75). Por escenas, para repetir solo la que cambie y gastar menos créditos. Coste medido: ≈ 0,46 créditos por 100 caracteres (v4) y ≈ 0,31 (v4 turbo).
-3. **Descargar** los MP3 a `public/story/<slug>/voice-src/<id-escena>.mp3`.
-4. **Montar:** `.venv/bin/python scripts/explainer/build-voice.py <slug> --kind story --voices-dir public/story/<slug>/voice-src --tempo 1.08 --match-pitch --target-f0 145`.
+2. **Generar TODO el guion en una sola toma** (`generate_audio_batch` con una única petición, modelo `elevenlabs_v4`, `stability` 0,25, `similarity_boost` 0,75, escenas separadas por una línea en blanco). Mantiene el mismo tono y energía de principio a fin y es más barato (551 caracteres = 2,76 créditos; por escenas ≈ 3,2 por el cargo mínimo de cada petición). Por escenas sueltas solo para repetir una escena concreta.
+   - **Entonación:** la puntuación expresiva (`¡ !` `¿ ?` y puntos suspensivos) y la estabilidad baja dan mucha más vida (σ de tono 5,6 → 6,6 st; rango 18 → 22 st), pero **suben el tono ~3,7 semitonos** (153 → 186 Hz) y la voz suena «excitada». Si el usuario quiere el mismo tono, se compensa con un desplazamiento global (paso 4).
+   - En el guion, el marcador de acento `*` debe ir **al principio de la palabra**: `*¡Júpiter*`, no `¡*Júpiter*`.
+3. **Descargar** el MP3 a `public/story/<slug>/voice-take/take.mp3`.
+4. **Montar:** `.venv/bin/python scripts/explainer/build-voice.py <slug> --kind story --full-audio public/story/<slug>/voice-take/take.mp3 --match-pitch --target-f0 150`. Usa la toma entera y corta las escenas por los tiempos reales de las palabras (no por tomas sueltas). `--match-pitch` aplica **un único** desplazamiento global (rubberband, conserva el timbre); sin él se deja el tono natural de la toma. Para modo por escenas: `--voices-dir` con `--tempo`.
 5. **Comprobar** con `voice-metrics.py`: σ ≥ 5 st y rango ≥ 16 st; y que Whisper transcriba ≥ 90 % del guion (dicción correcta).
 
 Límites del entorno que ya han dado problemas:

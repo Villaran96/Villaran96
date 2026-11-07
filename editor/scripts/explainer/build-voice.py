@@ -261,6 +261,76 @@ def mouth_levels(x: np.ndarray, total_frames: int) -> str:
 # ───────────────────────────────────────────────────────── principal
 
 
+def write_outputs(folder: Path, mix: np.ndarray, timing_scenes: list[dict], total: float) -> None:
+    """voice.wav + timing.json + captions.json a partir de la mezcla final y los tiempos de cada escena."""
+    total_frames = int(round(total * FPS))
+    mix = mix * (0.89 / max(1e-6, float(np.max(np.abs(mix)))))  # pico a −1 dBFS
+    with wave.open(str(folder / "voice.wav"), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(SR)
+        wf.writeframes((np.clip(mix, -1, 1) * 32767).astype(np.int16).tobytes())
+    timing = {"fps": FPS, "duration": round(total, 3), "mouth": mouth_levels(mix, total_frames), "scenes": timing_scenes}
+    (folder / "timing.json").write_text(json.dumps(timing, ensure_ascii=False), encoding="utf-8")
+    captions = [
+        {"text": ("" if j == 0 and k == 0 else " ") + w["t"], "startMs": round(w["s"] * 1000), "endMs": round(w["e"] * 1000), "timestampMs": round((w["s"] + w["e"]) * 500), "confidence": None}
+        for k, sc in enumerate(timing_scenes)
+        for j, w in enumerate(sc["words"])
+    ]
+    (folder / "captions.json").write_text(json.dumps(captions, ensure_ascii=False), encoding="utf-8")
+    print(f"\nListo: {total:.1f} s ({total_frames} fotogramas) → {folder.relative_to(ROOT)}/")
+
+
+def build_from_take(args: argparse.Namespace, scenes: list[dict], folder: Path) -> None:
+    """Una locución continua (--full-audio): se usa entera y los límites de escena salen de los tiempos de las palabras."""
+    from faster_whisper import WhisperModel
+
+    src = Path(args.full_audio)
+    shift = 0.0
+    if args.match_pitch:
+        f0 = median_f0(src)
+        target = args.target_f0 or f0
+        shift = max(-5.0, min(5.0, 12 * math.log2(target / f0))) if f0 > 0 else 0.0
+        print(f"  tono medio de la toma {f0:.0f} Hz → objetivo {target:.0f} Hz: desplazamiento global {shift:+.2f} st")
+    audio = load_audio(stretch(src, args.tempo, shift) if (args.tempo != 1.0 or abs(shift) > 0.05) else src)
+
+    print(f"Cargando Whisper ({args.whisper})…", flush=True)
+    model = WhisperModel(args.whisper, device="cpu", compute_type="int8")
+    counts = [len(narration_tokens(s["narration"])) for s in scenes]
+    words = [w for s in scenes for w in narration_tokens(s["narration"])]
+    times = align(words, heard_words(model, audio, args.lang), 0.0, len(audio) / SR)
+
+    lead = max(0.0, FIRST_LEAD - times[0][0])  # silencio inicial antes de la primera palabra
+    times = [(a + lead, b + lead) for a, b in times]
+    total = math.ceil((times[-1][1] + LAST_PAD) * FPS) / FPS
+    mix = np.zeros(int(math.ceil(total * SR)) + SR, np.float32)
+    k0 = int(lead * SR)
+    mix[k0 : k0 + len(audio)] = audio[: len(mix) - k0]
+    mix = mix[: int(math.ceil(total * SR))]
+
+    timing_scenes, k, prev_end = [], 0, 0.0
+    for i, (s, n) in enumerate(zip(scenes, counts)):
+        ts = times[k : k + n]
+        k += n
+        first, last = ts[0][0], ts[-1][1]
+        # La escena siguiente empieza a mitad del hueco entre la última palabra de esta y la primera de la otra.
+        end = total if i == len(scenes) - 1 else min(total, round(((last + times[k][0]) / 2) * FPS) / FPS)
+        end = max(end, prev_end + 1 / FPS)
+        timing_scenes.append(
+            {
+                "id": s["id"],
+                "start": round(prev_end, 3),
+                "voiceStart": round(first, 3),
+                "voiceEnd": round(last, 3),
+                "end": round(end, 3),
+                "words": [{"t": w, "s": round(a, 3), "e": round(b, 3)} for w, (a, b) in zip(words[k - n : k], ts)],
+            }
+        )
+        print(f"  {s['id']:<14} voz {first:5.1f}–{last:5.1f} s · escena {prev_end:5.1f}–{end:5.1f} s · {n} palabras")
+        prev_end = end
+    write_outputs(folder, mix, timing_scenes, total)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("slug")
@@ -270,6 +340,7 @@ def main() -> None:
     ap.add_argument("--tempo", type=float, default=1.0, help="Con --voices-dir: acelera la locución sin cambiar el tono (1.08 = +8 %%)")
     ap.add_argument("--target-f0", type=float, default=0.0, help="Con --match-pitch: tono objetivo en Hz (por defecto, la mediana de las tomas)")
     ap.add_argument("--match-pitch", action="store_true", help="Con --voices-dir: iguala el tono medio entre escenas (±2 semitonos como máximo)")
+    ap.add_argument("--full-audio", help="Una locución continua de todo el guion (mp3/wav): se usa entera y las escenas se cortan por los tiempos de las palabras")
     ap.add_argument("--voices-dir", help="Carpeta con un audio por escena (<id>.wav/.mp3…) en vez de usar Piper")
     ap.add_argument("--whisper", default="small", help="Modelo de Whisper para alinear (tiny/base/small/medium)")
     ap.add_argument("--lang", default="es")
@@ -282,6 +353,10 @@ def main() -> None:
     ids = [s["id"] for s in scenes]
     if len(set(ids)) != len(ids):
         sys.exit("Hay ids de escena repetidos en script.json")
+
+    if args.full_audio:
+        build_from_take(args, scenes, folder)
+        return
 
     print(f"Sintetizando {len(scenes)} escenas…", flush=True)
     raw = synth_all(scenes, meta, args)

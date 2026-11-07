@@ -85,7 +85,8 @@ const ScaleZoom: React.FC<SceneCtx> = (c) => {
   const showLabel = fade(t, id === "gancho" ? cue(3) : 1.3);
   const measureP = ramp(t, id === "gancho" ? cue(3) + 0.2 : 1.5, (id === "gancho" ? cue(3) + 0.2 : 1.5) + 0.7);
 
-  const ringsT = [6.75, 7.0, 7.25, 7.5];
+  // Los anillos salen cuando el disco ya se ha colocado sobre el Sol (el desplazamiento termina ≈ 1,3 s después de «Puesta»)
+  const ringsT = [0, 1, 2, 3].map((i) => cue(15) + 1.0 + i * 0.22);
   const rings = [
     { name: "MERCURIO", au: 0.387, angle: 2.55 },
     { name: "VENUS", au: 0.723, angle: 3.75 },
