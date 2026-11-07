@@ -13,6 +13,7 @@ import { TOTAL_FRAMES } from "./theme";
 import { Card3D } from "./three/Card3D";
 import { ARCADE_TOTAL, ArcadePromo } from "./arcade/ArcadePromo";
 import { EDITORIAL_TOTAL, EditorialPromo } from "./editorial/Editorial";
+import { Explainer, calculateExplainerMetadata } from "./explainer/Explainer";
 import { GeminiShowreel } from "./GeminiShowreel";
 import { ISO_TOTAL, IsoPromo } from "./iso/IsoPromo";
 import { MotionPromo } from "./motion/MotionPromo";
@@ -58,6 +59,26 @@ export const RemotionRoot: React.FC = () => {
       />
       <Composition id="ArcadePromo" component={ArcadePromo} durationInFrames={ARCADE_TOTAL} fps={30} width={1080} height={1920} defaultProps={{ withMusic: true }} />
       <Composition id="EditorialPromo" component={EditorialPromo} durationInFrames={EDITORIAL_TOTAL} fps={30} width={1920} height={1080} defaultProps={{ withMusic: true }} />
+      <Composition
+        id="Explainer"
+        component={Explainer}
+        durationInFrames={900}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{ slug: "resenas-nfc" }}
+        calculateMetadata={calculateExplainerMetadata}
+      />
+      <Composition
+        id="ExplainerGaleria"
+        component={Explainer}
+        durationInFrames={420}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{ slug: "galeria" }}
+        calculateMetadata={calculateExplainerMetadata}
+      />
       <Composition id="GeminiShowreel" component={GeminiShowreel} durationInFrames={1080} fps={60} width={1920} height={1080} />
       <Composition id="IsoPromo" component={IsoPromo} durationInFrames={ISO_TOTAL} fps={30} width={1080} height={1080} defaultProps={{ withMusic: true }} />
       <Folder name="Motion">

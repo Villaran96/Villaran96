@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "title": "Galería de tarjetas",
+    "handle": "@tu_usuario",
+    "steps": 4,
+    "voice": "es_ES-davefx-medium",
+    "speed": 1.05
+  },
+  "scenes": [
+    {
+      "id": "escritorio",
+      "kicker": "// galería · desktop + callout",
+      "narration": "Crea una *carpeta* en el escritorio y ponle nombre.",
+      "head": { "small": "// en el escritorio", "text": "CREA UNA *CARPETA*", "badge": 1 },
+      "cards": [
+        { "type": "desktop", "folder": "carpeta sin título", "rename": "Mis vídeos", "thumbs": 3, "h": 540, "y": 900, "at": 0.4 },
+        { "type": "callout", "title": "clic derecho", "sub": "→ Nueva carpeta", "at": 1.2 }
+      ]
+    },
+    {
+      "id": "prompt",
+      "kicker": "// galería · prompt + sellos",
+      "narration": "Pega el *prompt* y escribe tu idea en una sola línea.",
+      "head": { "small": "// en el chat", "text": "PEGA EL *PROMPT*", "badge": 2 },
+      "cards": [
+        { "type": "prompt", "pasted": { "name": "prompt.txt", "lines": 52 }, "text": "Eres mi director de animación y montador de reels. Vamos a hacer reels verticales animados en 2D, con personajes y subtítulos sincronizados…", "h": 360, "y": 840, "at": 0.4 },
+        { "type": "prompt", "text": "un novato y un pro abriendo su canal", "placeholder": "¿De qué va tu vídeo?", "typeAt": 1.6, "h": 220, "y": 1150, "at": 1.4 }
+      ],
+      "stickers": [
+        { "type": "stamp", "text": "1 línea", "size": 70, "x": 780, "y": 1290, "rotate": -5, "at": 2.6 }
+      ]
+    },
+    {
+      "id": "documento",
+      "kicker": "// galería · móvil + checklist en negrita",
+      "narration": "Tu guion, tu voz y tus escenas, todo se *hace solo*.",
+      "head": { "small": "// automático", "text": "SE HACE *SOLO*", "badge": 3 },
+      "cards": [
+        { "type": "phone", "screen": "doc", "heading": "Guion", "title": "Primer mes de un novato y de un pro…", "wave": true, "at": 0.4, "y": 990, "h": 740 },
+        { "type": "checklist", "variant": "bold", "title": "Paso 3", "items": ["Guion", "Voz", "Escenas"], "startAt": 1.0, "every": 0.6, "slot": "free", "x": 790, "y": 760, "w": 400, "h": 300, "at": 0.8 }
+      ]
+    },
+    {
+      "id": "fotos",
+      "kicker": "// galería · polaroids + antes/después",
+      "narration": "El primer mes contra el *primer año*. Hazlo más visual.",
+      "head": { "small": "// la comparación", "text": "*ANTES* Y DESPUÉS", "badge": 4 },
+      "cards": [
+        { "type": "polaroids", "items": [{ "caption": "primer mes", "gradient": ["#33406f", "#0d1130"] }, { "caption": "1 millón", "gradient": ["#2b5fe0", "#0b1a5a"], "tilt": 4 }], "h": 540, "y": 920, "at": 0.4 }
+      ],
+      "stickers": [
+        { "type": "tag", "text": "¿Monetizar?", "icon": "play", "size": 52, "x": 300, "y": 1340, "rotate": -3, "at": 2.4 }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { findHeadlessShell } from "./browser.mjs";
 
 const [out, ...specs] = process.argv.slice(2);
 if (!out || specs.length === 0) {
@@ -13,7 +14,7 @@ if (!out || specs.length === 0) {
   process.exit(1);
 }
 
-const browserExecutable = "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell";
+const browserExecutable = findHeadlessShell();
 const chromiumOptions = { gl: "angle" };
 const serveUrl = await bundle({ entryPoint: path.resolve("src/index.ts") });
 const dir = mkdtempSync(path.join(tmpdir(), "stills-"));

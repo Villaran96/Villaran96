@@ -1,0 +1,355 @@
+{
+  "meta": {
+    "title": "5 pasos para conseguir más reseñas con una tarjeta NFC",
+    "handle": "Cierzo NFC",
+    "steps": 5,
+    "voice": "es_ES-davefx-medium",
+    "speed": 1.08,
+    "pronounce": {
+      "NFC": "ene efe ce",
+      "Google": "Gúgel"
+    }
+  },
+  "scenes": [
+    {
+      "id": "gancho",
+      "kicker": "// 01 · el gancho",
+      "narration": "Tu negocio es *genial*, pero casi nadie te deja *reseña*. Hoy te enseño cómo conseguir más, en cinco pasos.",
+      "cards": [
+        {
+          "type": "phone",
+          "screen": "stars",
+          "title": "¿Qué tal tu visita?",
+          "label": "// valora tu experiencia",
+          "rating": 5,
+          "caption": "Todo perfecto, volveremos seguro.",
+          "at": 0.3
+        }
+      ],
+      "stickers": [
+        {
+          "type": "stamp",
+          "text": "¿Cómo?",
+          "size": 130,
+          "x": 780,
+          "y": 800,
+          "rotate": -9,
+          "atWord": 8
+        },
+        {
+          "type": "tag",
+          "text": "Más reseñas",
+          "icon": "star",
+          "size": 54,
+          "x": 770,
+          "y": 1010,
+          "rotate": 3,
+          "atWord": 14
+        }
+      ]
+    },
+    {
+      "id": "hoja-de-ruta",
+      "kicker": "// 02 · la hoja de ruta",
+      "narration": "Son *cinco pasos*, y ninguno es difícil.",
+      "cards": [
+        {
+          "type": "steps",
+          "heading": "*5* pasos",
+          "featured": true,
+          "highlight": 4,
+          "highlightAt": 2.2,
+          "y": 960,
+          "h": 720,
+          "items": [
+            {
+              "n": 1,
+              "title": "Enlace",
+              "sub": "// tu ficha"
+            },
+            {
+              "n": 2,
+              "title": "Chip",
+              "sub": "// graba la tarjeta"
+            },
+            {
+              "n": 3,
+              "title": "Mostrador",
+              "sub": "// a la vista"
+            },
+            {
+              "n": 4,
+              "title": "Toque",
+              "sub": "// el cliente"
+            },
+            {
+              "n": 5,
+              "title": "Mide",
+              "sub": "// cuenta reseñas"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "enlace",
+      "kicker": "// paso 1 · el enlace",
+      "narration": "Uno: busca en tu ficha de Google el enlace para pedir *reseñas*, y cópialo.",
+      "head": {
+        "small": "// en tu ficha de negocio",
+        "text": "COPIA *TU ENLACE*",
+        "badge": 1
+      },
+      "cards": [
+        {
+          "type": "window",
+          "sidebar": [
+            {
+              "label": "Perfil"
+            },
+            {
+              "label": "Reseñas",
+              "active": true
+            },
+            {
+              "label": "Fotos"
+            }
+          ],
+          "heading": "Pedir reseñas",
+          "rows": [
+            {
+              "label": "Enlace",
+              "value": "g.page/tu-negocio",
+              "icon": "link",
+              "ring": true
+            }
+          ],
+          "ringAt": 2.4,
+          "h": 400,
+          "y": 850,
+          "at": 0.5
+        },
+        {
+          "type": "callout",
+          "title": "clic en copiar",
+          "sub": "→ lo pegas en el chip",
+          "at": 3.2
+        }
+      ]
+    },
+    {
+      "id": "chip",
+      "kicker": "// paso 2 · el chip",
+      "narration": "Dos: graba ese enlace en el chip *NFC* de la tarjeta, con una app de escritura.",
+      "head": {
+        "small": "// en tu móvil",
+        "text": "GRABA EL *CHIP*",
+        "badge": 2
+      },
+      "cards": [
+        {
+          "type": "installer",
+          "title": "Escribiendo en la tarjeta…",
+          "h": 470,
+          "y": 880,
+          "rows": [
+            {
+              "label": "Enlace",
+              "icon": "link"
+            },
+            {
+              "label": "Chip",
+              "icon": "chip"
+            },
+            {
+              "label": "Prueba",
+              "icon": "nfc"
+            }
+          ],
+          "at": 0.5
+        }
+      ],
+      "stickers": [
+        {
+          "type": "chip",
+          "text": "se graba una sola vez",
+          "size": 40,
+          "x": 330,
+          "y": 1330,
+          "rotate": -3,
+          "at": 3.6
+        }
+      ]
+    },
+    {
+      "id": "mostrador",
+      "kicker": "// paso 3 · el mostrador",
+      "narration": "Tres: pon la tarjeta donde tu cliente la vea, en el *mostrador* o en la mesa.",
+      "head": {
+        "small": "// en tu local",
+        "text": "PÓNLA *A LA VISTA*",
+        "badge": 3
+      },
+      "cards": [
+        {
+          "type": "beforeafter",
+          "before": {
+            "tag": "ANTES",
+            "text": "Mostrador vacío"
+          },
+          "after": {
+            "tag": "DESPUÉS",
+            "text": "Tarjeta a la vista",
+            "gradient": [
+              "#0e7c86",
+              "#07323a"
+            ]
+          },
+          "h": 520,
+          "y": 900,
+          "at": 0.5
+        }
+      ],
+      "stickers": [
+        {
+          "type": "stamp",
+          "text": "Visible",
+          "size": 80,
+          "x": 300,
+          "y": 1340,
+          "rotate": -7,
+          "at": 3.8
+        }
+      ]
+    },
+    {
+      "id": "toque",
+      "kicker": "// paso 4 · el toque",
+      "narration": "Cuatro: tu cliente acerca el móvil a la tarjeta, elige las *estrellas* y publica.",
+      "head": {
+        "small": "// tu cliente",
+        "text": "ACERCA Y *VALORA*",
+        "badge": 4
+      },
+      "cards": [
+        {
+          "type": "phone",
+          "screen": "stars",
+          "nfc": true,
+          "title": "Valora tu visita",
+          "label": "// toca para opinar",
+          "rating": 5,
+          "caption": "Servicio de 10. ¡Volveremos!",
+          "at": 0.5,
+          "y": 990,
+          "h": 740
+        },
+        {
+          "type": "checklist",
+          "title": "El cliente",
+          "items": [
+            {
+              "icon": "nfc",
+              "label": "Acerca el móvil"
+            },
+            {
+              "icon": "star",
+              "label": "Elige estrellas"
+            },
+            {
+              "icon": "up",
+              "label": "Publica"
+            }
+          ],
+          "startAt": 1.2,
+          "every": 1.0,
+          "h": 340,
+          "y": 850,
+          "at": 1.0
+        }
+      ],
+      "stickers": [
+        {
+          "type": "chip",
+          "text": "sin apps ni batería",
+          "size": 40,
+          "x": 330,
+          "y": 1500,
+          "rotate": -3,
+          "atWord": 12
+        }
+      ]
+    },
+    {
+      "id": "mide",
+      "kicker": "// paso 5 · mide",
+      "narration": "Cinco: mira cómo crece el número de *reseñas* y repite lo que funciona.",
+      "head": {
+        "small": "// en tu ficha",
+        "text": "MIDE *RESULTADOS*",
+        "badge": 5
+      },
+      "cards": [
+        {
+          "type": "counter",
+          "from": 27,
+          "value": 214,
+          "label": "reseñas",
+          "note": "datos de ejemplo",
+          "icon": "star",
+          "h": 250,
+          "y": 850,
+          "at": 0.5
+        },
+        {
+          "type": "callout",
+          "title": "Repite lo que funciona",
+          "sub": "→ mide cada mes",
+          "at": 3.4
+        }
+      ]
+    },
+    {
+      "id": "cierre",
+      "kicker": "// 03 · el cierre",
+      "narration": "Un toque, una reseña. Pide *la tuya* en el enlace de mi bio.",
+      "head": {
+        "small": "// siguiente paso",
+        "text": "UN TOQUE, *UNA RESEÑA*"
+      },
+      "cards": [
+        {
+          "type": "profile",
+          "name": "Cierzo NFC",
+          "meta": "tarjetas NFC para reseñas",
+          "badge": "Pídela",
+          "banner": [
+            "#c43b25",
+            "#f08a3c"
+          ],
+          "avatarIcon": "nfc",
+          "stats": [
+            {
+              "label": "sin apps"
+            },
+            {
+              "label": "sin batería"
+            },
+            {
+              "label": "iPhone y Android"
+            }
+          ],
+          "h": 440,
+          "y": 880,
+          "at": 0.5
+        },
+        {
+          "type": "callout",
+          "title": "Enlace en mi bio",
+          "sub": "→ pide la tuya",
+          "at": 2.3
+        }
+      ]
+    }
+  ]
+}
