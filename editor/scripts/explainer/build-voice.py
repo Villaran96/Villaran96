@@ -4,10 +4,10 @@
 Uso:
     .venv/bin/python scripts/explainer/build-voice.py <slug> [opciones]
 
-Lee   public/explainer/<slug>/script.json
-Crea  public/explainer/<slug>/voice.wav      locución completa (mono, 44,1 kHz)
-      public/explainer/<slug>/timing.json    tiempos por escena y palabra + envolvente de la boca
-      public/explainer/<slug>/captions.json  palabras en formato Caption[] de Remotion
+Lee   public/<kind>/<slug>/script.json     (kind: explainer por defecto, o story con --kind story)
+Crea  public/<kind>/<slug>/voice.wav      locución completa (mono, 44,1 kHz)
+      public/<kind>/<slug>/timing.json    tiempos por escena y palabra + envolvente de la boca
+      public/<kind>/<slug>/captions.json  palabras en formato Caption[] de Remotion
 
 Pasos: (1) sintetiza cada escena con Piper (o usa tus propios audios con --voices-dir),
 (2) la transcribe con Whisper para saber cuándo suena cada palabra y la alinea con el guion,
@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLIC = ROOT / "public" / "explainer"
+PUBLIC = ROOT / "public"
 VOICES = ROOT / "models" / "voices"
 FPS = 30
 SR = 44100
@@ -232,6 +232,7 @@ def mouth_levels(x: np.ndarray, total_frames: int) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("slug")
+    ap.add_argument("--kind", default="explainer", choices=["explainer", "story"], help="Carpeta de public/: explainer (tutoriales) o story (historias animadas)")
     ap.add_argument("--voice", help="Voz de Piper (por defecto meta.voice o es_ES-davefx-medium)")
     ap.add_argument("--speed", type=float, help="1 = normal; 1.1 = un 10 % más rápido")
     ap.add_argument("--voices-dir", help="Carpeta con un audio por escena (<id>.wav/.mp3…) en vez de usar Piper")
@@ -240,7 +241,7 @@ def main() -> None:
     ap.add_argument("--no-align", action="store_true", help="No usar Whisper: reparte las palabras por longitud")
     args = ap.parse_args()
 
-    folder = PUBLIC / args.slug
+    folder = PUBLIC / args.kind / args.slug
     script = json.loads((folder / "script.json").read_text(encoding="utf-8"))
     scenes, meta = script["scenes"], script.get("meta", {})
     ids = [s["id"] for s in scenes]

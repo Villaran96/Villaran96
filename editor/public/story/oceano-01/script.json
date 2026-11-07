@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "title": "Descenso al fondo del océano",
+    "channel": "Misterios del Océano",
+    "episode": 1,
+    "accent": "#ffd34d",
+    "voice": "es_ES-davefx-medium",
+    "speed": 1.04,
+    "music": "story/music/deep.wav",
+    "musicVolume": 0.32,
+    "pronounce": { "Challenger": "Chálenyer", "Everest": "Éverest" }
+  },
+  "scenes": [
+    { "id": "superficie", "scene": "ocean-surface", "props": { "from": 0, "to": 60 }, "narration": "Más de *dos tercios* del fondo del mar siguen sin cartografiarse con detalle. Hoy *bajamos* hasta allí.", "sfx": [{ "name": "pop", "atWord": 2, "volume": 0.5 }] },
+    { "id": "luz", "scene": "ocean-light", "props": { "from": 60, "to": 200 }, "narration": "A doscientos metros, la *luz del sol* empieza a apagarse." },
+    { "id": "calamar", "scene": "ocean-squid", "props": { "from": 200, "to": 700 }, "narration": "Entre trescientos y mil metros vive el *calamar gigante*, una leyenda hasta que se grabó vivo en su hábitat, en dos mil doce.", "sfx": [{ "name": "thud", "atWord": 19, "volume": 0.7 }] },
+    { "id": "oscuridad", "scene": "ocean-dark", "props": { "from": 700, "to": 1000 }, "narration": "Pasados los mil metros, ya no llega *ni un rayo* de sol.", "sfx": [{ "name": "boom", "atWord": 8, "volume": 0.6 }] },
+    { "id": "luces", "scene": "ocean-glow", "props": { "from": 1000, "to": 2500 }, "narration": "Pero no está vacío: cerca de *tres de cada cuatro* animales de estas aguas producen su propia luz.", "sfx": [{ "name": "ding", "atWord": 6, "volume": 0.45 }] },
+    { "id": "presion", "scene": "ocean-pressure", "props": { "from": 2500, "to": 4000 }, "narration": "A cuatro mil metros, la presión es unas *cuatrocientas veces* la de la superficie.", "sfx": [{ "name": "ping", "at": 0.3, "volume": 0.5 }] },
+    { "id": "challenger", "scene": "ocean-trench", "props": { "from": 4000, "to": 10935 }, "narration": "Y el punto más profundo, el abismo Challenger, supera los *diez mil novecientos* metros. El *Everest* cabría dentro, con más de dos kilómetros de agua por encima.", "sfx": [{ "name": "thud", "atWord": 15, "volume": 0.8 }] },
+    { "id": "cierre", "scene": "ocean-outro", "props": { "from": 10935, "to": 10935 }, "narration": "Casi todo está por descubrir. *Sigue el canal* y mañana bajamos un poco más.", "sfx": [{ "name": "pop", "atWord": 5, "volume": 0.5 }] }
+  ]
+}

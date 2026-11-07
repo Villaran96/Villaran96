@@ -16,15 +16,17 @@ if (!out || specs.length === 0) {
 
 const browserExecutable = findHeadlessShell();
 const chromiumOptions = { gl: "angle" };
+// PROPS='{"slug":"mi-video"}' node scripts/stills.mjs … → para vídeos Story/Explainer distintos del por defecto
+const inputProps = process.env.PROPS ? JSON.parse(process.env.PROPS) : undefined;
 const serveUrl = await bundle({ entryPoint: path.resolve("src/index.ts") });
 const dir = mkdtempSync(path.join(tmpdir(), "stills-"));
 const files = [];
 
 for (const [i, spec] of specs.entries()) {
   const [id, frame] = spec.split(":");
-  const composition = await selectComposition({ serveUrl, id, browserExecutable, chromiumOptions });
+  const composition = await selectComposition({ serveUrl, id, browserExecutable, chromiumOptions, inputProps });
   const file = path.join(dir, `${String(i).padStart(2, "0")}.png`);
-  await renderStill({ composition, serveUrl, output: file, frame: Number(frame), browserExecutable, chromiumOptions, scale: 0.5 });
+  await renderStill({ composition, serveUrl, output: file, frame: Number(frame), browserExecutable, chromiumOptions, scale: 0.5, inputProps });
   files.push(file);
   console.log(`${spec} -> ok`);
 }

@@ -3,6 +3,7 @@ import React, { useMemo } from "react";
 import { AbsoluteFill, CalculateMetadataFunction, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { CARDS, DEFAULT_SLOT } from "./cards";
 import { Character } from "./Character";
+import { makeMetadata } from "./load";
 import { Headline, Kicker } from "./Header";
 import { Karaoke, buildPages } from "./Karaoke";
 import { Paper } from "./Paper";
@@ -15,19 +16,7 @@ void fontsReady;
 const EXIT_FRAMES = 8;
 const SFX = (name: string) => staticFile(`explainer/sfx/${name}.wav`);
 
-/** Lee guion y tiempos del vídeo `slug` y ajusta la duración a la voz. */
-export const calculateExplainerMetadata: CalculateMetadataFunction<ExplainerProps> = async ({ props }) => {
-  const base = `explainer/${props.slug}`;
-  const get = async (file: string) => {
-    const res = await fetch(staticFile(`${base}/${file}`));
-    if (!res.ok) {
-      throw new Error(`Falta public/${base}/${file}. Para generarlo: .venv/bin/python scripts/explainer/build-voice.py ${props.slug}`);
-    }
-    return res.json();
-  };
-  const [script, timing] = await Promise.all([get("script.json"), get("timing.json")]);
-  return { durationInFrames: Math.ceil(timing.duration * timing.fps), fps: timing.fps, props: { ...props, script, timing } };
-};
+export const calculateExplainerMetadata: CalculateMetadataFunction<ExplainerProps> = makeMetadata<ExplainerProps>("explainer");
 
 // ───────────────────────────────────────────────────────── Elementos colocados en la maqueta
 
@@ -163,7 +152,7 @@ export const Explainer: React.FC<ExplainerProps> = ({ slug, script, timing }) =>
         </div>
       ) : null}
 
-      <Audio src={staticFile(`${base}/voice.wav`)} premountFor={fps} />
+      <Audio src={staticFile(`${base}/voice.wav`)} volume={0.85} premountFor={fps} />
       {script.meta.music ? <Audio src={staticFile(script.meta.music)} loop volume={script.meta.musicVolume ?? 0.1} premountFor={fps} /> : null}
     </AbsoluteFill>
   );

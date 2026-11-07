@@ -115,6 +115,68 @@ HUD en todos los fotogramas: escena, coordenadas X/Y del punto seguido, `128 BPM
 npx remotion render GeminiShowreel gemini_showreel.mp4 --codec=h264
 ```
 
+## Vídeos por guion: `Explainer` y `Story`
+
+Dos composiciones **dirigidas por datos**: un vídeo es una carpeta `public/<tipo>/<slug>/` con un `script.json`; la voz y los tiempos se generan solos. Todo es local y gratuito (Piper para la voz, Whisper para alinear palabras, Remotion para animar y renderizar).
+
+| | `Explainer` | `Story` |
+|---|---|---|
+| Para qué | Tutoriales «paso a paso» con tarjetas de interfaz (el formato del vídeo de referencia) | Historias animadas para canales de nicho: escenas ilustradas, cifras, subtítulos grandes |
+| Carpeta | `public/explainer/<slug>/` | `public/story/<slug>/` |
+| Código | `src/explainer/` | `src/story/` |
+| Demo | `resenas-nfc` (36 s), `galeria` (catálogo de tarjetas) | `oceano-01` «Descenso al fondo del océano» (43 s) |
+
+### Puesta en marcha (una vez)
+
+```console
+npm ci
+npm run explainer:setup      # .venv (piper-tts, faster-whisper) + efectos y música
+```
+
+### Hacer un vídeo
+
+```console
+npm run video -- story oceano-01            # voz → render → verificación → out/oceano-01.mp4 + hoja de revisión
+npm run video -- explainer resenas-nfc
+npm run video -- story oceano-01 --skip-voice   # re-renderizar sin regenerar la voz
+```
+
+Para ver el vídeo en Studio: `npm run dev` y abrir `Story` o `Explainer` (cambia el `slug` en las props). Para renderizar sin el script:
+`npx remotion render Story out/x.mp4 --props='{"slug":"oceano-01"}'`.
+
+`scripts/explainer/build-voice.py <slug> [--kind story] [--voice …] [--speed 1.05] [--voices-dir carpeta]` genera `voice.wav`, `timing.json` (escenas, palabras, envolvente de la boca) y `captions.json` (formato `Caption[]` de Remotion). Con `--voices-dir` usa tus propios audios (un `<id-escena>.wav|mp3` por escena, p. ej. de ElevenLabs) y los alinea igual. `meta.pronounce` corrige palabras que la voz lee mal sin tocar los subtítulos.
+
+### `Explainer`: tarjetas disponibles
+
+Cada escena lleva `kicker`, `narration` (con `*acento*`), `head` (titular con insignia de paso), `cards` y `stickers`. Una tarjeta se coloca con `slot` (`main`, `left`, `right`, `callout`) o con `x, y, w, h`, y aparece en `at` (s) o `atWord` (palabra de la narración).
+
+| `type` | Qué dibuja |
+|---|---|
+| `phone` | Móvil con `screen`: `doc` (guion + onda de audio), `stars` (valoración con NFC), `image` |
+| `window` | Ventana de app con barra lateral, filas con aros rojos y archivos |
+| `desktop` | Escritorio con carpeta que se renombra, cursor y miniaturas |
+| `checklist` | Lista que se marca (`tasks`) o en negrita (`bold`) |
+| `installer` | Panel oscuro con barras de progreso |
+| `steps` | Rejilla de pasos numerados con uno destacado |
+| `prompt` | Caja de texto que se escribe, o prompt «pegado» |
+| `beforeafter` | Dos notas con flecha dibujada |
+| `profile` | Tarjeta de canal con banner, avatar, insignia y chips |
+| `counter` | Cifra que cuenta con nota |
+| `polaroids` | Fotos clavadas con chincheta |
+| `callout` | Nota corta |
+
+Pegatinas: `stamp` (sello rojo), `tag` (nota amarilla con icono), `chip` (píldora oscura). El personaje de serie se sustituye con `meta.character` (carpeta con `0.png…3.png`, boca cerrada → muy abierta).
+
+### `Story`: kit y escenas
+
+Cada escena es un componente React (`src/story/scenes/`) que recibe `{ t, g, dur, cue(n), props }`; `cue(n)` da el segundo en que se dice la palabra n. El kit (`src/story/kit/`) incluye fondo de profundidad (`DeepWater`), criaturas (`Whale`, `FishSchool`, `Jelly`, `Squid`, `Angler`, `Sub`), cielo (`StarField`, `Moon`, `Planet`) y HUD (`DepthMeter`, `BigStat`, `Callout`, `Gauge`, `Banner`). La composición `StoryKit` es un catálogo visual de todo ello. Transiciones por escena: `fade`, `slide`, `zoom`, `cut`.
+
+Música ambiental (`story/music/{deep,space,mystery,lofi}.wav`, bucle sin cortes) y efectos (`pop, thud, whoosh, ding, boom, ping, tick`) se sintetizan con `scripts/explainer/make-music.py` y `make-sfx.py`.
+
+El método completo para producir series por nicho (biblia del canal, guion, investigación, revisión) está en la skill `.agents/skills/niche-reels/SKILL.md`; los canales viven en `niches/<nicho>.md`.
+
+Licencia: Remotion es gratuito para particulares y equipos pequeños; revisa [remotion.pro/license](https://www.remotion.pro/license) si lo usas en una empresa más grande.
+
 ## Transcripción con Whisper
 
 `scripts/transcribe.sh` genera subtítulos por palabra con whisper.cpp. Necesita el modelo en `models/ggml-<modelo>.bin` (ver `scripts/get-model.sh`).

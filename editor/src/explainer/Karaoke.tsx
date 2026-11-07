@@ -7,11 +7,13 @@ import type { Script, Timing } from "./types";
 export type KWord = { text: string; accent: boolean; s: number; e: number };
 export type Page = { from: number; to: number; words: KWord[] };
 
-const MAX_WORDS = 8;
-const MAX_CHARS = 44;
+export type PageOptions = { maxWords?: number; maxChars?: number; minClause?: number };
 
-/** Trocea la narración de cada escena en «páginas» de 1–2 líneas: corta en puntuación o al llenarse. */
-export const buildPages = (script: Script, timing: Timing): Page[] => {
+/** Trocea la narración de cada escena en «páginas» (1–2 líneas por defecto): corta en puntuación o al llenarse. */
+export const buildPages = (script: Pick<Script, "scenes"> | { scenes: { narration: string }[] }, timing: Timing, opts: PageOptions = {}): Page[] => {
+  const MAX_WORDS = opts.maxWords ?? 8;
+  const MAX_CHARS = opts.maxChars ?? 44;
+  const MIN_CLAUSE = opts.minClause ?? 3;
   const pages: Page[] = [];
   script.scenes.forEach((scene, i) => {
     const st = timing.scenes[i];
@@ -37,7 +39,7 @@ export const buildPages = (script: Script, timing: Timing): Page[] => {
       const full = cur.length >= MAX_WORDS || chars >= MAX_CHARS;
       const next = words[k + 1];
       const nextWouldOverflow = next && chars + next.text.length + 1 > MAX_CHARS + 6;
-      if ((endsClause && cur.length >= 3) || full || nextWouldOverflow) flush();
+      if ((endsClause && cur.length >= MIN_CLAUSE) || full || nextWouldOverflow) flush();
     });
     flush();
   });

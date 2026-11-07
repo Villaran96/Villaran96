@@ -69,6 +69,20 @@ def main() -> None:
     ding = (np.sin(2 * np.pi * 1318 * t) + 0.5 * np.sin(2 * np.pi * 1976 * t) + 0.25 * np.sin(2 * np.pi * 2637 * t)) * np.exp(-t / 0.22)
     save("ding", ding, 0.55)
 
+    # boom: golpe profundo con cola (revelaciones, «ni un rayo de sol»)
+    t = t_axis(1.4)
+    boom = sweep(95, 28, 1.4) * np.exp(-t / 0.42) + 0.25 * one_pole(rng.normal(0, 1, len(t)), np.full(len(t), 160.0)) * np.exp(-t / 0.3)
+    save("boom", boom, 0.9)
+
+    # ping: sonar con eco
+    t = t_axis(2.6)
+    one = np.sin(2 * np.pi * 1240 * t) * np.exp(-t / 0.35) * np.clip(t / 0.01, 0, 1)
+    ping = one.copy()
+    for delay, gain in ((0.55, 0.38), (1.1, 0.16)):
+        k = int(delay * SR)
+        ping[k:] += gain * one[: len(one) - k]
+    save("ping", ping, 0.5)
+
     # tick: clic seco
     t = t_axis(0.05)
     save("tick", np.sin(2 * np.pi * 3200 * t) * np.exp(-t / 0.006), 0.5)

@@ -37,7 +37,8 @@
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",
     "lint": "eslint src && tsc",
-    "explainer:setup": "python3 -m venv .venv && .venv/bin/pip install -r scripts/explainer/requirements.txt && python3 scripts/explainer/make-sfx.py",
-    "explainer:voice": ".venv/bin/python scripts/explainer/build-voice.py"
+    "explainer:setup": "python3 -m venv .venv && .venv/bin/pip install -r scripts/explainer/requirements.txt && python3 scripts/explainer/make-sfx.py && python3 scripts/explainer/make-music.py",
+    "explainer:voice": ".venv/bin/python scripts/explainer/build-voice.py",
+    "video": "scripts/make-video.sh"
   }
 }

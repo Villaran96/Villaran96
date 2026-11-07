@@ -15,6 +15,8 @@ import { ARCADE_TOTAL, ArcadePromo } from "./arcade/ArcadePromo";
 import { EDITORIAL_TOTAL, EditorialPromo } from "./editorial/Editorial";
 import { Explainer, calculateExplainerMetadata } from "./explainer/Explainer";
 import { GeminiShowreel } from "./GeminiShowreel";
+import { KitSheet } from "./story/KitSheet";
+import { Story, calculateStoryMetadata } from "./story/Story";
 import { ISO_TOTAL, IsoPromo } from "./iso/IsoPromo";
 import { MotionPromo } from "./motion/MotionPromo";
 import { MgBenefits } from "./motion/scenes/MgBenefits";
@@ -79,6 +81,17 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={{ slug: "galeria" }}
         calculateMetadata={calculateExplainerMetadata}
       />
+      <Composition
+        id="Story"
+        component={Story}
+        durationInFrames={900}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{ slug: "oceano-01" }}
+        calculateMetadata={calculateStoryMetadata}
+      />
+      <Composition id="StoryKit" component={KitSheet} durationInFrames={180} fps={30} width={1080} height={1920} defaultProps={{ depth: 900 }} />
       <Composition id="GeminiShowreel" component={GeminiShowreel} durationInFrames={1080} fps={60} width={1920} height={1080} />
       <Composition id="IsoPromo" component={IsoPromo} durationInFrames={ISO_TOTAL} fps={30} width={1080} height={1080} defaultProps={{ withMusic: true }} />
       <Folder name="Motion">
