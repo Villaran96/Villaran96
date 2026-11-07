@@ -14,3 +14,6 @@ models/
 # Render del showreel
 gemini_showreel.mp4
 .venv
+
+# temporales de medición de voz
+*.16k.wav
