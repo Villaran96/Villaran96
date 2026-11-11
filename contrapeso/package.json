@@ -1,0 +1,1 @@
+{"name":"contrapeso","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.mjs","start":"node server/server.mjs","build":"node scripts/build.mjs"}}
