@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  normalizeTheOddsApi, findMatches, findDutches, demoEvents, snapToTick, nextTick, prevTick, collectBooks, fetchTheOddsApi, outcomeLabel, marketLabel,
+  normalizeTheOddsApi, findMatches, demoEvents, snapToTick, nextTick, prevTick, collectBooks, fetchTheOddsApi, outcomeLabel, marketLabel,
 } from '../js/odds.js';
 
 // Respuesta con la forma documentada de /v4/sports/{sport}/odds (markets=h2h,totals, includeLinks=true).
@@ -107,12 +107,13 @@ test('demostración: muchos partidos, varios mercados y buenas oportunidades', (
   const soccer = a.find((e) => e.sport === 'soccer');
   assert.deepEqual(Object.keys(soccer.markets).sort(), ['btts', 'h2h', 'tot:1.5', 'tot:2.5', 'tot:3.5']);
   const rows = findMatches(a, { now });
-  assert.ok(rows.length > 5000, `filas: ${rows.length}`);
-  const good = rows.filter((r) => r.rating >= 97).length;
-  assert.ok(good >= 40, `filas con rating >= 97: ${good}`);
+  assert.ok(rows.length > 2500, `filas: ${rows.length}`);
+  const good = rows.filter((r) => r.rating >= 95).length;
+  assert.ok(good >= 40, `filas con rating >= 95: ${good}`);
   assert.ok(rows.filter((r) => r.rating >= 100).length < rows.length * 0.01, 'las surebets deben ser raras');
   const { bookies, exchanges, leagues, families } = collectBooks(a);
-  assert.ok(bookies.length > 12 && exchanges.length === 1 && leagues.includes('LaLiga'));
+  assert.deepEqual(bookies.map(([, t]) => t).sort(), ['Bet365', 'DAZN Bet', 'Retabet', 'Sportium', 'Winamax']);
+  assert.ok(exchanges.length === 1 && leagues.includes('LaLiga'));
   assert.equal(families.length, 3);
 });
 
@@ -126,19 +127,6 @@ test('las probabilidades del demo son coherentes', () => {
   }
   assert.ok(ex.m['tot:1.5'].over.back < ex.m['tot:2.5'].over.back);
   assert.ok(ex.m['tot:2.5'].over.back < ex.m['tot:3.5'].over.back);
-});
-
-test('favor-favor: con dinero y con apuesta gratis, en cualquier mercado', () => {
-  const now = Date.parse('2026-11-11T12:00:00Z');
-  const events = demoEvents(now);
-  const cash = findDutches(events, { now, stake: 100 });
-  assert.ok(cash.length > 100);
-  assert.ok(cash.every((d) => d.legs.length === d.event.markets[d.mk].length));
-  const fb = findDutches(events, { now, stake: 10, freebetBook: 'bet365' });
-  assert.ok(fb.length > 0);
-  assert.ok(fb.every((d) => d.legs.filter((l) => l.freebet).length === 1));
-  const onlyGoals = findDutches(events, { now, stake: 10, freebetBook: 'bet365', families: new Set(['tot']) });
-  assert.ok(onlyGoals.length > 0 && onlyGoals.every((d) => d.mk.startsWith('tot:')));
 });
 
 test('cliente de The Odds API: pide enlaces, lee la cuota restante y normaliza', async () => {
@@ -163,4 +151,15 @@ test('cliente de The Odds API: pide enlaces, lee la cuota restante y normaliza',
 test('cliente de The Odds API: clave inválida corta la descarga', async () => {
   const fakeFetch = async () => ({ ok: false, status: 401, headers: new Map(), json: async () => ({ message: 'API key is not valid' }) });
   await assert.rejects(fetchTheOddsApi({ apiKey: 'x', sports: ['a', 'b'], fetchImpl: fakeFetch }), /not valid/);
+});
+
+test('modo reembolso: el rating es el beneficio en % del importe y favorece cuotas altas', () => {
+  const now = Date.parse('2026-11-11T12:00:00Z');
+  const rows = findMatches(demoEvents(now), { now, mode: 'refund', stake: 100, refund: 150, retention: 72, minOdds: 1.5, maxOdds: 10 });
+  assert.ok(rows.length > 100);
+  for (const r of rows.slice(0, 50)) assert.ok(Math.abs(r.rating - r.profit) < 1e-9, 'con 100 € el % coincide con los euros');
+  const best = [...rows].sort((x, y) => y.profit - x.profit)[0];
+  const worst = [...rows].sort((x, y) => x.profit - y.profit)[0];
+  assert.ok(best.back > worst.back, 'las cuotas altas valen más en un reembolso');
+  assert.ok(best.profit > 70 && best.profit < 100, String(best.profit));
 });

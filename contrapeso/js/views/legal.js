@@ -5,7 +5,7 @@
 import {
   route, pageHead, site, brand, plans, priceLabel, isAdmin,
 } from '../core.js';
-import { esc, icon } from '../util.js';
+import { esc, icon, fmt } from '../util.js';
 import { PLAN_ORDER } from '../plans.js';
 
 const v = (x, label) => (x && String(x).trim() ? esc(x) : `<span class="pending">[pendiente: ${esc(label)}]</span>`);
@@ -70,8 +70,8 @@ function condiciones() {
   const p = plans();
   return page('Condiciones de contratación', [
     ['El servicio', `<p>${esc(brand())} ofrece herramientas (oddsmatcher, calculadoras, seguimiento) y contenidos formativos sobre apuestas cubiertas. Los planes y lo que incluye cada uno están en la página de Planes.</p>`],
-    ['Precios', `<ul>${PLAN_ORDER.filter((id) => p[id].price > 0).map((id) => `<li><b>${esc(p[id].name)}:</b> ${esc(priceLabel(p[id]))}, impuestos incluidos.${p[id].trialDays ? ` Incluye ${p[id].trialDays} días de prueba la primera vez.` : ''}</li>`).join('')}</ul>`],
-    ['Pago, renovación y cancelación', '<p>El pago se hace con tarjeta a través de Stripe. Las suscripciones se renuevan automáticamente al final de cada periodo hasta que las canceles desde Cuenta → Gestionar pago. Al cancelar mantienes el acceso hasta el final del periodo pagado. Si cancelas durante la prueba gratuita, no se te cobra nada.</p>'],
+    ['Precios', `<ul>${PLAN_ORDER.filter((id) => p[id].price > 0).map((id) => `<li><b>${esc(p[id].name)}:</b> ${esc(priceLabel(p[id]))}${Number(p[id].priceYear) > 0 ? ` o ${esc(fmt.eur(p[id].priceYear))} al año` : ''}, impuestos incluidos.${p[id].trialDays ? ` Incluye ${p[id].trialDays} días de prueba la primera vez.` : ''}</li>`).join('')}</ul>`],
+    ['Pago, renovación y cancelación', '<p>El pago se hace con tarjeta a través de Stripe, cada mes o cada año según elijas. Las suscripciones se renuevan automáticamente al final de cada periodo (mensual o anual) hasta que las canceles desde Cuenta → Cancelar la suscripción. Al cancelar mantienes el acceso hasta el final del periodo pagado y puedes reactivarla antes de que termine. Si cancelas durante la prueba gratuita, no se te cobra nada.</p><p>Puedes cambiar de plan o de forma de pago cuando quieras: se cambia tu misma suscripción y Stripe ajusta el importe de forma proporcional al tiempo que queda del periodo. Los códigos de descuento se aplican en la página de pago con las condiciones que indique cada código.</p>'],
     ['Derecho de desistimiento', `<p>Tienes 14 días naturales desde la contratación para desistir escribiendo a ${v(s.email, 'correo de contacto')}. Si ya has empezado a usar el servicio, te devolveremos el importe descontando la parte proporcional del tiempo usado. El plan ${esc(p.metodo.name)} tiene condiciones propias que se recogen en su contrato.</p>`],
     ['Plan Método', `<p>El plan ${esc(p.metodo.name)} tiene plazas limitadas y se contrata firmando un contrato online, que recibirás por correo. En caso de diferencia, prevalece lo que diga ese contrato.</p>`],
     ['Uso de la cuenta', '<p>La cuenta es personal. Tienes que ser mayor de 18 años y no puedes compartir tu acceso ni los contenidos de pago. Si lo haces, podemos cancelar tu cuenta.</p>'],

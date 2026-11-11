@@ -30,7 +30,7 @@ function homeTop() {
 function onboarding() {
   const g = guideProgress();
   const steps = [
-    { done: g.done >= 4, text: 'Lee las 4 primeras lecciones de la guía', href: '#guia', label: g.done ? `Seguir (${g.done}/${g.total})` : 'Empezar' },
+    { done: g.basics >= 4, text: 'Lee las 4 primeras lecciones de la guía', href: '#guia', label: g.basics ? `Seguir (${g.basics}/4)` : 'Empezar' },
     { done: state.settings.myBookies.length > 0, text: 'Marca las casas en las que ya tienes cuenta', href: '#ajustes', label: 'Mis casas' },
     { done: state.offers.some((o) => !o.example && o.status !== 'skip'), text: 'Empieza tu primer bono de bienvenida', act: 'home-bonos', label: 'Elegir bono' },
     { done: state.bets.some((b) => !b.example), text: 'Anota tu primera operación en Beneficios', href: '#beneficios', label: 'Beneficios' },
@@ -40,6 +40,30 @@ function onboarding() {
   return `<section class="panel onboarding">
     <div class="panel-head"><h2>${icon('star', 16)} Primeros pasos</h2><span class="muted small">${doneCount} de ${steps.length}</span></div>
     <ol class="onboard-list">${steps.map((s) => `<li class="${s.done ? 'is-done' : ''}"><span class="onboard-dot">${s.done ? icon('check', 13) : ''}</span><span>${esc(s.text)}</span>${s.done ? '' : s.act ? `<button class="btn btn-sm" data-act="${s.act}">${esc(s.label)}</button>` : `<a class="btn btn-sm" href="${s.href}">${esc(s.label)}</a>`}</li>`).join('')}</ol>
+  </section>`;
+}
+
+/** Estado de los bonos de bienvenida de las casas de la guía. */
+function casasStrip() {
+  const c = content();
+  if (!c.guides.length) return '';
+  const status = (g) => {
+    if (state.doneGuides[g.id] || state.offers.some((o) => o.from === g.id && o.status === 'done')) return ['done', 'Hecho'];
+    if (state.offers.some((o) => o.from === g.id && (o.status === 'active' || o.status === 'todo'))) return ['active', 'En curso'];
+    return ['todo', 'Por hacer'];
+  };
+  const list = c.guides.map((g) => ({ g, st: status(g) }));
+  const doneN = list.filter((x) => x.st[0] === 'done').length;
+  return `<section class="panel casas">
+    <div class="panel-head"><h2>${icon('star', 16)} Tus ${list.length} casas</h2><span class="muted small">${doneN} de ${list.length} hechas</span><a class="link" href="#bonos" data-act="home-bonos">Bonos ${icon('arrow', 14)}</a></div>
+    <ul class="casas-list">${list.map(({ g, st }) => `<li class="casa casa-${st[0]}">
+      <div class="casa-top"><b>${esc(g.bookie)}</b><span class="pill pill-${st[0]}">${st[1]}</span></div>
+      <span class="casa-value">${g.locked ? `${icon('lock', 13)} Plan ${esc(plans().bienvenida.name)}` : `${fmt.signedEur(C.offerValue(g, assumptions()))} <span class="muted small">estimados</span>`}</span>
+      <div class="casa-actions">
+        <a class="btn btn-ghost btn-xs" href="#guia" data-act="guide-open" data-lesson="casa-${esc(g.id)}">${icon('book', 13)} Cómo se hace</a>
+        ${g.locked || st[0] === 'done' ? '' : `<button class="btn btn-xs ${st[0] === 'active' ? '' : 'btn-primary'}" data-act="guide-begin" data-guide="${esc(g.id)}">${st[0] === 'active' ? 'Seguir' : 'Empezar'}</button>`}
+      </div>
+    </li>`).join('')}</ul>
   </section>`;
 }
 
@@ -75,6 +99,7 @@ function renderHome() {
   return `${flowBar()}${pageHead(`Hola${name}`, 'Lo que llevas ganado, tu siguiente paso y las mejores cuotas de ahora mismo.', `<span class="plan-chip">${icon('shield', 14)} Plan ${esc(planName(plan()))}</span>`)}
   ${exampleBanner()}
   ${onboarding()}
+  ${casasStrip()}
   <section class="kpis">
     ${kpi('Beneficio total', fmt.eur(total), `${state.bets.length} operaciones`, total >= 0 ? 'kpi-pos' : 'kpi-neg')}
     ${kpi('Este mes', fmt.eur(month), fmt.month(now))}

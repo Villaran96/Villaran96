@@ -3,12 +3,13 @@
 
 import {
   state, C, n, nz, save, render, go, route, registerActions, field, select, money, pageHead, kpi, exampleBanner,
-  flowBar, lockCard, content, can, plans, assumptions, runStep, offerSteps, markFlowStep, bookieHome, extLink, stepButton, DAY,
+  flowBar, lockCard, content, can, plans, assumptions, runStep, offerSteps, offerTitle, offerFromSource, markFlowStep, bookieHome,
+  extLink, stepButton, DAY,
 } from '../core.js';
 import {
-  fmt, esc, icon, toast, uid, isoDay,
+  fmt, esc, icon, toast, uid, isoDay, reviewedLabel,
 } from '../util.js';
-import { BOOKIES, OFFER_KINDS } from '../data.js';
+import { OFFER_KINDS, DETAIL_FIELDS } from '../data.js';
 
 const STATUS = { todo: 'Por hacer', active: 'En curso', done: 'Completado', skip: 'Descartado' };
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -41,8 +42,8 @@ function renderBonos() {
 
 function welcomeTab(c) {
   if (!c.access.guides) {
-    return `${lockCard('guides.welcome', { text: `Guías paso a paso de ${c.guides.length} bonos de bienvenida, con el valor de cada uno y botones que te llevan a la cuota y al cálculo exactos.` })}
-    <div class="teasers">${c.guides.map((g) => `<div class="teaser">${icon('lock', 14)}<b>${esc(g.bookie)}</b><span>${esc(kindOf(g.kind).label)}</span></div>`).join('')}</div>`;
+    return `${lockCard('guides.welcome', { text: `Cómo se hace, paso a paso, el bono de bienvenida de ${c.guides.map((g) => g.bookie).join(', ')}: lo que vale cada uno y botones que te llevan a la cuota y al cálculo exactos.` })}
+    <div class="teasers">${c.guides.map((g) => `<div class="teaser">${icon('lock', 14)}<b>${esc(g.bookie)}</b><span>${esc(g.title || kindOf(g.kind).label)}</span></div>`).join('')}</div>`;
   }
   const guides = [...c.guides].sort((a, b) => Number(!!state.doneGuides[a.id]) - Number(!!state.doneGuides[b.id]) || value(b) - value(a));
   const pending = guides.filter((g) => !state.doneGuides[g.id] && !startedFrom(g.id));
@@ -66,13 +67,14 @@ function guideCard(g) {
       <div><b class="guide-bookie">${esc(g.bookie)}</b><span class="muted small">${esc(kind.label)}</span>${g.example ? ' <span class="tag tag-example">Ejemplo</span>' : ''}</div>
       <div class="guide-value"><span class="muted small">Valor estimado</span><b>${fmt.signedEur(value(g))}</b></div>
     </header>
-    <h3>${esc(kind.title(g.params || {}))}</h3>
-    ${g.conditions ? `<p class="cond">${esc(g.conditions)}</p>` : ''}
+    <h3>${esc(g.title || kind.title(g.params || {}))}</h3>
+    ${g.conditions ? `<details class="steps-preview"><summary>Condiciones${g.reviewed ? ` (revisadas en ${esc(reviewedLabel(g.reviewed))})` : ''}</summary><p class="cond">${esc(g.conditions)}</p></details>` : ''}
     <details class="steps-preview"><summary>Paso a paso (${steps.length} pasos)</summary><ol>${steps.map((s) => `<li>${esc(s.text)}</li>`).join('')}</ol></details>
     <footer class="guide-foot">
       ${done ? '<span class="pill pill-done">Hecho</span>' : started
         ? `<button class="btn btn-primary btn-sm" data-act="bonos-goto" data-id="${started.id}">${icon('arrow', 15)} Continuar en Mis bonos</button>`
         : `<button class="btn btn-primary btn-sm" data-act="guide-start" data-id="${esc(g.id)}" data-source="guides">${icon('arrow', 15)} Empezar este bono</button>`}
+      ${g.howto ? `<a class="btn btn-sm" href="#guia" data-act="guide-open" data-lesson="casa-${esc(g.id)}">${icon('book', 15)} Cómo se hace</a>` : ''}
       ${extLink(link, `Abrir ${g.bookie}`, g.bookie)}
       <button class="btn btn-ghost btn-sm" data-act="guide-done" data-id="${esc(g.id)}">${done ? 'Deshacer' : 'Ya lo hice'}</button>
     </footer>
@@ -110,7 +112,7 @@ function promoCard(p) {
       <div><b class="guide-bookie">${esc(p.bookie)}</b><span class="muted small">${esc(kind.label)} · ${esc(p.schedule || 'Siempre')}</span>${p.example ? ' <span class="tag tag-example">Ejemplo</span>' : ''}</div>
       <div class="guide-value"><span class="muted small">Valor estimado</span><b>${fmt.signedEur(value(p))}</b></div>
     </header>
-    <h3>${esc(kind.title(p.params || {}))}</h3>
+    <h3>${esc(p.title || kind.title(p.params || {}))}</h3>
     ${p.conditions ? `<p class="cond">${esc(p.conditions)}</p>` : ''}
     ${p.validUntil ? `<p class="muted small">${icon('clock', 13)} Hasta el ${esc(fmt.day(Date.parse(`${p.validUntil}T12:00:00`)))}</p>` : ''}
     <footer class="guide-foot">
@@ -133,8 +135,6 @@ function mineTab() {
   const filters = [['open', 'Abiertos'], ['done', 'Completados'], ['skip', 'Descartados'], ['all', 'Todos']];
   const list = all.filter((o) => ui.offerFilter === 'all' || (ui.offerFilter === 'open' ? (o.status === 'todo' || o.status === 'active') : o.status === ui.offerFilter))
     .sort((a, b) => (a.status === 'active' ? 0 : 1) - (b.status === 'active' ? 0 : 1) || value(b) - value(a));
-  const used = new Set(all.map((o) => String(o.bookie).toLowerCase()));
-  const missing = BOOKIES.filter(([, name]) => !used.has(name.toLowerCase()));
   return `${exampleBanner()}
   <section class="kpis">
     ${kpi('Por sacar', fmt.eur(pending), 'valor estimado de lo abierto', 'kpi-brass')}
@@ -143,12 +143,7 @@ function mineTab() {
     ${kpi('Ganado con bonos', fmt.eur(earned), '', earned >= 0 ? 'kpi-pos' : 'kpi-neg')}
   </section>
   <div class="toolbar">${filters.map(([k, t]) => `<button class="chip ${ui.offerFilter === k ? 'is-on' : ''}" data-set="ui.offerFilter" data-v="${k}">${t}</button>`).join('')}</div>
-  <div class="offers">${list.length ? list.map(offerCard).join('') : `<div class="empty panel"><p>No tienes bonos aquí.</p><p class="muted small">Empieza uno desde la pestaña Bienvenida o añádelo a mano.</p><button class="btn btn-sm btn-primary" data-act="bonos-tab" data-tab="bienvenida">Ver bonos de bienvenida</button></div>`}</div>
-  <section class="panel">
-    <div class="panel-head"><h2>Casas que aún no has usado</h2><span class="muted small">${missing.length} de ${BOOKIES.length}</span></div>
-    <p class="muted small">Cada casa suele tener un bono de bienvenida. Pulsa una para apuntar el suyo.</p>
-    <div class="chips">${missing.map(([, name]) => `<button class="chip" data-act="quick-offer" data-bookie="${esc(name)}">${esc(name)}</button>`).join('') || '<span class="muted">Ya las tienes todas apuntadas.</span>'}</div>
-  </section>`;
+  <div class="offers">${list.length ? list.map(offerCard).join('') : `<div class="empty panel"><p>No tienes bonos aquí.</p><p class="muted small">Empieza uno desde la pestaña Bienvenida o añádelo a mano.</p><button class="btn btn-sm btn-primary" data-act="bonos-tab" data-tab="bienvenida">Ver bonos de bienvenida</button></div>`}</div>`;
 }
 
 function offerCard(o) {
@@ -167,7 +162,7 @@ function offerCard(o) {
     <header class="offer-head">
       <div>
         <div class="offer-meta"><b class="offer-bookie">${esc(o.bookie)}</b><span class="pill pill-${o.status}">${STATUS[o.status]}</span>${o.example ? '<span class="tag tag-example">Ejemplo</span>' : ''}${days != null && isOpen ? `<span class="deadline ${days <= 3 ? 'is-soon' : ''}">${icon('clock', 14)} ${days < 0 ? 'Caducado' : days === 0 ? 'Último día' : `Quedan ${days} días`}</span>` : ''}</div>
-        <h3>${esc(kind.title(p))}</h3>
+        <h3>${esc(offerTitle(o))}</h3>
         <span class="muted small">${esc(kind.label)}</span>
       </div>
       <div class="offer-value">${o.status === 'done' ? `<span class="muted small">Ganado</span>${money(nz(o.profit))}` : `<span class="muted small">Valor estimado</span><b>${fmt.signedEur(val)}</b>`}</div>
@@ -200,6 +195,7 @@ function addOfferForm() {
       ${kind.fields.map((f) => (f.type === 'select' ? select(`ui.newOffer.params.${f.key}`, f.label, f.options) : field(`ui.newOffer.params.${f.key}`, f.label, { unit: f.unit }))).join('')}
       ${field('ui.newOffer.deadline', 'Fecha límite (opcional)', { type: 'date' })}
     </div>
+    ${kind.details.length ? `<details class="steps-preview"><summary>Más detalles (código, caducidad, freebets troceadas…)</summary><div class="form-grid">${kind.details.map((k) => DETAIL_FIELDS[k]).map((f) => field(`ui.newOffer.params.${f.key}`, f.label, { unit: f.unit, mode: f.type === 'text' ? 'text' : 'decimal' })).join('')}</div></details>` : ''}
     <p class="field-hint">${esc(kind.hint)}</p>
     <div class="add-offer-foot"><span>Valor estimado <b id="new-offer-value">${fmt.signedEur(value({ kind: no.kind, params: no.params }))}</b></span><button class="btn btn-primary" data-act="save-offer">${icon('check', 16)} Guardar</button></div>
   </section>`;
@@ -217,26 +213,14 @@ route('bonos', { render: renderBonos, refresh: refreshBonos, nav: 'bonos' });
 const findOffer = (id) => state.offers.find((x) => x.id === id);
 
 function startFromSource(item, source) {
-  const offer = {
-    id: uid(),
-    bookie: item.bookie,
-    kind: item.kind,
-    params: { ...(item.params || {}) },
-    status: 'active',
-    done: [],
-    deadline: '',
-    url: item.url || '',
-    from: item.id,
-    source,
-    created: Date.now(),
-  };
-  state.offers.push(offer);
+  const { offer, created } = offerFromSource(item, source);
   state.ui.bonosTab = 'mis';
   state.ui.offerFilter = 'open';
   const steps = offerSteps(offer);
-  state.flow = { offerId: offer.id, step: 0, total: steps.length, bookie: offer.bookie, text: steps[0].text };
+  const next = Math.max(0, steps.findIndex((_, i) => !(offer.done || []).includes(i)));
+  state.flow = { offerId: offer.id, step: next, total: steps.length, bookie: offer.bookie, text: steps[next].text };
   save();
-  toast(`${item.bookie}: bono añadido a Mis bonos. Sigue el primer paso.`, 'good');
+  toast(created ? `${item.bookie}: bono añadido a Mis bonos. Sigue el primer paso.` : `${item.bookie}: sigues donde lo dejaste.`, 'good');
   render();
   setTimeout(() => document.getElementById(`offer-${offer.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
 }
@@ -303,7 +287,7 @@ registerActions({
     o.profit = profit;
     o.done = offerSteps(o).map((_, i) => i);
     if (state.flow?.offerId === o.id) state.flow = null;
-    state.bets.push({ id: uid(), date: isoDay(), bookie: o.bookie, kind: o.source === 'promos' ? 'reload' : o.kind === 'boost' ? 'boost' : 'welcome', desc: kindOf(o.kind).title(o.params || {}), profit });
+    state.bets.push({ id: uid(), date: isoDay(), bookie: o.bookie, kind: o.source === 'promos' ? 'reload' : o.kind === 'boost' ? 'boost' : 'welcome', desc: offerTitle(o), profit });
     if (o.from && o.source === 'guides') state.doneGuides[o.from] = true;
     save();
     toast(`Bono completado: ${fmt.signedEur(profit)} anotados en Beneficios`, 'good');

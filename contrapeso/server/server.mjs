@@ -15,11 +15,14 @@ import { openDb } from './db.mjs';
 import {
   hashPassword, verifyPassword, newToken, sha256, parseCookies, cookie, validEmail, passwordProblem, rateLimiter,
 } from './auth.mjs';
-import { createCheckout, createPortal, verifyStripeSignature, applyStripeEvent } from './billing.mjs';
+import {
+  createCheckout, createPortal, verifyStripeSignature, applyStripeEvent, setupStripe, changeSubscription,
+  setCancelAtPeriodEnd, createPromo, priceIdFor, isRecurringMetodo,
+} from './billing.mjs';
 import { sendMail } from './mail.mjs';
 import { createOddsFeed } from './oddsfeed.mjs';
 import {
-  mergePlans, effectivePlan, canUse, FREE_ODDS_ROWS, PLAN_ORDER,
+  mergePlans, effectivePlan, canUse, FREE_ODDS_ROWS, PLAN_ORDER, PAID_PLANS, ACCESS_STATUSES,
 } from '../js/plans.js';
 import {
   contractData, contractText, sha256Hex, validDni, CONTRACT_VERSION,
@@ -91,6 +94,7 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
       plan: effectivePlan(u),
       subscribedPlan: u.plan || 'free',
       planStatus: u.planStatus || null,
+      planInterval: u.planInterval || 'month',
       currentPeriodEnd: u.currentPeriodEnd || null,
       cancelAtPeriodEnd: !!u.cancelAtPeriodEnd,
       trialUsed: !!u.trialUsed,
@@ -185,9 +189,30 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     seats: seats(),
     site: site(),
     payments: !!cfg.stripe.secretKey,
+    metodoRecurring: isRecurringMetodo(cfg),
     odds: { configured: feed.configured(), betfair: feed.hasBetfair },
     user: publicUser(ctx.user),
   }));
+
+  const webhookSecret = () => cfg.stripe.webhookSecret || db.data.settings.stripe?.webhook?.secret || '';
+  const hasActiveSub = (u) => !!u.stripeSubscriptionId && ACCESS_STATUSES.has(u.planStatus);
+
+  async function notify(user, notice) {
+    if (!user || !notice) return;
+    const p = plans()[user.plan];
+    const until = user.currentPeriodEnd ? ` hasta el ${new Date(user.currentPeriodEnd).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}` : ' hasta el final del periodo pagado';
+    const how = user.planInterval === 'year' ? 'con pago anual' : 'con pago mensual';
+    const texts = {
+      activated: [`Tu plan ${p?.name || ''} ya está activo`, `Ya tienes acceso a todo lo del plan ${p?.name || ''}. Entra en ${cfg.siteUrl} y empieza por el siguiente paso de tus bonos.`],
+      changed: [`Has cambiado al plan ${p?.name || ''}`, `Tu suscripción ahora es del plan ${p?.name || ''} ${how}. Stripe ajusta lo que pagas de forma proporcional al tiempo que queda del periodo.`],
+      cancel_scheduled: ['Has cancelado tu suscripción', `No se te cobrará más. Sigues teniendo acceso al plan ${p?.name || ''}${until}. Si cambias de idea, reactívala desde ${cfg.siteUrl}/#cuenta antes de esa fecha.`],
+      resumed: ['Tu suscripción sigue activa', `Has reactivado tu plan ${p?.name || ''}. Todo sigue como antes y se renovará en la fecha habitual.`],
+      canceled: ['Tu suscripción ha terminado', `Tu suscripción ha terminado y tu cuenta vuelve al plan gratuito. Tus bonos y beneficios siguen guardados. Puedes volver cuando quieras en ${cfg.siteUrl}/#planes`],
+      trial_end: ['Tu prueba gratis termina pronto', `En unos días termina tu prueba y se hará el primer cobro. Si no quieres seguir, cancela desde ${cfg.siteUrl}/#cuenta antes de esa fecha.`],
+      payment_failed: ['No hemos podido cobrar tu suscripción', `El último cobro ha fallado. Actualiza tu tarjeta en ${cfg.siteUrl}/#cuenta → Gestionar pago para no perder el acceso.`],
+    }[notice];
+    if (texts) await sendMail(cfg, { to: user.email, subject: texts[0], text: texts[1] }, fetchImpl).catch(() => {});
+  }
 
   /* ------ cuentas */
 
@@ -340,7 +365,7 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     const plan = effectivePlan(ctx.user);
     const { guides, promos, lessons } = db.data.content;
     const active = (list) => list.filter((x) => x.active !== false);
-    const teaser = (x) => ({ id: x.id, bookie: x.bookie, kind: x.kind, locked: true });
+    const teaser = (x) => ({ id: x.id, bookie: x.bookie, kind: x.kind, title: x.title, locked: true });
     const guidesOk = canUse(plan, 'guides.welcome');
     const promosOk = canUse(plan, 'promos.recurring');
     const metodoOk = metodoAccess(ctx.user);
@@ -358,7 +383,8 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     const user = requireUser(ctx);
     const b = await readJson(ctx);
     const planId = str(b.plan);
-    if (!['bienvenida', 'recurrentes', 'metodo'].includes(planId)) throw new HttpError(400, 'Plan desconocido.');
+    const interval = b.interval === 'year' ? 'year' : 'month';
+    if (!PAID_PLANS.includes(planId)) throw new HttpError(400, 'Plan desconocido.');
     if (planId === 'metodo') {
       const p = plans().metodo;
       const app = applicationOf(user.id);
@@ -366,10 +392,41 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
       if (!contractOf(user)) throw new HttpError(409, 'Firma el contrato antes de pagar.');
       if (effectivePlan(user) !== 'metodo' && seats().left === 0) throw new HttpError(409, 'No quedan plazas del Método. Te avisaremos cuando se libere una.');
     }
-    if (user.stripeSubscriptionId && ['active', 'trialing', 'past_due'].includes(user.planStatus) && planId !== 'metodo') {
-      return { url: await createPortal({ cfg, user, fetchImpl }) };
+    const recurring = planId !== 'metodo' || isRecurringMetodo(cfg);
+    if (recurring && hasActiveSub(user)) {
+      // Ya paga una suscripción: se cambia de plan en la misma, con prorrateo.
+      if (user.plan === planId && (user.planInterval || 'month') === interval && !user.cancelAtPeriodEnd) throw new HttpError(409, 'Ya tienes este plan.');
+      const priceId = priceIdFor(cfg, db.data.settings, planId, interval);
+      if (!priceId) throw new HttpError(409, 'Ese plan todavía no tiene precio en Stripe.');
+      await changeSubscription({ cfg, user, priceId, planId, interval, fetchImpl });
+      user.plan = planId;
+      user.planInterval = interval;
+      user.cancelAtPeriodEnd = false;
+      db.save();
+      await notify(user, 'changed');
+      return { changed: true, user: publicUser(user) };
     }
-    return { url: await createCheckout({ cfg, user, planId, plans: plans(), fetchImpl }) };
+    return { url: await createCheckout({ cfg, settings: db.data.settings, user, planId, interval, plans: plans(), fetchImpl }) };
+  });
+
+  route('POST', '/api/billing/cancel', async (ctx) => {
+    const user = requireUser(ctx);
+    if (!hasActiveSub(user)) throw new HttpError(409, 'No tienes ninguna suscripción activa.');
+    await setCancelAtPeriodEnd({ cfg, user, cancel: true, fetchImpl });
+    user.cancelAtPeriodEnd = true;
+    db.save();
+    await notify(user, 'cancel_scheduled');
+    return { user: publicUser(user) };
+  });
+
+  route('POST', '/api/billing/resume', async (ctx) => {
+    const user = requireUser(ctx);
+    if (!hasActiveSub(user)) throw new HttpError(409, 'No tienes ninguna suscripción activa.');
+    await setCancelAtPeriodEnd({ cfg, user, cancel: false, fetchImpl });
+    user.cancelAtPeriodEnd = false;
+    db.save();
+    await notify(user, 'resumed');
+    return { user: publicUser(user) };
   });
 
   route('POST', '/api/billing/portal', async (ctx) => ({ url: await createPortal({ cfg, user: requireUser(ctx), fetchImpl }) }));
@@ -378,12 +435,15 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     const raw = await readBody(ctx.req, 1024 * 1024);
     let event;
     try {
-      event = verifyStripeSignature(raw, ctx.req.headers['stripe-signature'], cfg.stripe.webhookSecret);
+      event = verifyStripeSignature(raw, ctx.req.headers['stripe-signature'], webhookSecret());
     } catch (e) {
       throw new HttpError(400, e.message);
     }
-    const user = applyStripeEvent(db, cfg, event);
-    if (user) log(`[stripe] ${event.type} · ${user.email} · plan ${user.plan} (${user.planStatus})`);
+    const { user, notice } = applyStripeEvent(db, cfg, event);
+    if (user) {
+      log(`[stripe] ${event.type} · ${user.email} · plan ${user.plan} (${user.planStatus})`);
+      await notify(user, notice);
+    }
     return { received: true };
   });
 
@@ -498,7 +558,15 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
       odds: {
         configured: feed.configured(), betfair: feed.hasBetfair, updated: odds.updated, events: odds.events.length, remaining: odds.remaining, sources: odds.sources, errors: odds.errors,
       },
-      payments: { configured: !!cfg.stripe.secretKey, webhook: !!cfg.stripe.webhookSecret, prices: Object.fromEntries(Object.entries(cfg.stripe.prices).map(([k, v]) => [k, !!v])) },
+      payments: {
+        configured: !!cfg.stripe.secretKey,
+        webhook: !!webhookSecret(),
+        webhookFrom: cfg.stripe.webhookSecret ? 'env' : db.data.settings.stripe?.webhook ? 'panel' : null,
+        prices: Object.fromEntries(PAID_PLANS.map((id) => [id, { month: !!priceIdFor(cfg, db.data.settings, id, 'month'), year: !!priceIdFor(cfg, db.data.settings, id, 'year') }])),
+        syncedAt: db.data.settings.stripe?.syncedAt || null,
+        coupons: db.data.settings.stripe?.coupons || [],
+        recurringMetodo: isRecurringMetodo(cfg),
+      },
     };
   });
 
@@ -517,8 +585,11 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
         id,
         bookie: str(x.bookie, 60),
         kind: OFFER_KINDS.includes(x.kind) ? x.kind : 'other',
+        title: str(x.title, 160),
         params: cleanParams(x.params),
         conditions: str(x.conditions, 3000),
+        howto: kind === 'guides' ? str(x.howto, 20000) : undefined,
+        reviewed: /^\d{4}-\d{2}$/.test(x.reviewed || '') ? x.reviewed : undefined,
         url: httpUrl(x.url),
         schedule: kind === 'promos' ? str(x.schedule, 80) : undefined,
         days: kind === 'promos' && Array.isArray(x.days) ? [...new Set(x.days.map(Number).filter((d) => d >= 0 && d <= 6))] : undefined,
@@ -544,6 +615,7 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
         out[id] = {
           name: str(p.name, 40),
           price: Math.max(0, Number(p.price) || 0),
+          priceYear: Math.max(0, Number(p.priceYear) || 0),
           interval: ['month', 'year', 'once'].includes(p.interval) ? p.interval : 'month',
           trialDays: Math.max(0, Math.min(60, Number(p.trialDays) || 0)),
           seats: Math.max(0, Math.min(100000, Number(p.seats) || 0)),
@@ -569,8 +641,40 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
         contractReviewed: !!s.contractReviewed,
       };
     }
+    let log = [];
+    if (b.plans && cfg.stripe.secretKey && db.data.settings.stripe?.syncedAt) {
+      // Si los precios ya estaban en Stripe, se crean los nuevos importes.
+      const res = await setupStripe({ cfg, settings: db.data.settings, plans: plans(), brand: site().brand, fetchImpl, withWebhook: false });
+      db.data.settings.stripe = res.stripe;
+      log = res.log;
+    }
     db.save();
-    return { settings: { plans: plans(), site: site() } };
+    return { settings: { plans: plans(), site: site() }, log };
+  });
+
+  route('POST', '/api/admin/stripe/setup', async (ctx) => {
+    requireAdmin(ctx);
+    const res = await setupStripe({ cfg, settings: db.data.settings, plans: plans(), brand: site().brand, fetchImpl });
+    db.data.settings.stripe = { ...res.stripe, coupons: db.data.settings.stripe?.coupons || [] };
+    db.save();
+    return { log: res.log.length ? res.log : ['Todo estaba ya creado en Stripe.'], syncedAt: res.stripe.syncedAt };
+  });
+
+  route('POST', '/api/admin/stripe/coupon', async (ctx) => {
+    requireAdmin(ctx);
+    const b = await readJson(ctx);
+    const code = str(b.code, 40).toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    const percent = Number(b.percent);
+    const duration = ['once', 'repeating', 'forever'].includes(b.duration) ? b.duration : 'once';
+    const months = Math.max(1, Math.min(36, Number(b.months) || 1));
+    if (code.length < 3) throw new HttpError(400, 'El código tiene que tener al menos 3 letras o números.');
+    if (!(percent > 0 && percent <= 100)) throw new HttpError(400, 'El descuento tiene que estar entre 1 y 100 %.');
+    const promo = await createPromo({
+      cfg, code, percent, duration, months, maxRedemptions: Math.max(0, Number(b.maxRedemptions) || 0), fetchImpl,
+    });
+    db.data.settings.stripe = { ...(db.data.settings.stripe || {}), coupons: [...(db.data.settings.stripe?.coupons || []), promo] };
+    db.save();
+    return { coupon: promo };
   });
 
   route('PATCH', '/api/admin/users/:id', async (ctx) => {

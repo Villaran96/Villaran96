@@ -73,6 +73,53 @@ const swapH2h = (m) => {
   return out;
 };
 
+/** El evento de `candidates` que corresponde a `ev` (mismo inicio y equipos parecidos), o null. */
+function bestMatch(ev, candidates, used, { windowMinutes = 20, threshold = 0.62 } = {}) {
+  const t = Date.parse(ev.start);
+  let best = null;
+  for (const xe of candidates) {
+    if (used.has(xe.id)) continue;
+    if (Math.abs(Date.parse(xe.start) - t) > windowMinutes * 60000) continue;
+    const direct = [teamSimilarity(ev.home, xe.home), teamSimilarity(ev.away, xe.away)];
+    const swapped = [teamSimilarity(ev.home, xe.away), teamSimilarity(ev.away, xe.home)];
+    for (const [pair, swap] of [[direct, false], [swapped, true]]) {
+      const score = (pair[0] + pair[1]) / 2;
+      if (Math.min(...pair) < 0.4 || score < threshold) continue;
+      if (!best || score > best.score) best = { xe, score, swap };
+    }
+  }
+  return best;
+}
+
+/**
+ * Junta dos fuentes de casas (por ejemplo odds-api.io y The Odds API): a cada
+ * partido de la primera le añade las casas que traiga la segunda y que no tenga ya;
+ * los partidos que solo están en la segunda se añaden tal cual.
+ */
+export function mergeBookmakers(base, extra, opts = {}) {
+  const used = new Set();
+  const out = base.map((ev) => {
+    const m = bestMatch(ev, extra, used, opts);
+    if (!m) return ev;
+    used.add(m.xe.id);
+    const have = new Set(ev.books.map((b) => b.key));
+    const books = [...ev.books, ...m.xe.books.filter((b) => !have.has(b.key)).map((b) => ({ ...b, m: m.swap ? swapH2h(b.m) : b.m }))];
+    const markets = { ...ev.markets };
+    for (const b of books) {
+      for (const [mk, outcomes] of Object.entries(b.m)) {
+        const set = new Set(markets[mk] || []);
+        Object.keys(outcomes).forEach((ok) => set.add(ok));
+        markets[mk] = [...set].sort((x, y) => ORDER.indexOf(x) - ORDER.indexOf(y));
+      }
+    }
+    return { ...ev, markets, books };
+  });
+  for (const xe of extra) if (!used.has(xe.id)) out.push(xe);
+  return out;
+}
+
+const ORDER = ['home', 'draw', 'away', 'over', 'under', 'yes', 'no'];
+
 /**
  * Une a cada evento de las casas su evento del exchange: mismo inicio (con margen)
  * y equipos parecidos. Devuelve los eventos de las casas con el libro del exchange
@@ -85,19 +132,7 @@ export function mergeExchange(bookEvents, exchangeEvents, { windowMinutes = 20, 
   const used = new Set();
   let matched = 0;
   const out = bookEvents.map((ev) => {
-    const t = Date.parse(ev.start);
-    let best = null;
-    for (const xe of exchangeEvents) {
-      if (used.has(xe.id)) continue;
-      if (Math.abs(Date.parse(xe.start) - t) > windowMinutes * 60000) continue;
-      const direct = [teamSimilarity(ev.home, xe.home), teamSimilarity(ev.away, xe.away)];
-      const swapped = [teamSimilarity(ev.home, xe.away), teamSimilarity(ev.away, xe.home)];
-      for (const [pair, swap] of [[direct, false], [swapped, true]]) {
-        const score = (pair[0] + pair[1]) / 2;
-        if (Math.min(...pair) < 0.4 || score < threshold) continue;
-        if (!best || score > best.score) best = { xe, score, swap };
-      }
-    }
+    const best = bestMatch(ev, exchangeEvents, used, { windowMinutes, threshold });
     let books = keepExchanges ? ev.books.filter((b) => !b.exchange || keepExchanges.has(b.key)) : ev.books;
     const markets = { ...ev.markets };
     if (best) {

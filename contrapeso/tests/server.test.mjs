@@ -11,7 +11,7 @@ import { signStripePayload } from '../server/billing.mjs';
 import { contractData, contractText, sha256Hex } from '../js/contract.js';
 
 const WEBHOOK_SECRET = 'whsec_test';
-const mock = { checkouts: [], mails: [], oddsCalls: 0 };
+const mock = { checkouts: [], mails: [], oddsCalls: 0, subUpdates: [], prices: [], products: 0, coupons: [], versions: new Set() };
 let mockServer;
 let mockBase;
 let app;
@@ -35,7 +35,14 @@ before(async () => {
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
       const out = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+      if (req.url.startsWith('/v1/')) mock.versions.add(req.headers['stripe-version']);
       if (req.url === '/v1/checkout/sessions') { mock.checkouts.push(new URLSearchParams(body)); return out(200, { id: 'cs_1', url: 'https://checkout.stripe.test/cs_1' }); }
+      if (req.url.startsWith('/v1/subscriptions/') && req.method === 'GET') return out(200, { id: req.url.split('/')[3], items: { data: [{ id: 'si_1', price: { id: 'price_bien' } }] } });
+      if (req.url.startsWith('/v1/subscriptions/')) { mock.subUpdates.push(new URLSearchParams(body)); return out(200, { id: req.url.split('/')[3] }); }
+      if (req.url === '/v1/products') { mock.products += 1; return out(200, { id: `prod_${mock.products}` }); }
+      if (req.url === '/v1/prices') { const p = new URLSearchParams(body); mock.prices.push(p); return out(200, { id: `price_auto_${mock.prices.length}` }); }
+      if (req.url === '/v1/coupons') { mock.coupons.push(new URLSearchParams(body)); return out(200, { id: 'co_1' }); }
+      if (req.url === '/v1/promotion_codes') { const p = new URLSearchParams(body); return out(200, { id: 'promo_1', code: p.get('code') }); }
       if (req.url === '/v1/billing_portal/sessions') return out(200, { url: 'https://billing.stripe.test/portal' });
       if (req.url === '/emails') { mock.mails.push(JSON.parse(body)); return out(200, { id: 'em' }); }
       if (req.url.startsWith('/v4/sports/soccer_spain_la_liga/odds/')) {
@@ -58,6 +65,7 @@ before(async () => {
     STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
     STRIPE_API_BASE: `${mockBase}/v1`,
     STRIPE_PRICE_BIENVENIDA: 'price_bien',
+    STRIPE_PRICE_BIENVENIDA_ANUAL: 'price_bien_year',
     STRIPE_PRICE_RECURRENTES: 'price_rec',
     STRIPE_PRICE_METODO: 'price_met',
     RESEND_API_KEY: 're_test',
@@ -167,6 +175,12 @@ test('pago: Checkout con el precio y la prueba del plan', async () => {
   assert.equal(p.get('client_reference_id'), aliceId);
   assert.equal(p.get('subscription_data[trial_period_days]'), '7');
   assert.equal(p.get('customer_email'), 'alice@example.com');
+  assert.equal(p.get('tax_id_collection[enabled]'), 'true');
+  assert.equal(p.get('metadata[interval]'), 'month');
+  const y = await alice('POST', '/api/billing/checkout', { plan: 'bienvenida', interval: 'year' });
+  assert.equal(y.status, 200);
+  assert.equal(mock.checkouts.at(-1).get('line_items[0][price]'), 'price_bien_year');
+  assert.ok([...mock.versions].every((v) => v === '2024-06-20'), 'versión de la API fija');
 });
 
 test('webhook: rechaza firmas falsas y activa el plan con las buenas', async () => {
@@ -174,6 +188,8 @@ test('webhook: rechaza firmas falsas y activa el plan con las buenas', async () 
   assert.equal(bad.status, 400);
   await webhook({ id: 'evt_1', type: 'checkout.session.completed', data: { object: { mode: 'subscription', client_reference_id: aliceId, customer: 'cus_A', subscription: 'sub_A', metadata: { plan: 'bienvenida' } } } });
   await webhook({ id: 'evt_2', type: 'customer.subscription.updated', data: { object: { id: 'sub_A', customer: 'cus_A', status: 'trialing', metadata: { userId: aliceId }, items: { data: [{ price: { id: 'price_bien' }, current_period_end: 1893456000 }] } } } });
+  await new Promise((ok) => setTimeout(ok, 50));
+  assert.equal(mock.mails.filter((m) => /Has cambiado/.test(m.subject)).length, 0, 'pasar de pago a prueba no es un cambio de plan');
   let r = await alice('GET', '/api/auth/me');
   assert.equal(r.data.user.plan, 'bienvenida');
   assert.equal(r.data.user.planStatus, 'trialing');
@@ -187,15 +203,43 @@ test('webhook: rechaza firmas falsas y activa el plan con las buenas', async () 
   // El mismo evento dos veces no cambia nada.
   await webhook({ id: 'evt_2', type: 'customer.subscription.deleted', data: { object: { id: 'sub_A', customer: 'cus_A' } } });
   assert.equal((await alice('GET', '/api/auth/me')).data.user.plan, 'bienvenida');
-  // Con una suscripción activa, pagar otro plan lleva al portal.
+  // Con una suscripción activa, cambiar de plan modifica la misma suscripción con prorrateo.
+  r = await alice('POST', '/api/billing/checkout', { plan: 'bienvenida' });
+  assert.equal(r.status, 409, 'ya tiene ese plan');
+  const before = mock.checkouts.length;
   r = await alice('POST', '/api/billing/checkout', { plan: 'recurrentes' });
-  assert.equal(r.data.url, 'https://billing.stripe.test/portal');
+  assert.equal(r.data.changed, true);
+  assert.equal(r.data.user.plan, 'recurrentes');
+  assert.equal(mock.checkouts.length, before, 'no abre otro pago');
+  assert.equal(mock.mails.filter((m) => /Has cambiado al plan Recurrentes/.test(m.subject)).length, 1, 'un correo por el cambio de plan');
+  // Stripe confirma el cambio con su webhook: no se repite el correo.
+  await webhook({ id: 'evt_2b', type: 'customer.subscription.updated', data: { object: { id: 'sub_A', customer: 'cus_A', status: 'trialing', metadata: { userId: aliceId }, items: { data: [{ price: { id: 'price_rec' }, current_period_end: 1893456000 }] } } } });
+  await new Promise((ok) => setTimeout(ok, 50));
+  assert.equal(mock.mails.filter((m) => /Has cambiado/.test(m.subject)).length, 1);
+  const upd = mock.subUpdates.at(-1);
+  assert.equal(upd.get('items[0][id]'), 'si_1');
+  assert.equal(upd.get('items[0][price]'), 'price_rec');
+  assert.equal(upd.get('proration_behavior'), 'create_prorations');
+  // Cancelar al final del periodo y reactivar.
+  r = await alice('POST', '/api/billing/cancel', {});
+  assert.equal(r.data.user.cancelAtPeriodEnd, true);
+  assert.equal(mock.subUpdates.at(-1).get('cancel_at_period_end'), 'true');
+  r = await alice('POST', '/api/billing/resume', {});
+  assert.equal(r.data.user.cancelAtPeriodEnd, false);
+  assert.equal(mock.subUpdates.at(-1).get('cancel_at_period_end'), 'false');
+  assert.ok(mock.mails.some((m) => /activo/.test(m.subject)), 'correo de plan activo');
+  assert.ok(mock.mails.some((m) => /Has cancelado/.test(m.subject) && /2030/.test(m.text)), 'correo de cancelación con la fecha de fin');
+  assert.ok(mock.mails.some((m) => /sigue activa/.test(m.subject)), 'correo de reactivación');
 });
 
-test('cancelar la suscripción devuelve al plan gratuito', async () => {
+test('cancelar la suscripción devuelve al plan gratuito y avisa por correo', async () => {
+  await webhook({ id: 'evt_fail', type: 'invoice.payment_failed', data: { object: { customer: 'cus_A' } } });
+  assert.equal((await alice('GET', '/api/auth/me')).data.user.planStatus, 'past_due');
+  assert.ok(mock.mails.some((m) => /cobrar/.test(m.subject)));
   await webhook({ id: 'evt_3', type: 'customer.subscription.deleted', data: { object: { id: 'sub_A', customer: 'cus_A', metadata: { userId: aliceId } } } });
   const r = await alice('GET', '/api/auth/me');
   assert.equal(r.data.user.plan, 'free');
+  assert.ok(mock.mails.some((m) => /terminado/.test(m.subject)));
 });
 
 test('administración: solo para administradores', async () => {
@@ -216,6 +260,30 @@ test('administración: solo para administradores', async () => {
   assert.equal(r.data.settings.site.brand, 'Mi Marca');
   r = await client()('GET', '/api/config');
   assert.equal(r.data.seats.total, 1);
+  // Conectar con Stripe: crea productos y precios mensual y anual de los planes de pago.
+  r = await admin('POST', '/api/admin/stripe/setup', {});
+  assert.equal(r.status, 200);
+  assert.equal(mock.products, 3);
+  assert.equal(mock.prices.length, 5, 'mensual y anual, salvo el Método, que se guardó sin precio anual');
+  const metodoMonth = mock.prices.find((p) => p.get('metadata[plan]') === 'metodo' && p.get('recurring[interval]') === 'month');
+  assert.equal(metodoMonth.get('unit_amount'), '9900');
+  assert.equal(metodoMonth.get('tax_behavior'), 'inclusive');
+  r = await admin('POST', '/api/admin/stripe/setup', {});
+  assert.equal(mock.prices.length, 5, 'no repite lo que ya existe');
+  // Cambiar un precio crea uno nuevo en Stripe.
+  r = await admin('PUT', '/api/admin/settings', { plans: { ...r.data.plans, metodo: { name: 'Método', price: 99, priceYear: 990, interval: 'month', seats: 1 }, bienvenida: { name: 'Bienvenida', price: 19.99, priceYear: 149, interval: 'month', trialDays: 7 } } });
+  assert.equal(mock.prices.length, 7);
+  assert.ok(mock.prices.slice(5).some((p) => p.get('unit_amount') === '1999' && p.get('recurring[interval]') === 'month'));
+  assert.ok(mock.prices.slice(5).some((p) => p.get('unit_amount') === '99000' && p.get('recurring[interval]') === 'year'));
+  // Código de descuento.
+  r = await admin('POST', '/api/admin/stripe/coupon', { code: 'lanzamiento', percent: 50, duration: 'repeating', months: 2, maxRedemptions: 100 });
+  assert.equal(r.data.coupon.code, 'LANZAMIENTO');
+  assert.equal(mock.coupons.at(-1).get('duration_in_months'), '2');
+  r = await admin('GET', '/api/admin/overview');
+  assert.equal(r.data.payments.prices.recurrentes.year, true);
+  assert.equal(r.data.payments.coupons.length, 1);
+  r = await alice('POST', '/api/admin/stripe/setup', {});
+  assert.equal(r.status, 403);
 });
 
 test('Método: solicitud, firma con huella del texto, pago y acceso', async () => {
@@ -243,7 +311,7 @@ test('Método: solicitud, firma con huella del texto, pago y acceso', async () =
   assert.ok(mock.mails.some((m) => m.subject.includes('contrato')));
   r = await alice('POST', '/api/billing/checkout', { plan: 'metodo' });
   assert.equal(r.status, 200);
-  assert.equal(mock.checkouts.at(-1).get('line_items[0][price]'), 'price_met');
+  assert.match(mock.checkouts.at(-1).get('line_items[0][price]'), /^price_auto_/, 'el precio creado desde el panel');
   await webhook({ id: 'evt_4', type: 'customer.subscription.created', data: { object: { id: 'sub_M', customer: 'cus_A', status: 'active', metadata: { userId: aliceId, plan: 'metodo' }, items: { data: [{ price: { id: 'price_met' } }] } } } });
   r = await alice('GET', '/api/content');
   assert.equal(r.data.access.metodo, true);

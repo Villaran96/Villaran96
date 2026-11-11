@@ -116,69 +116,6 @@ export function profitFromRating(r, stake, type = 'normal') {
 }
 
 /**
- * Favor-favor (dutching): repartir apuestas a favor entre varios resultados
- * para que el beneficio sea el mismo pase lo que pase.
- *
- * legs: [{ odds, commission = 0, freebet = false }]
- *   commission: para cuando una de las patas es una apuesta a favor en exchange.
- *   freebet: la pata se juega con una apuesta gratis (sin devolución del importe).
- *
- * Modo de reparto (uno de los dos):
- *   { fixedIndex, fixedStake }  fija el importe de una pata (lo normal con freebets)
- *   { totalStake }              reparte un total de dinero entre las patas en efectivo
- *
- * step: redondeo de los importes (0.01, 0.1, 1). El beneficio se calcula con los
- * importes ya redondeados, que es lo que vas a apostar.
- */
-export function dutch(legs, { fixedIndex = 0, fixedStake, totalStake, step = 0.01 } = {}) {
-  const parsed = legs.map((l) => ({
-    odds: num(l.odds),
-    c: pct(num(l.commission ?? 0)),
-    freebet: !!l.freebet,
-  }));
-  if (parsed.length < 2 || parsed.some((l) => !(l.odds > 1))) return { valid: false };
-
-  // Retorno por euro apostado en cada pata.
-  const mult = parsed.map((l) => {
-    const net = (l.odds - 1) * (1 - l.c);
-    return l.freebet ? net : 1 + net;
-  });
-
-  let target;
-  if (Number.isFinite(num(totalStake)) && num(totalStake) > 0) {
-    const cashInv = parsed.reduce((acc, l, i) => (l.freebet ? acc : acc + 1 / mult[i]), 0);
-    if (cashInv === 0) return { valid: false, reason: 'Todas las patas son freebet: fija el importe de una.' };
-    target = num(totalStake) / cashInv;
-  } else {
-    const fs = num(fixedStake);
-    if (!(fs > 0) || !parsed[fixedIndex]) return { valid: false };
-    target = fs * mult[fixedIndex];
-  }
-
-  const stakes = mult.map((m, i) => (i === fixedIndex && !Number.isFinite(num(totalStake)) ? num(fixedStake) : round(target / m, step)));
-  const cash = stakes.reduce((acc, s, i) => (parsed[i].freebet ? acc : acc + s), 0);
-  const freebetTotal = stakes.reduce((acc, s, i) => (parsed[i].freebet ? acc + s : acc), 0);
-  const returns = stakes.map((s, i) => s * mult[i]);
-  const profits = returns.map((ret) => ret - cash);
-  const minProfit = Math.min(...profits);
-  const implied = parsed.reduce((acc, l, i) => acc + 1 / mult[i], 0);
-
-  return {
-    valid: true,
-    stakes,
-    returns,
-    profits,
-    profit: minProfit,
-    cashStake: cash,
-    freebetTotal,
-    // Con todo en efectivo: % de retorno sobre lo apostado (>100 = surebet).
-    // Con freebets: % de la freebet convertida en beneficio.
-    rating: freebetTotal > 0 ? (minProfit / freebetTotal) * 100 : (1 / implied) * 100,
-    overround: implied * 100,
-  };
-}
-
-/**
  * Combinada cubierta selección a selección en el exchange.
  *
  * legs: [{ back, lay, status = 'pending' | 'won' | 'lost', layStakePlaced }]
@@ -275,7 +212,7 @@ export function rollover({ deposit = 0, bonus, multiplier, base = 'bonus', avgRa
  */
 export function offerValue(offer, assumptions) {
   const a = {
-    qualOdds: 2.5, snrOdds: 5, srOdds: 3, spread: 2, commission: 2, refundRetention: 72, ...assumptions,
+    qualOdds: 2.5, snrOdds: 5, srOdds: 3, refundOdds: 4, spread: 2, commission: 2, refundRetention: 72, ...assumptions,
   };
   const layFor = (b) => b * (1 + a.spread / 100);
   const q = (stake, odds) => backLay({ stake, back: odds, lay: layFor(odds), commission: a.commission, type: 'normal' }).profit || 0;
@@ -288,10 +225,13 @@ export function offerValue(offer, assumptions) {
   switch (offer.kind) {
     case 'bet_get': {
       const odds = Math.max(num(p.minOdds) || 0, a.qualOdds);
-      return q(num(p.qualStake), odds) + fb(num(p.freebet), p.freebetType);
+      // La parte que se juega en combinadas se cubre selección a selección y retiene algo menos.
+      const share = Math.min(100, Math.max(0, num(p.accaShare) || 0)) / 100;
+      const free = fb(num(p.freebet), p.freebetType);
+      return q(num(p.qualStake), odds) + free * (1 - share) + free * share * 0.92 + fb(num(p.extra), 'snr');
     }
     case 'refund': {
-      const odds = Math.max(num(p.minOdds) || 0, a.qualOdds);
+      const odds = Math.max(num(p.minOdds) || 0, a.refundOdds);
       const res = backLay({
         stake: num(p.stake), back: odds, lay: layFor(odds), commission: a.commission,
         type: 'refund', refund: num(p.refund), retention: a.refundRetention,

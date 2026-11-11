@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  num, round, backLay, rating, profitFromRating, dutch, accaLay, rollover, offerValue,
+  num, round, backLay, rating, profitFromRating, accaLay, rollover, offerValue,
 } from '../js/calc.js';
 
 const close = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
@@ -63,29 +63,6 @@ test('entradas inválidas', () => {
   assert.ok(Number.isNaN(rating({ back: 'x', lay: 2 })));
 });
 
-test('favor-favor con total en efectivo (surebet)', () => {
-  const r = dutch([{ odds: 2.1 }, { odds: 2.1 }], { totalStake: 100 });
-  close(r.stakes[0], 50);
-  close(r.stakes[1], 50);
-  close(r.profit, 5);
-  close(r.rating, 105);
-});
-
-test('favor-favor con freebet fija', () => {
-  const r = dutch([{ odds: 5, freebet: true }, { odds: 1.3 }], { fixedIndex: 0, fixedStake: 10 });
-  close(r.stakes[1], 30.77);
-  close(r.profits[0], 9.23);
-  close(r.profits[1], 9.231);
-  close(r.rating, 92.3);
-});
-
-test('favor-favor con redondeo a euros', () => {
-  const r = dutch([{ odds: 3.4 }, { odds: 3.5 }, { odds: 2.4 }], { fixedIndex: 0, fixedStake: 20, step: 1 });
-  assert.equal(r.stakes[1], 19);
-  assert.equal(r.stakes[2], 28);
-  close(r.cashStake, 67);
-});
-
 test('combinada sin comisión: beneficio cero en todos los casos', () => {
   const r = accaLay({ stake: 10, legs: [{ back: 2, lay: 2 }, { back: 2, lay: 2 }] });
   close(r.legs[1].layStake, 20);
@@ -120,4 +97,18 @@ test('rollover', () => {
 test('valor de una promoción apuesta y recibe', () => {
   const v = offerValue({ kind: 'bet_get', params: { qualStake: 10, minOdds: 1.5, freebet: 25, freebetType: 'snr' } }, { spread: 0, commission: 0, qualOdds: 2, snrOdds: 5 });
   close(v, 20); // calificante sin pérdida + 25 · 4/5
+});
+
+test('valor de una promoción con parte en combinadas y freebet extra', () => {
+  const base = offerValue({ kind: 'bet_get', params: { qualStake: 10, minOdds: 1.5, freebet: 100, freebetType: 'snr' } }, { spread: 0, commission: 0, qualOdds: 2, snrOdds: 5 });
+  const acca = offerValue({ kind: 'bet_get', params: { qualStake: 10, minOdds: 1.5, freebet: 100, freebetType: 'snr', accaShare: 50 } }, { spread: 0, commission: 0, qualOdds: 2, snrOdds: 5 });
+  const extra = offerValue({ kind: 'bet_get', params: { qualStake: 10, minOdds: 1.5, freebet: 100, freebetType: 'snr', extra: 10 } }, { spread: 0, commission: 0, qualOdds: 2, snrOdds: 5 });
+  close(base, 80);
+  close(acca, 76.8);
+  close(extra, 88);
+});
+
+test('valor de un reembolso del 150 % (Winamax)', () => {
+  const v = offerValue({ kind: 'refund', params: { stake: 100, refund: 150 } }, { spread: 2, commission: 2, refundOdds: 4, refundRetention: 72 });
+  assert.ok(v > 70 && v < 85, String(v));
 });

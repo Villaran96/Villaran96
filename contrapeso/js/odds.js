@@ -1,7 +1,7 @@
-// Cuotas: modelo de eventos con varios mercados, fuentes de datos, oddsmatcher,
-// buscador favor-favor y datos de demostración. Sin DOM: lo usan la web y el servidor.
+// Cuotas: modelo de eventos con varios mercados, fuentes de datos, oddsmatcher
+// (calificante, freebet y reembolso) y datos de demostración. Sin DOM: lo usan la web y el servidor.
 
-import { rating, profitFromRating, dutch } from './calc.js';
+import { rating, profitFromRating, backLay } from './calc.js';
 
 /* ------------------------------------------------------------------------ */
 /* Modelo                                                                    */
@@ -181,15 +181,17 @@ export function normalizeTheOddsApi(events) {
 
 /**
  * opts:
- *   mode: normal | snr | sr
+ *   mode: normal | snr | sr | refund
  *   stake: importe para calcular el beneficio de cada fila
+ *   refund, retention: en modo reembolso, lo que devuelve la casa si pierdes y el %
+ *     que esperas convertir en dinero. El rating es entonces el beneficio en % del importe.
  *   commissions: { claveExchange: % }, defaultCommission
  *   bookies, exchanges, leagues, families: Set de claves permitidas (null = todas)
  *   minOdds, maxOdds, minRating, maxLay, minSize, from, to (ms), q (texto), now (ms)
  */
 export function findMatches(events, opts = {}) {
   const {
-    mode = 'normal', stake = 10, commissions = {}, defaultCommission = 2,
+    mode = 'normal', stake = 10, refund = 0, retention = 72, commissions = {}, defaultCommission = 2,
     bookies = null, exchanges = null, leagues = null, families = null,
     minOdds = 1.01, maxOdds = 1000, minRating = -Infinity, maxLay = Infinity, minSize = 0,
     from = -Infinity, to = Infinity, q = '', now = Date.now(), includeStarted = false,
@@ -229,7 +231,15 @@ export function findMatches(events, opts = {}) {
           const price = bk.m[mk]?.[ok];
           const B = price?.back;
           if (!(B >= minOdds && B <= maxOdds)) continue;
-          const r = rating({ back: B, lay: best.L, commission: best.c, type: mode });
+          let r;
+          let profit;
+          if (mode === 'refund') {
+            profit = backLay({ stake, back: B, lay: best.L, commission: best.c, type: 'refund', refund, retention }).profit;
+            r = (profit / stake) * 100;
+          } else {
+            r = rating({ back: B, lay: best.L, commission: best.c, type: mode });
+            profit = profitFromRating(r, stake, mode);
+          }
           if (!(r >= minRating)) continue;
           rows.push({
             id: `${ev.id}|${mk}|${ok}|${bk.key}`,
@@ -252,7 +262,7 @@ export function findMatches(events, opts = {}) {
             layUpdated: best.ex.updated || null,
             commission: best.c,
             rating: r,
-            profit: profitFromRating(r, stake, mode),
+            profit,
             start: t,
           });
         }
@@ -260,74 +270,6 @@ export function findMatches(events, opts = {}) {
     }
   }
   return rows;
-}
-
-/* ------------------------------------------------------------------------ */
-/* Buscador favor-favor (dutching entre casas)                               */
-/* ------------------------------------------------------------------------ */
-
-/**
- * Para cada evento y mercado, la mejor cuota a favor de cada resultado entre las
- * casas permitidas. Con freebetBook, una pata se juega con la apuesta gratis de
- * esa casa y el resto se cubre con dinero en las demás.
- */
-export function findDutches(events, opts = {}) {
-  const {
-    bookies = null, leagues = null, families = null, freebetBook = null, stake = 10, minRating = -Infinity,
-    from = -Infinity, to = Infinity, q = '', now = Date.now(), step = 0.01,
-  } = opts;
-  const query = normalizeText(q);
-  const out = [];
-
-  for (const ev of events) {
-    const t = Date.parse(ev.start);
-    if (t < now || t < from || t > to) continue;
-    if (leagues && !leagues.has(ev.league)) continue;
-    if (query && !normalizeText(`${ev.home} ${ev.away} ${ev.league}`).includes(query)) continue;
-    const books = ev.books.filter((b) => !b.exchange);
-
-    for (const [mk, outcomes] of Object.entries(ev.markets)) {
-      if (families && !families.has(family(mk))) continue;
-      if (outcomes.length < 2) continue;
-      // Un mercado de 1X2 sin empate no se puede cubrir: hacen falta todos sus resultados.
-      if (mk === 'h2h' && ev.sport === 'soccer' && outcomes.length < 3) continue;
-
-      const bestFor = (ok, exclude) => {
-        let best = null;
-        for (const b of books) {
-          if (b.key === exclude) continue;
-          if (bookies && !bookies.has(b.key)) continue;
-          const price = b.m[mk]?.[ok];
-          if (price?.back > 1 && (!best || price.back > best.odds)) best = { odds: price.back, key: b.key, title: b.title, link: price.link || b.link || null };
-        }
-        return best;
-      };
-
-      if (!freebetBook) {
-        const legs = outcomes.map((ok) => ({ ok, ...bestFor(ok) }));
-        if (legs.some((l) => !l.odds)) continue;
-        const res = dutch(legs.map((l) => ({ odds: l.odds })), { totalStake: stake, step });
-        if (!res.valid || res.rating < minRating) continue;
-        out.push({ id: `${ev.id}|${mk}|cash`, event: ev, mk, marketLabel: marketLabel(mk, ev), start: t, legs, result: res, rating: res.rating, profit: res.profit, freebetIndex: -1 });
-        continue;
-      }
-
-      const fbBook = books.find((b) => b.key === freebetBook);
-      if (!fbBook) continue;
-      outcomes.forEach((ok, i) => {
-        const fbPrice = fbBook.m[mk]?.[ok];
-        if (!(fbPrice?.back > 1)) return;
-        const legs = outcomes.map((o, j) => (j === i
-          ? { ok: o, odds: fbPrice.back, key: fbBook.key, title: fbBook.title, link: fbPrice.link || fbBook.link || null, freebet: true }
-          : { ok: o, ...bestFor(o, freebetBook) }));
-        if (legs.some((l) => !l.odds)) return;
-        const res = dutch(legs.map((l) => ({ odds: l.odds, freebet: !!l.freebet })), { fixedIndex: i, fixedStake: stake, step });
-        if (!res.valid || res.rating < minRating) return;
-        out.push({ id: `${ev.id}|${mk}|fb|${i}`, event: ev, mk, marketLabel: marketLabel(mk, ev), start: t, legs, result: res, rating: res.rating, profit: res.profit, freebetIndex: i });
-      });
-    }
-  }
-  return out;
 }
 
 /** Casas, exchanges, ligas y mercados presentes en los eventos, para los filtros. */
@@ -489,11 +431,8 @@ const DEMO_LEAGUES = [
 ];
 
 export const DEMO_BOOKIES = [
-  ['bet365', 'Bet365', 0.055], ['codere', 'Codere', 0.07], ['sportium', 'Sportium', 0.068], ['bwin', 'Bwin', 0.062],
-  ['williamhill', 'William Hill', 0.06], ['betfair_sb', 'Betfair Sportsbook', 0.06], ['luckia', 'Luckia', 0.075],
-  ['retabet', 'Retabet', 0.065], ['marcaapuestas', 'Marca Apuestas', 0.07], ['kirolbet', 'Kirolbet', 0.072],
-  ['888sport', '888sport', 0.065], ['winamax', 'Winamax', 0.05], ['betway', 'Betway', 0.06], ['marathonbet', 'Marathonbet', 0.045],
-  ['versus', 'Versus', 0.07], ['paston', 'Paston', 0.075], ['daznbet', 'DAZN Bet', 0.068], ['pokerstars', 'PokerStars Sports', 0.064],
+  ['bet365', 'Bet365', 0.05], ['winamax', 'Winamax', 0.045], ['daznbet', 'DAZN Bet', 0.06],
+  ['sportium', 'Sportium', 0.065], ['retabet', 'Retabet', 0.045],
 ];
 
 const FACT = [1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800];
@@ -578,7 +517,7 @@ export function demoEvents(now = Date.now()) {
       const books = [ex];
 
       for (const [key, title, margin] of DEMO_BOOKIES) {
-        if (rnd() < 0.1) continue; // no todas las casas ofrecen todos los partidos
+        if (rnd() < 0.06) continue; // no todas las casas ofrecen todos los partidos
         const m = {};
         for (const [mk, o] of Object.entries(probs)) {
           if (mk !== 'h2h' && rnd() < 0.15) continue; // ni todos los mercados

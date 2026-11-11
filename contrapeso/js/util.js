@@ -49,6 +49,12 @@ export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/** «2026-11» → «noviembre de 2026». */
+export const reviewedLabel = (ym) => {
+  const [y, m] = String(ym || '').split('-').map(Number);
+  return y && m ? new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date(y, m - 1, 15)) : String(ym || '');
+};
+
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
 export const sign = (x) => (x > 0.004 ? 'pos' : x < -0.004 ? 'neg' : 'zero');

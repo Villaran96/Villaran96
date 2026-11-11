@@ -27,6 +27,14 @@ export function loadConfig(env = process.env) {
       refreshMinutes: Math.max(1, Number(env.REFRESH_MINUTES || 10)),
       apiBase: env.ODDS_API_BASE || 'https://api.the-odds-api.com/v4',
     },
+    oddsApiIo: {
+      key: env.ODDSAPIIO_KEY || '',
+      base: env.ODDSAPIIO_BASE || 'https://api.odds-api.io/v3',
+      bookmakers: list(env.ODDSAPIIO_BOOKMAKERS, ['Bet365', 'Winamax ES', 'DAZN Bet', 'Sportium', 'Retabet ES']),
+      leagues: list(env.ODDSAPIIO_LEAGUES, ['spain-laliga', 'spain-laliga-2', 'england-premier-league', 'italy-serie-a', 'germany-bundesliga', 'france-ligue-1', 'international-clubs-uefa-champions-league', 'international-clubs-uefa-europa-league']),
+      sport: env.ODDSAPIIO_SPORT || 'football',
+      maxEvents: Number(env.ODDSAPIIO_MAX_EVENTS || 80),
+    },
     betfair: {
       appKey: env.BETFAIR_APP_KEY || '',
       username: env.BETFAIR_USERNAME || '',
@@ -45,6 +53,11 @@ export function loadConfig(env = process.env) {
         bienvenida: env.STRIPE_PRICE_BIENVENIDA || '',
         recurrentes: env.STRIPE_PRICE_RECURRENTES || '',
         metodo: env.STRIPE_PRICE_METODO || '',
+      },
+      pricesYear: {
+        bienvenida: env.STRIPE_PRICE_BIENVENIDA_ANUAL || '',
+        recurrentes: env.STRIPE_PRICE_RECURRENTES_ANUAL || '',
+        metodo: env.STRIPE_PRICE_METODO_ANUAL || '',
       },
       metodoMode: env.STRIPE_METODO_MODE === 'payment' ? 'payment' : 'subscription',
     },

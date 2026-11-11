@@ -5,6 +5,7 @@ import {
   pullData, loadContent, refreshSession, seg,
 } from '../core.js';
 import { fmt, esc, icon, toast } from '../util.js';
+import { startCheckout, activeSub } from './planes.js';
 
 const STATUS = {
   active: 'Activa', trialing: 'En periodo de prueba', past_due: 'Pago pendiente', canceled: 'Cancelada', unpaid: 'Sin pagar', incomplete: 'Pendiente de pago',
@@ -35,25 +36,47 @@ function authForms() {
   };
   return `<section class="panel auth">
     <nav class="tabs" aria-label="Acceso">${tabs.map(([k, t]) => `<button class="tab ${k === tab ? 'is-active' : ''}" data-act="account-tab" data-tab="${k}">${t}</button>`).join('')}</nav>
-    ${state.ui.afterLogin?.plan ? `<p class="banner banner-demo">${icon('info', 16)}<span>Después de entrar irás al pago del plan ${esc(planName(state.ui.afterLogin.plan))}.</span></p>` : ''}
+    ${state.ui.afterLogin?.plan ? `<p class="banner banner-demo">${icon('info', 16)}<span>Después de entrar irás al pago del plan ${esc(planName(state.ui.afterLogin.plan))}${state.ui.afterLogin.interval === 'year' ? ' (pago anual)' : ''}.</span></p>` : ''}
     ${forms[tab]}
   </section>`;
+}
+
+function subscriptionBox(u) {
+  if (!activeSub()) return '';
+  const end = u.currentPeriodEnd ? fmt.day(u.currentPeriodEnd) : '';
+  if (u.cancelAtPeriodEnd) {
+    return `<div class="sub-box is-canceling">
+      <p>${icon('info', 15)} Tu suscripción está cancelada: mantienes el acceso${end ? ` hasta el ${esc(end)}` : ' hasta el final del periodo pagado'} y después vuelves al plan gratuito sin perder tus datos.</p>
+      <button class="btn btn-primary btn-sm" data-act="billing-resume">Reactivar mi suscripción</button>
+    </div>`;
+  }
+  if (state.ui.confirmCancel) {
+    return `<div class="sub-box is-confirm">
+      <p><b>¿Seguro que quieres cancelar?</b> No se te cobrará más. Mantienes el acceso${end ? ` hasta el ${esc(end)}` : ' hasta el final del periodo pagado'} y puedes reactivarla antes de esa fecha.</p>
+      <div class="actions"><button class="btn btn-danger btn-sm" data-act="billing-cancel-confirm">Sí, cancelar la suscripción</button><button class="btn btn-sm" data-act="billing-cancel-no">No, seguir con mi plan</button></div>
+    </div>`;
+  }
+  return '<button class="btn btn-ghost btn-sm" data-act="billing-cancel">Cancelar la suscripción</button>';
 }
 
 function accountPanel() {
   const u = session.user;
   const p = plans()[plan()];
   const status = u.planStatus ? STATUS[u.planStatus] || u.planStatus : null;
+  const paid = activeSub();
+  const price = paid ? (u.planInterval === 'year' && Number(p.priceYear) > 0 ? `${fmt.eur(p.priceYear)} al año` : `${fmt.eur(p.price)} al mes`) : '';
   return `<div class="grid-2">
     <section class="panel">
       <div class="panel-head"><h2>${icon('shield', 16)} Tu plan</h2></div>
       <div class="plan-summary"><b>${esc(p.name)}</b>${status ? `<span class="pill ${u.planStatus === 'active' || u.planStatus === 'trialing' ? 'pill-done' : 'pill-skip'}">${esc(status)}</span>` : ''}</div>
-      ${u.currentPeriodEnd ? `<p class="muted small">${u.cancelAtPeriodEnd ? 'Se cancela el' : 'Se renueva el'} ${esc(fmt.day(u.currentPeriodEnd))}.</p>` : ''}
-      ${u.planStatus === 'past_due' ? '<p class="small warn">No se ha podido cobrar la última cuota. Actualiza tu tarjeta para no perder el acceso.</p>' : ''}
+      ${paid ? `<p class="muted small">Pago ${u.planInterval === 'year' ? 'anual' : 'mensual'}: ${esc(price)}.</p>` : ''}
+      ${u.currentPeriodEnd && !u.cancelAtPeriodEnd ? `<p class="muted small">${u.planStatus === 'trialing' ? 'La prueba gratis termina y se hace el primer cobro el' : 'Se renueva el'} ${esc(fmt.day(u.currentPeriodEnd))}.</p>` : ''}
+      ${u.planStatus === 'past_due' ? '<p class="small warn">No se ha podido cobrar la última cuota. Actualiza tu tarjeta en «Gestionar pago» para no perder el acceso.</p>' : ''}
       <div class="actions">
-        <a class="btn btn-primary" href="#planes">Cambiar de plan</a>
+        <a class="btn btn-primary" href="#planes">${paid ? 'Cambiar de plan' : 'Ver planes'}</a>
         ${u.hasBilling ? `<button class="btn" data-act="billing-portal">${icon('doc', 15)} Gestionar pago y facturas</button>` : ''}
       </div>
+      ${subscriptionBox(u)}
       ${u.contract ? `<p class="small">${icon('check', 14)} Contrato del Método firmado el ${esc(fmt.day(u.contract.signedAt))}. <a href="#contrato" data-act="open-contract" data-id="${esc(u.contract.id)}">Ver copia</a></p>` : ''}
     </section>
     <section class="panel">
@@ -127,9 +150,7 @@ async function afterAuth(user) {
   if (pending?.plan) {
     if (pending.plan === 'metodo') { go('metodo'); return; }
     try {
-      const { url } = await api.checkout(pending.plan);
-      window.location.href = url;
-      return;
+      if (await startCheckout(pending.plan, pending.interval === 'year' ? 'year' : 'month') === 'redirect') return;
     } catch (e) { toast(e.message, 'warn'); }
   }
   go('inicio');
@@ -195,6 +216,34 @@ registerActions({
     await refreshSession();
     toast('Has cerrado sesión');
     go('inicio');
+  },
+  'billing-cancel': () => { state.ui.confirmCancel = true; save(); render(); },
+  'billing-cancel-no': () => { state.ui.confirmCancel = false; save(); render(); },
+  'billing-cancel-confirm': async (b) => {
+    b.disabled = true;
+    try {
+      await api.cancelSubscription();
+      state.ui.confirmCancel = false;
+      save();
+      await refreshSession();
+      toast('Suscripción cancelada. Mantienes el acceso hasta el final del periodo pagado.', 'good');
+      render();
+    } catch (e) {
+      toast(e.message, 'warn');
+      b.disabled = false;
+    }
+  },
+  'billing-resume': async (b) => {
+    b.disabled = true;
+    try {
+      await api.resumeSubscription();
+      await refreshSession();
+      toast('Suscripción reactivada. Todo sigue como antes.', 'good');
+      render();
+    } catch (e) {
+      toast(e.message, 'warn');
+      b.disabled = false;
+    }
   },
   'billing-portal': async (b) => {
     b.disabled = true;

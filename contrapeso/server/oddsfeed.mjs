@@ -1,9 +1,10 @@
-// Descarga centralizada de cuotas: casas desde The Odds API y, si hay credenciales,
-// cuotas en contra reales de Betfair.es unidas partido a partido.
+// Descarga centralizada de cuotas: casas desde odds-api.io y The Odds API y, si hay
+// credenciales, cuotas en contra reales de Betfair.es, unidas partido a partido.
 
 import { fetchTheOddsApi, findMatches } from '../js/odds.js';
 import { createBetfairClient } from './betfair.mjs';
-import { mergeExchange } from './merge.mjs';
+import { mergeExchange, mergeBookmakers } from './merge.mjs';
+import { createOddsApiIo } from './oddsapiio.mjs';
 
 export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {}) {
   let cache = { updated: null, events: [], remaining: null, errors: [], sources: [] };
@@ -12,7 +13,9 @@ export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {
     ? createBetfairClient({ ...cfg.betfair, fetchImpl })
     : null;
 
-  const configured = () => !!(cfg.odds.key || bf);
+  const io = cfg.oddsApiIo?.key ? createOddsApiIo({ ...cfg.oddsApiIo, fetchImpl }) : null;
+
+  const configured = () => !!(cfg.odds.key || bf || io);
 
   async function refresh() {
     if (!configured()) return cache;
@@ -22,12 +25,22 @@ export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {
       const sources = [];
       let events = [];
       let { remaining } = cache;
+      if (io) {
+        try {
+          const r = await io.fetchEvents();
+          events = r.events;
+          errors.push(...r.errors);
+          sources.push(`odds-api.io (${r.events.length} partidos)`);
+        } catch (e) {
+          errors.push(`odds-api.io: ${e.message}`);
+        }
+      }
       if (cfg.odds.key) {
         try {
           const r = await fetchTheOddsApi({
             apiKey: cfg.odds.key, sports: cfg.odds.sports, regions: cfg.odds.regions, markets: cfg.odds.markets, includeLinks: true, fetchImpl, base: cfg.odds.apiBase,
           });
-          events = r.events;
+          events = events.length ? mergeBookmakers(events, r.events) : r.events;
           remaining = r.remaining;
           errors.push(...r.errors);
           sources.push(`The Odds API (${r.events.length} partidos)`);

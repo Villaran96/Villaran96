@@ -132,3 +132,101 @@ test('cliente de Betfair: inicia sesión en .es, reintenta al caducar la sesión
   assert.equal(events.length, 1);
   assert.equal(events[0].books[0].m.h2h.draw.lay, 3.4);
 });
+
+/* ------------------------------------------------------------ odds-api.io */
+
+import { normEvent, parseBooks, toModel, createOddsApiIo } from '../server/oddsapiio.mjs';
+import { mergeBookmakers } from '../server/merge.mjs';
+
+const ioEvent = { id: 123, home: 'Sevilla', away: 'Real Betis', date: start, league: { name: 'Spain - LaLiga', slug: 'spain-laliga' } };
+const ioOdds = {
+  id: 123,
+  home: 'Sevilla',
+  away: 'Real Betis',
+  date: start,
+  urls: { Bet365: 'https://www.bet365.es/#/AC/B1/C1/D8/E123/', 'Retabet ES': 'https://www.retabet.es/evento/123' },
+  bookmakers: {
+    Bet365: [
+      { name: 'ML', odds: [{ home: '2.62', draw: '3.30', away: '2.90' }] },
+      { name: 'Totals', odds: [{ hdp: 2.5, over: '2.04', under: '1.80' }, { hdp: 3.5, over: '3.40', under: '1.30' }] },
+      { name: 'Corners Totals', odds: [{ hdp: 9.5, over: '1.9', under: '1.9' }] },
+    ],
+    'Retabet ES': [{ name: 'ML', odds: [{ home: 2.66, draw: 3.25, away: 2.85 }] }],
+    'DAZN Bet': [{ name: 'Both Teams To Score', odds: [{ yes: '1.75', no: '2.05' }] }],
+  },
+};
+
+test('odds-api.io: lee eventos y cuotas con nombres de campo distintos', () => {
+  assert.deepEqual(normEvent(ioEvent), { id: '123', home: 'Sevilla', away: 'Real Betis', start, league: 'Spain - LaLiga' });
+  assert.equal(normEvent({ eventId: 'x', homeTeam: { name: 'A' }, awayTeam: { name: 'B' }, startTime: Date.parse(start) / 1000 }).home, 'A');
+  assert.equal(normEvent({ id: 1 }), null);
+  const books = parseBooks(ioOdds);
+  const b365 = books.find((b) => b.key === 'bet365');
+  assert.equal(b365.title, 'Bet365');
+  assert.equal(b365.m.h2h.home.back, 2.62);
+  assert.equal(b365.m.h2h.home.link, 'https://www.bet365.es/#/AC/B1/C1/D8/E123/');
+  assert.equal(b365.m['tot:2.5'].over.back, 2.04);
+  assert.ok(!b365.m['tot:9.5'], 'los córners no son goles');
+  const reta = books.find((b) => b.key === 'retabet');
+  assert.equal(reta.title, 'Retabet');
+  assert.equal(books.find((b) => b.key === 'daznbet').m.btts.yes.back, 1.75);
+  const model = toModel(normEvent(ioEvent), ioOdds);
+  assert.deepEqual(model.markets.h2h, ['home', 'draw', 'away']);
+  assert.deepEqual(Object.keys(model.markets).sort(), ['btts', 'h2h', 'tot:2.5', 'tot:3.5']);
+});
+
+test('odds-api.io: con Betfair.es, el oddsmatcher encuentra cuotas de Bet365 y Retabet con enlace al partido', () => {
+  const ev = toModel(normEvent(ioEvent), ioOdds);
+  const { events } = mergeExchange([ev], mapBetfair(catalogue, books), { keepExchanges: new Set(['betfair_es']) });
+  const rows = findMatches(events, { commissions: { betfair_es: 2 } });
+  const b365 = rows.find((r) => r.bookKey === 'bet365' && r.mk === 'h2h' && r.ok === 'home');
+  assert.equal(b365.lay, 2.6);
+  assert.equal(b365.backLink, 'https://www.bet365.es/#/AC/B1/C1/D8/E123/');
+  assert.ok(rows.some((r) => r.bookKey === 'retabet'));
+  assert.ok(rows.some((r) => r.mk === 'tot:2.5' && r.bookKey === 'bet365'));
+});
+
+test('odds-api.io: cliente con eventos, cuotas en grupo y vuelta a una a una', async () => {
+  const calls = [];
+  let multiAvailable = false;
+  const fakeFetch = async (url) => {
+    calls.push(url);
+    const json = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+    if (url.includes('/events?')) return json(200, [ioEvent, { id: 9, home: 'Old', away: 'Match', date: '2020-01-01T00:00:00Z' }]);
+    if (url.includes('/odds/multi?')) return multiAvailable ? json(200, [ioOdds]) : json(404, { error: 'Not found' });
+    if (url.includes('/odds?')) return json(200, ioOdds);
+    return json(404, {});
+  };
+  const client = createOddsApiIo({ key: 'K', base: 'https://api.test/v3', bookmakers: ['Bet365', 'Retabet ES'], leagues: ['spain-laliga'], fetchImpl: fakeFetch });
+  let res = await client.fetchEvents();
+  assert.equal(res.events.length, 1, 'solo el partido futuro');
+  assert.ok(calls.some((u) => u.includes('/odds?') && u.includes('eventId=123') && u.includes('bookmakers=Bet365%2CRetabet+ES') && u.includes('apiKey=K')));
+  multiAvailable = true;
+  calls.length = 0;
+  res = await client.fetchEvents();
+  assert.equal(res.events.length, 1);
+  assert.ok(calls.some((u) => u.includes('/odds/multi?')));
+  const denied = createOddsApiIo({ key: 'bad', base: 'https://api.test/v3', leagues: ['a', 'b'], fetchImpl: async () => ({ ok: false, status: 401, text: async () => '{"error":"Invalid API key"}' }) });
+  res = await denied.fetchEvents();
+  assert.equal(res.events.length, 0);
+  assert.match(res.errors[0], /401/);
+});
+
+test('une dos fuentes de casas sin duplicar casas ni partidos', () => {
+  const a = toModel(normEvent(ioEvent), ioOdds);
+  const b = normalizeTheOddsApi([{
+    id: 'oa', sport_key: 'soccer_spain_la_liga', sport_title: 'La Liga - Spain', commence_time: start, home_team: 'Sevilla FC', away_team: 'Real Betis',
+    bookmakers: [
+      { key: 'bet365', title: 'Bet365', markets: [{ key: 'h2h', outcomes: [{ name: 'Sevilla FC', price: 9 }, { name: 'Real Betis', price: 9 }, { name: 'Draw', price: 9 }] }] },
+      { key: 'williamhill', title: 'William Hill', markets: [{ key: 'h2h', outcomes: [{ name: 'Sevilla FC', price: 2.6 }, { name: 'Real Betis', price: 2.9 }, { name: 'Draw', price: 3.3 }] }] },
+    ],
+  }, {
+    id: 'other', sport_key: 'soccer_epl', sport_title: 'EPL', commence_time: start, home_team: 'Arsenal', away_team: 'Chelsea', bookmakers: [],
+  }]);
+  const merged = mergeBookmakers([a], b);
+  assert.equal(merged.length, 2);
+  const sev = merged[0];
+  assert.equal(sev.books.filter((x) => x.key === 'bet365').length, 1, 'no repite Bet365');
+  assert.equal(sev.books.find((x) => x.key === 'bet365').m.h2h.home.back, 2.62, 'manda la primera fuente');
+  assert.ok(sev.books.some((x) => x.key === 'williamhill'));
+});

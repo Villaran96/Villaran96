@@ -43,7 +43,9 @@ export const deleteMe = (password) => request('DELETE', '/api/me', { password })
 export const getData = () => request('GET', '/api/me/data');
 export const putData = (b) => request('PUT', '/api/me/data', b);
 export const content = () => request('GET', '/api/content');
-export const checkout = (plan) => request('POST', '/api/billing/checkout', { plan });
+export const checkout = (plan, interval = 'month') => request('POST', '/api/billing/checkout', { plan, interval });
+export const cancelSubscription = () => request('POST', '/api/billing/cancel', {});
+export const resumeSubscription = () => request('POST', '/api/billing/resume', {});
 export const portal = () => request('POST', '/api/billing/portal', {});
 export const metodo = () => request('GET', '/api/metodo');
 export const apply = (b) => request('POST', '/api/metodo/apply', b);
@@ -56,4 +58,6 @@ export const admin = {
   putSettings: (b) => request('PUT', '/api/admin/settings', b),
   patchUser: (id, b) => request('PATCH', `/api/admin/users/${encodeURIComponent(id)}`, b),
   patchApplication: (id, status) => request('PATCH', `/api/admin/applications/${encodeURIComponent(id)}`, { status }),
+  stripeSetup: () => request('POST', '/api/admin/stripe/setup', {}),
+  createCoupon: (b) => request('POST', '/api/admin/stripe/coupon', b),
 };

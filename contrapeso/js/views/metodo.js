@@ -13,6 +13,8 @@ import {
   contractData, contractText, contractHTML, sha256Hex, validDni, CONTRACT_VERSION,
 } from '../contract.js';
 import { exportCsv } from './beneficios.js';
+import { billing, yearlyOk } from './planes.js';
+import { yearSaving } from '../plans.js';
 
 /* ------------------------------------------------------------ estado del proceso */
 
@@ -59,7 +61,7 @@ function salesHeader(st) {
       <span class="eyebrow">Plan ${esc(p.name)} · plazas limitadas</span>
       <h2>${esc(p.tagline || 'El método completo, Hacienda incluida.')}</h2>
       <p>Todo lo del plan ${esc(plans().recurrentes.name)} y un programa paso a paso para hacerlo de forma ordenada y declararlo bien: qué tributa, qué documentos pedir a cada casa y cómo hacerlo en Renta Web, con una hoja de control que usa tus propios datos.</p>
-      <div class="metodo-price"><b>${esc(priceLabel(p))}</b>${s.total ? `<span class="seats ${s.left === 0 ? 'is-full' : ''}">${icon('star', 14)} ${s.left === 0 ? 'Sin plazas ahora mismo' : `Quedan ${s.left} de ${s.total} plazas`}</span>` : ''}</div>
+      <div class="metodo-price"><b>${esc(priceLabel(p))}</b>${yearlyOk('metodo') ? `<span class="muted small">o ${esc(fmt.eur(p.priceYear))} al año</span>` : ''}${s.total ? `<span class="seats ${s.left === 0 ? 'is-full' : ''}">${icon('star', 14)} ${s.left === 0 ? 'Sin plazas ahora mismo' : `Quedan ${s.left} de ${s.total} plazas`}</span>` : ''}</div>
     </div>
     <div class="metodo-included">
       <span class="eyebrow">Lo que incluye</span>
@@ -132,13 +134,19 @@ function signForm() {
 
 function payPanel() {
   const p = plans().metodo;
+  const yearly = yearlyOk('metodo');
+  const iv = yearly ? billing() : 'month';
   const signedAt = session.backend ? session.user?.contract?.signedAt : state.local.contract?.signedAt;
   return `<section class="panel">
     <div class="panel-head"><h2>3. Activa tu plaza</h2></div>
     <p>${icon('check', 15)} Contrato firmado ${signedAt ? `el ${esc(fmt.day(signedAt))}` : ''}. <a href="#contrato" data-act="open-contract">Ver copia</a></p>
-    <p>Paga ${esc(priceLabel(p))} para activar el acceso. La plaza es tuya mientras mantengas la suscripción.</p>
+    ${yearly ? `<div class="billing-toggle" role="group" aria-label="Forma de pago">
+      <button class="${iv === 'month' ? 'is-on' : ''}" data-set="ui.billing" data-v="month" aria-pressed="${iv === 'month'}">${esc(fmt.eur(p.price))} al mes</button>
+      <button class="${iv === 'year' ? 'is-on' : ''}" data-set="ui.billing" data-v="year" aria-pressed="${iv === 'year'}">${esc(fmt.eur(p.priceYear))} al año${yearSaving(p) ? `<span class="save-tag">${yearSaving(p)} meses gratis</span>` : ''}</button>
+    </div>` : ''}
+    <p>Paga ${iv === 'year' ? `${esc(fmt.eur(p.priceYear))} al año` : esc(priceLabel(p))} para activar el acceso. La plaza es tuya mientras mantengas la suscripción${iv === 'year' ? ' (se renueva cada año; puedes cancelar la renovación cuando quieras)' : ''}.</p>
     <div class="actions">${session.backend
-      ? `<button class="btn btn-primary" data-act="subscribe" data-plan="metodo">${icon('shield', 15)} Pagar y activar</button>`
+      ? `<button class="btn btn-primary" data-act="subscribe" data-plan="metodo" data-interval="${iv}">${icon('shield', 15)} Pagar y activar</button>`
       : `<button class="btn btn-primary" data-act="metodo-simulate-pay">${icon('eye', 15)} Simular el pago (vista previa)</button>`}</div>
   </section>`;
 }

@@ -8,8 +8,10 @@ import {
 import {
   fmt, esc, icon, toast, uid,
 } from '../util.js';
-import { OFFER_KINDS } from '../data.js';
-import { mergePlans, PLAN_ORDER, effectivePlan } from '../plans.js';
+import { OFFER_KINDS, DETAIL_FIELDS } from '../data.js';
+import {
+  mergePlans, PLAN_ORDER, PAID_PLANS, ACCESS_STATUSES, yearSaving,
+} from '../plans.js';
 import {
   DEFAULT_GUIDES, DEFAULT_PROMOS, DEFAULT_LESSONS, DEFAULT_SITE,
 } from '../content.js';
@@ -45,30 +47,43 @@ function data() {
 
 const TABS = [
   ['resumen', 'Resumen'], ['guides', 'Bienvenida'], ['promos', 'Recurrentes'], ['lessons', 'Lecciones del Método'],
-  ['planes', 'Planes y precios'], ['empresa', 'Empresa'], ['usuarios', 'Usuarios'], ['solicitudes', 'Solicitudes'], ['contratos', 'Contratos'],
+  ['planes', 'Planes y precios'], ['pagos', 'Pagos'], ['empresa', 'Empresa'], ['usuarios', 'Usuarios'], ['solicitudes', 'Solicitudes'], ['contratos', 'Contratos'],
 ];
+
+/** Suscripciones de pago en marcha (sin administradores ni planes regalados sin Stripe). */
+const paying = (users) => (users || []).filter((u) => u.role !== 'admin' && (u.subscribedPlan || 'free') !== 'free' && ACCESS_STATUSES.has(u.planStatus) && u.hasBilling);
+
+/** Ingresos al mes: las suscripciones anuales cuentan su doceava parte; las pruebas no cuentan. */
+function mrrOf(users, P) {
+  return paying(users).filter((u) => u.planStatus !== 'trialing').reduce((s, u) => {
+    const p = P[u.subscribedPlan];
+    if (!p) return s;
+    if (u.planInterval === 'year' && nz(p.priceYear) > 0) return s + nz(p.priceYear) / 12;
+    return s + (p.interval === 'once' ? 0 : nz(p.price));
+  }, 0);
+}
 const DAYS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
 /* ------------------------------------------------------------ resumen */
 
 function summary(d) {
   const users = d.users || [];
-  const paid = users.filter((u) => u.plan !== 'free' && u.role !== 'admin');
-  const p = d.settings.plans;
-  const mrr = paid.reduce((s, u) => s + (p[u.plan]?.interval === 'month' ? nz(p[u.plan].price) : p[u.plan]?.interval === 'year' ? nz(p[u.plan].price) / 12 : 0), 0);
+  const paid = paying(users);
+  const mrr = mrrOf(users, d.settings.plans);
   const s = d.settings.site;
+  const pricesOk = !!d.payments && PAID_PLANS.every((id) => d.payments.prices?.[id]?.month);
   const checks = [
     [!!(s.legalName && s.nif && s.address && s.email), 'Datos de la empresa completos (aviso legal, privacidad y contrato)', 'empresa'],
     [!!s.contractReviewed, 'Contrato del Método revisado por un abogado', 'empresa'],
-    [session.backend ? !!d.payments?.configured : false, 'Pagos con Stripe configurados (STRIPE_SECRET_KEY y precios)', null],
-    [session.backend ? !!d.payments?.webhook : false, 'Webhook de Stripe configurado (STRIPE_WEBHOOK_SECRET)', null],
-    [session.backend ? !!d.odds?.configured : false, 'Fuente de cuotas reales (ODDS_API_KEY o Betfair)', null],
+    [session.backend ? !!d.payments?.configured && pricesOk : false, 'Pagos con Stripe: clave del servidor y precios creados', 'pagos'],
+    [session.backend ? !!d.payments?.webhook : false, 'Webhook de Stripe (avisa a la web de cada pago y cancelación)', 'pagos'],
+    [session.backend ? !!d.odds?.configured : false, 'Fuente de cuotas reales (ODDSAPIIO_KEY, ODDS_API_KEY o Betfair)', null],
     [!d.content.guides.some((g) => g.example), 'Guías de bienvenida reales (sin ejemplos)', 'guides'],
     [!d.content.promos.some((g) => g.example), 'Promociones recurrentes reales (sin ejemplos)', 'promos'],
   ];
   return `<section class="kpis">
     ${kpi('Usuarios', String(users.length || '—'), session.backend ? '' : 'con el servidor')}
-    ${kpi('Suscriptores de pago', String(paid.length || (session.backend ? 0 : '—')))}
+    ${kpi('Suscriptores de pago', session.backend ? String(paid.length) : '—', session.backend ? `${paid.filter((u) => u.planStatus === 'trialing').length} en prueba` : '')}
     ${kpi('Ingresos mensuales', session.backend ? fmt.eur(mrr) : '—', 'estimados', 'kpi-brass')}
     ${kpi('Plazas del Método', d.seats.total ? `${d.seats.taken}/${d.seats.total}` : 'Sin límite')}
   </section>
@@ -117,13 +132,19 @@ function editForm(kind) {
     <div class="form-grid">
       <label class="field" for="f-ae-bookie"><span class="field-label">Casa</span><span class="field-input"><input id="f-ae-bookie" data-k="ui.adminEdit.item.bookie" list="bookie-list" value="${esc(x.bookie || '')}"></span></label>
       ${select('ui.adminEdit.item.kind', 'Tipo', Object.entries(OFFER_KINDS).map(([key, v]) => [key, v.label]), { full: true })}
+      ${field('ui.adminEdit.item.title', 'Título (opcional)', { mode: 'text', placeholder: k.title(x.params) })}
       ${k.fields.map((f) => (f.type === 'select' ? select(`ui.adminEdit.item.params.${f.key}`, f.label, f.options) : field(`ui.adminEdit.item.params.${f.key}`, f.label, { unit: f.unit }))).join('')}
+      ${(k.details || []).map((key) => DETAIL_FIELDS[key]).filter(Boolean).map((f) => field(`ui.adminEdit.item.params.${f.key}`, f.label, { unit: f.unit, mode: f.type === 'text' ? 'text' : 'decimal' })).join('')}
       ${field('ui.adminEdit.item.url', 'Enlace a la casa o a la promoción', { mode: 'url', placeholder: 'https://' })}
+      ${field('ui.adminEdit.item.reviewed', 'Condiciones revisadas en (AAAA-MM)', { mode: 'text', placeholder: '2026-11' })}
       ${kind === 'promos' ? field('ui.adminEdit.item.schedule', 'Cuándo (texto)', { mode: 'text', placeholder: 'Cada lunes' }) : ''}
       ${kind === 'promos' ? field('ui.adminEdit.item.validUntil', 'Válida hasta (opcional)', { type: 'date' }) : ''}
     </div>
     ${kind === 'promos' ? `<div class="field"><span class="field-label">Días en los que sale en el calendario (ninguno = todos los días)</span><div class="day-picks">${DAYS.map((dname, i) => `<label class="day-pick"><input type="checkbox" data-act-change="admin-day" data-day="${i}" ${days.has(i) ? 'checked' : ''}><span>${dname}</span></label>`).join('')}</div></div>` : ''}
     <label class="field" for="f-ae-cond"><span class="field-label">Condiciones (las verá el usuario)</span><textarea id="f-ae-cond" data-k="ui.adminEdit.item.conditions" rows="3">${esc(x.conditions || '')}</textarea></label>
+    ${kind === 'guides' ? `<label class="field" for="f-ae-howto"><span class="field-label">Cómo se hace (sale en la Guía → Tus casas)</span><textarea id="f-ae-howto" class="mono" data-k="ui.adminEdit.item.howto" rows="10">${esc(x.howto || '')}</textarea>
+      <span class="field-hint">## Título · - lista · 1. lista numerada · &gt; nota · **negrita** · [enlace](https://…). Los pasos con botones se generan solos con los números de arriba.</span></label>
+      <details class="explain"><summary>Vista previa</summary><div class="prose" id="lesson-preview">${markdown(x.howto || '', { vars: { marca: brand() } })}</div></details>` : ''}
     <div class="accepts">
       <label class="check"><input type="checkbox" data-k="ui.adminEdit.item.active" ${x.active !== false ? 'checked' : ''}><span>Publicada</span></label>
       <label class="check"><input type="checkbox" data-k="ui.adminEdit.item.example" ${x.example ? 'checked' : ''}><span>Marcar como ejemplo</span></label>
@@ -164,8 +185,8 @@ function plansTab(d) {
     <div class="panel-head"><h2>${esc(P[id].name)}</h2><span class="muted small">${id}</span></div>
     <div class="form-grid pair">
       ${field(`ui.adminPlans.${id}.name`, 'Nombre', { mode: 'text' })}
-      ${id === 'free' ? '' : field(`ui.adminPlans.${id}.price`, 'Precio', { unit: '€' })}
-      ${id === 'free' ? '' : select(`ui.adminPlans.${id}.interval`, 'Cobro', [['month', 'Mensual'], ['year', 'Anual'], ['once', 'Pago único']])}
+      ${id === 'free' ? '' : field(`ui.adminPlans.${id}.price`, id === 'metodo' && d.payments && d.payments.recurringMetodo === false ? 'Precio (pago único)' : 'Precio al mes', { unit: '€' })}
+      ${id === 'free' || (id === 'metodo' && d.payments && d.payments.recurringMetodo === false) ? '' : field(`ui.adminPlans.${id}.priceYear`, 'Precio al año', { unit: '€', hint: yearSaving(P[id]) ? `Regala ${yearSaving(P[id])} meses frente al mensual. 0 = sin pago anual.` : '0 = sin pago anual.' })}
       ${id === 'free' || id === 'metodo' ? '' : field(`ui.adminPlans.${id}.trialDays`, 'Días de prueba')}
       ${id === 'metodo' ? field(`ui.adminPlans.${id}.seats`, 'Plazas (0 = sin límite)') : ''}
     </div>
@@ -176,7 +197,7 @@ function plansTab(d) {
       ${id === 'metodo' ? `<label class="check"><input type="checkbox" data-k="ui.adminPlans.${id}.requiresApproval" ${P[id].requiresApproval ? 'checked' : ''}><span>Revisar cada solicitud a mano antes de dejar firmar</span></label>` : ''}
     </div>
   </section>`).join('')}</div>
-  <p class="muted small">El precio que se cobra lo fija el precio de Stripe de cada plan (variables STRIPE_PRICE_…). Pon aquí el mismo importe para que coincida lo que se enseña con lo que se cobra.</p>
+  <p class="muted small">Con Stripe conectado (Administración → Pagos), al guardar se crean en Stripe los precios nuevos. Quien ya está suscrito sigue pagando su precio anterior.</p>
   <div class="actions"><button class="btn btn-primary" data-act="admin-save-plans">${icon('check', 15)} Guardar planes</button></div>`;
 }
 
@@ -212,7 +233,7 @@ function usersTab(d) {
     <tbody>${d.users.map((u) => `<tr>
       <td><b>${esc(u.name || '')}</b><br><span class="muted small">${esc(u.email)}${u.role === 'admin' ? ' · admin' : ''}</span></td>
       <td>${esc(plans()[u.plan]?.name || u.plan)}</td>
-      <td>${esc(u.planStatus || '—')}</td>
+      <td>${esc(u.planStatus || '—')}${u.planStatus && u.subscribedPlan !== 'free' ? `<br><span class="muted small">${u.planInterval === 'year' ? 'anual' : 'mensual'}${u.cancelAtPeriodEnd ? ' · se cancela' : ''}${u.hasBilling ? '' : ' · a mano'}</span>` : ''}</td>
       <td class="nowrap">${esc(fmt.day(u.createdAt))}</td>
       <td>${u.contract ? `<a href="#contrato" data-act="open-contract" data-id="${esc(u.contract.id)}">Ver</a>` : '—'}</td>
       <td><select data-act-change="admin-user-plan" data-id="${esc(u.id)}" aria-label="Plan de ${esc(u.email)}">${PLAN_ORDER.map((id) => `<option value="${id}" ${u.subscribedPlan === id ? 'selected' : ''}>${esc(plans()[id].name)}</option>`).join('')}</select></td>
@@ -249,6 +270,81 @@ function contractsTab(d) {
   </table></div>`;
 }
 
+/* ------------------------------------------------------------ pagos */
+
+function pagosTab(d) {
+  if (!session.backend) {
+    return `<section class="panel"><div class="panel-head"><h2>Pagos con Stripe</h2></div>
+      <p>En la vista previa no se cobra nada. Cuando publiques la web con el servidor:</p>
+      <ol class="setup-steps">
+        <li>Crea tu cuenta en Stripe y copia la clave secreta (Desarrolladores → Claves de API).</li>
+        <li>Ponla en el servidor como <code>STRIPE_SECRET_KEY</code> y la dirección pública en <code>SITE_URL</code> (con https).</li>
+        <li>Entra aquí y pulsa <b>Conectar con Stripe</b>: se crean solos los productos, los precios mensuales y anuales y el webhook.</li>
+        <li>Si quieres, crea códigos de descuento (por ejemplo LANZAMIENTO al 30 %) desde esta misma página.</li>
+      </ol>
+    </section>`;
+  }
+  const pay = d.payments || {};
+  const P = d.settings.plans;
+  const users = d.users || [];
+  const subs = paying(users);
+  const rows = PAID_PLANS.map((id) => {
+    const list = subs.filter((u) => u.subscribedPlan === id);
+    return {
+      id, name: P[id].name, month: list.filter((u) => u.planInterval !== 'year').length, year: list.filter((u) => u.planInterval === 'year').length,
+      trial: list.filter((u) => u.planStatus === 'trialing').length, canceling: list.filter((u) => u.cancelAtPeriodEnd).length, mrr: mrrOf(list, P),
+    };
+  });
+  const status = [
+    [!!pay.configured, 'Clave secreta de Stripe en el servidor (STRIPE_SECRET_KEY)'],
+    ...PAID_PLANS.map((id) => {
+      const pr = pay.prices?.[id] || {};
+      const wantsYear = nz(P[id].priceYear) > 0 && (id !== 'metodo' || pay.recurringMetodo !== false);
+      return [!!pr.month && (!wantsYear || !!pr.year), `Precio de ${P[id].name} en Stripe: ${pr.month ? 'mensual ✓' : 'mensual falta'}${wantsYear ? ` · ${pr.year ? 'anual ✓' : 'anual falta'}` : ''}`];
+    }),
+    [!!pay.webhook, `Webhook de Stripe${pay.webhookFrom === 'env' ? ' (STRIPE_WEBHOOK_SECRET)' : pay.webhookFrom === 'panel' ? ' (creado desde aquí)' : ''}`],
+  ];
+  const log = state.ui.stripeLog;
+  const coupons = pay.coupons || [];
+  const dur = { once: 'el primer pago', repeating: 'meses', forever: 'siempre' };
+  return `<section class="kpis">
+    ${kpi('Ingresos al mes', fmt.eur(mrrOf(users, P)), 'las anuales cuentan 1/12', 'kpi-brass')}
+    ${kpi('Suscripciones', String(subs.length), `${subs.filter((u) => u.planInterval === 'year').length} anuales`)}
+    ${kpi('En prueba gratis', String(subs.filter((u) => u.planStatus === 'trialing').length))}
+    ${kpi('Se cancelan', String(subs.filter((u) => u.cancelAtPeriodEnd).length), 'al final del periodo')}
+  </section>
+  <div class="grid-2">
+    <section class="panel">
+      <div class="panel-head"><h2>Conexión con Stripe</h2>${pay.syncedAt ? `<span class="muted small">Sincronizado ${esc(fmt.ago(pay.syncedAt))}</span>` : ''}</div>
+      <ul class="setup-list">${status.map(([ok, text]) => `<li class="${ok ? 'is-done' : ''}">${ok ? icon('check', 15) : icon('info', 15)}<span>${esc(text)}</span></li>`).join('')}</ul>
+      <div class="actions"><button class="btn btn-primary" data-act="admin-stripe-setup" ${pay.configured ? '' : 'disabled'}>${icon('refresh', 15)} ${pay.syncedAt ? 'Volver a sincronizar' : 'Conectar con Stripe'}</button></div>
+      ${pay.configured ? '<p class="muted small">Crea lo que falte (productos, precios mensuales y anuales con IVA incluido y el webhook) y no toca lo que ya existe.</p>' : '<p class="muted small warn">Pon STRIPE_SECRET_KEY en el servidor y reinícialo para poder conectar.</p>'}
+      ${log ? `<ul class="log-list">${log.map((l) => `<li>${icon('check', 13)} ${esc(l)}</li>`).join('')}</ul>` : ''}
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Códigos de descuento</h2></div>
+      <form class="form-grid pair coupon-form" data-form="admin-coupon">
+        <label class="field"><span class="field-label">Código</span><span class="field-input"><input name="code" placeholder="LANZAMIENTO" maxlength="40" required></span></label>
+        <label class="field"><span class="field-label">Descuento</span><span class="field-input"><input name="percent" inputmode="decimal" placeholder="30" required><span class="unit">%</span></span></label>
+        <label class="field"><span class="field-label">Se aplica</span><span class="field-input"><select name="duration"><option value="once">Al primer pago</option><option value="repeating">Durante unos meses</option><option value="forever">Siempre</option></select></span></label>
+        <label class="field"><span class="field-label">Meses (si es durante unos meses)</span><span class="field-input"><input name="months" inputmode="numeric" placeholder="3"></span></label>
+        <label class="field"><span class="field-label">Usos máximos (vacío = sin límite)</span><span class="field-input"><input name="maxRedemptions" inputmode="numeric" placeholder="100"></span></label>
+        <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-primary" type="submit" ${pay.configured ? '' : 'disabled'}>${icon('plus', 15)} Crear código</button></div>
+      </form>
+      <p class="muted small">Tus clientes lo escriben en la página de pago de Stripe.</p>
+      ${coupons.length ? `<ul class="coupon-list">${coupons.map((c) => `<li><b class="code">${esc(c.code)}</b><span>${esc(String(c.percent))} % · ${c.duration === 'repeating' ? `${esc(String(c.months))} ${dur.repeating}` : dur[c.duration] || ''}${c.maxRedemptions ? ` · máx. ${esc(String(c.maxRedemptions))} usos` : ''}</span><span class="muted small">${esc(fmt.day(c.createdAt))}</span></li>`).join('')}</ul>` : ''}
+    </section>
+  </div>
+  <section class="panel">
+    <div class="panel-head"><h2>Suscripciones por plan</h2></div>
+    <div class="table-wrap"><table class="ledger admin-table">
+      <thead><tr><th>Plan</th><th class="num">Mensuales</th><th class="num">Anuales</th><th class="num">En prueba</th><th class="num">Se cancelan</th><th class="num">Ingresos al mes</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td class="num">${r.month}</td><td class="num">${r.year}</td><td class="num">${r.trial}</td><td class="num">${r.canceling}</td><td class="num">${fmt.eur(r.mrr)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <p class="muted small">Los cobros, facturas y devoluciones se gestionan en el panel de Stripe. Los planes cambiados a mano en Usuarios no cuentan aquí.</p>
+  </section>`;
+}
+
 /* ------------------------------------------------------------ vista */
 
 function renderAdmin() {
@@ -261,7 +357,7 @@ function renderAdmin() {
   const tab = state.ui.adminTab || 'resumen';
   const body = {
     resumen: () => summary(d), guides: () => listTab('guides', d), promos: () => listTab('promos', d), lessons: () => lessonsTab(d),
-    planes: () => plansTab(d), empresa: () => empresaTab(d), usuarios: () => usersTab(d), solicitudes: () => applicationsTab(d), contratos: () => contractsTab(d),
+    planes: () => plansTab(d), pagos: () => pagosTab(d), empresa: () => empresaTab(d), usuarios: () => usersTab(d), solicitudes: () => applicationsTab(d), contratos: () => contractsTab(d),
   }[tab]();
   return `${pageHead('Administración', `Gestiona el contenido y los clientes de ${esc(brand())}.`, session.backend ? `<button class="btn btn-sm" data-act="admin-reload">${icon('refresh', 15)} Recargar</button>` : '')}
   ${!d.settings.site.contractReviewed ? `<div class="banner banner-warn">${icon('info', 16)}<span>El contrato y los textos legales son plantillas. Revísalos con un abogado antes de vender, y marca la casilla en Empresa.</span></div>` : ''}
@@ -273,7 +369,8 @@ route('admin', {
   render: renderAdmin,
   refresh: () => {
     const prev = document.getElementById('lesson-preview');
-    if (prev && state.ui.adminEdit) prev.innerHTML = markdown(state.ui.adminEdit.item.body, { vars: { marca: brand() } });
+    const it = state.ui.adminEdit?.item;
+    if (prev && it) prev.innerHTML = markdown(state.ui.adminEdit.kind === 'lessons' ? it.body : it.howto || '', { vars: { marca: brand() } });
   },
   mount: () => { if (session.backend && !overview) loadOverview(); },
   nav: 'admin',
@@ -294,9 +391,11 @@ async function saveContent(kind, items) {
 }
 
 async function saveSettings(body) {
+  let log = [];
   if (session.backend) {
     const res = await api.admin.putSettings(body);
     overview.settings = res.settings;
+    log = res.log || [];
     await refreshSession();
   } else {
     if (body.plans) state.local.plans = body.plans;
@@ -304,6 +403,7 @@ async function saveSettings(body) {
     save();
   }
   paintAccount();
+  return log;
 }
 
 const withToast = (fn) => async (b) => {
@@ -393,12 +493,14 @@ registerActions({
     const P = JSON.parse(JSON.stringify(state.ui.adminPlans));
     for (const id of PLAN_ORDER) {
       P[id].price = nz(P[id].price);
+      P[id].priceYear = nz(P[id].priceYear);
+      P[id].interval = id === 'metodo' && data().payments?.recurringMetodo === false ? 'once' : 'month';
       P[id].trialDays = nz(P[id].trialDays);
       P[id].seats = nz(P[id].seats);
     }
-    await saveSettings({ plans: P });
+    const log = await saveSettings({ plans: P });
     state.ui.adminPlans = null;
-    toast('Planes guardados', 'good');
+    toast(log?.length ? `Planes guardados. Stripe: ${log.join(' · ')}` : 'Planes guardados', 'good');
     render();
   }),
   'admin-save-site': withToast(async () => {
@@ -408,6 +510,33 @@ registerActions({
     state.ui.adminSite = null;
     toast('Datos guardados', 'good');
     render();
+  }),
+  'admin-stripe-setup': withToast(async (b) => {
+    b.disabled = true;
+    try {
+      const res = await api.admin.stripeSetup();
+      state.ui.stripeLog = res.log;
+      overview = null;
+      await loadOverview();
+      toast('Stripe conectado', 'good');
+    } finally {
+      b.disabled = false;
+    }
+  }),
+  'form:admin-coupon': withToast(async (form) => {
+    const v = (k) => form.elements[k]?.value ?? '';
+    const btn = form.querySelector('[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const { coupon } = await api.admin.createCoupon({
+        code: v('code').trim(), percent: C.num(v('percent')), duration: v('duration'), months: C.num(v('months')) || undefined, maxRedemptions: C.num(v('maxRedemptions')) || undefined,
+      });
+      toast(`Código ${coupon.code} creado`, 'good');
+      overview = null;
+      await loadOverview();
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }),
   'admin-app': withToast(async (b) => {
     await api.admin.patchApplication(b.dataset.id, b.dataset.status);
@@ -440,4 +569,4 @@ export async function onAdminUserPlan(el) {
   }
 }
 
-export { effectivePlan, go };
+export { go };

@@ -1,23 +1,26 @@
 // Planes de suscripción y qué incluye cada uno. Lo usan la web y el servidor.
 
 export const PLAN_ORDER = ['free', 'bienvenida', 'recurrentes', 'metodo'];
+export const PAID_PLANS = ['bienvenida', 'recurrentes', 'metodo'];
 
 /** Filas del oddsmatcher que ve el plan gratuito. */
 export const FREE_ODDS_ROWS = 5;
 
 /**
- * Precios y textos por defecto. Se cambian desde el panel de administración; los
- * identificadores de precio de Stripe van en las variables de entorno del servidor.
+ * Precios y textos por defecto. Se cambian desde el panel de administración, que
+ * también crea los precios en Stripe (mensual y anual) con un botón.
+ * price: precio mensual · priceYear: precio anual (0 = sin opción anual).
  */
 export const DEFAULT_PLANS = {
   free: {
     id: 'free',
     name: 'Gratis',
     price: 0,
+    priceYear: 0,
     interval: 'month',
     tagline: 'Para aprender y hacer tus primeros números.',
     features: [
-      'Las cuatro calculadoras',
+      'Calculadoras de calificantes, freebets, reembolsos, combinadas y rollover',
       'Guía completa paso a paso',
       'Seguimiento de tus bonos y beneficios',
       `Oddsmatcher con las ${FREE_ODDS_ROWS} mejores cuotas`,
@@ -27,14 +30,14 @@ export const DEFAULT_PLANS = {
     id: 'bienvenida',
     name: 'Bienvenida',
     price: 14.99,
+    priceYear: 149,
     interval: 'month',
     trialDays: 7,
     tagline: 'Saca todo el dinero de los bonos de bienvenida.',
     features: [
-      'Oddsmatcher completo: todos los partidos y mercados',
+      'Cómo se hace cada bono: Bet365, Winamax, DAZN Bet, Sportium y Retabet',
+      'Oddsmatcher completo con todos los partidos y mercados',
       'Enlaces directos al partido en la casa y en Betfair',
-      'Buscador favor-favor',
-      'Guía de cada bono de bienvenida, casa por casa',
       'Avisos de cuotas con buen rating',
     ],
   },
@@ -42,13 +45,14 @@ export const DEFAULT_PLANS = {
     id: 'recurrentes',
     name: 'Recurrentes',
     price: 24.99,
+    priceYear: 249,
     interval: 'month',
     trialDays: 7,
     highlight: true,
     tagline: 'Sigue ganando cada semana cuando acabes los de bienvenida.',
     features: [
       'Todo lo del plan Bienvenida',
-      'Promociones recurrentes de cada casa, revisadas cada semana',
+      'Promociones recurrentes de tus casas, revisadas cada semana',
       'Calendario de promociones por día',
       'Valor estimado de cada promoción',
     ],
@@ -57,6 +61,7 @@ export const DEFAULT_PLANS = {
     id: 'metodo',
     name: 'Método',
     price: 79,
+    priceYear: 790,
     interval: 'month',
     seats: 20,
     requiresContract: true,
@@ -75,7 +80,6 @@ export const DEFAULT_PLANS = {
 /** Plan mínimo de cada función de pago. */
 export const FEATURES = {
   'odds.full': 'bienvenida',
-  'odds.dutch': 'bienvenida',
   'odds.alerts': 'bienvenida',
   'guides.welcome': 'bienvenida',
   'promos.recurring': 'recurrentes',
@@ -84,7 +88,6 @@ export const FEATURES = {
 
 export const FEATURE_NAMES = {
   'odds.full': 'el oddsmatcher completo',
-  'odds.dutch': 'el buscador favor-favor',
   'odds.alerts': 'los avisos de cuotas',
   'guides.welcome': 'las guías de bonos de bienvenida',
   'promos.recurring': 'las promociones recurrentes',
@@ -122,3 +125,18 @@ export function mergePlans(overrides = {}) {
 }
 
 export const intervalLabel = (i) => ({ month: '/mes', year: '/año', once: 'pago único' }[i] || '');
+
+/** Precio de un plan con la periodicidad elegida (month o year). */
+export function planPrice(plan, interval = 'month') {
+  if (!plan) return 0;
+  if (interval === 'year' && Number(plan.priceYear) > 0) return Number(plan.priceYear);
+  return Number(plan.price) || 0;
+}
+
+/** Meses que regala el pago anual frente a pagar 12 meses. */
+export function yearSaving(plan) {
+  const m = Number(plan?.price) || 0;
+  const y = Number(plan?.priceYear) || 0;
+  if (!(m > 0 && y > 0)) return 0;
+  return Math.max(0, Math.round((m * 12 - y) / m));
+}

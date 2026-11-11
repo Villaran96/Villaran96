@@ -2,10 +2,14 @@
 // y botones que abren la herramienta exacta con los números de cada ejemplo.
 
 import {
-  state, C, O, nz, save, render, go, route, registerActions, money, pageHead, brand, plans, priceLabel,
+  state, C, O, nz, save, render, go, route, registerActions, money, pageHead, brand, plans, priceLabel, content,
+  assumptions, runStep, offerFromSource, offerSteps, lockCard,
 } from '../core.js';
-import { fmt, esc, icon, toast } from '../util.js';
-import { EXCHANGE_HOME } from '../data.js';
+import {
+  fmt, esc, icon, toast, reviewedLabel,
+} from '../util.js';
+import { EXCHANGE_HOME, OFFER_KINDS, bookieHome } from '../data.js';
+import { markdown } from '../markdown.js';
 
 const commission = () => nz(state.settings.commissions.betfair_es ?? state.settings.defaultCommission, 2);
 
@@ -271,17 +275,85 @@ function lessons() {
   ];
 }
 
+/* ------------------------------------------------------------ tus 5 casas */
+
+const e0 = (x) => fmt.eur0(C.num(x));
+
+function summaryRows(g) {
+  const p = g.params || {};
+  const rows = [['Lo que vale', `<b class="pos">${fmt.signedEur(C.offerValue(g, assumptions()))}</b> estimados`]];
+  if (g.kind === 'bet_get') {
+    rows.push(['Apuesta calificante', `${e0(p.qualStake)} a cuota ${fmt.odds(C.num(p.minOdds))} o más`]);
+    const parts = [`${e0(p.freebet)} en freebets ${p.freebetType === 'sr' ? 'SR' : 'SNR'}`];
+    if (C.num(p.chunk) > 0) parts.push(`de hasta ${e0(p.chunk)} cada una`);
+    if (C.num(p.accaShare) > 0) parts.push(`el ${C.num(p.accaShare)} % para combinadas`);
+    if (C.num(p.extra) > 0) parts.push(`y ${e0(p.extra)} extra`);
+    rows.push(['Recibes', parts.join(', ')]);
+  } else if (g.kind === 'refund') {
+    rows.push(['Apuesta', `${e0(p.stake)}${C.num(p.minOdds) > 1.01 ? ` a cuota ${fmt.odds(C.num(p.minOdds))} o más` : ', sin cuota mínima'}`]);
+    rows.push(['Si pierde', `${e0(p.refund)} en freebets`]);
+  } else if (g.kind === 'rollover') {
+    rows.push(['Bono', `${e0(p.bonus)} por depositar ${e0(p.deposit)}`]);
+    rows.push(['Rollover', `x${C.num(p.multiplier)} a cuota ${fmt.odds(C.num(p.minOdds))} o más${C.num(p.days) > 0 ? ` en ${C.num(p.days)} días` : ''}`]);
+  }
+  if (C.num(p.minDeposit) > 0) rows.push(['Depósito mínimo', e0(p.minDeposit)]);
+  if (C.num(p.expiryDays) > 0) rows.push(['Caducidad de las freebets', `${C.num(p.expiryDays)} días`]);
+  if (C.num(p.claimDays) > 0) rows.push(['Plazo', `${C.num(p.claimDays)} días`]);
+  rows.push(['Código de registro', p.code ? esc(p.code) : 'No hace falta']);
+  return rows;
+}
+
+function casaLesson(g) {
+  if (g.locked) {
+    return `<p>${esc(g.title || '')}</p>${lockCard('guides.welcome', { text: `Cómo se hace el bono de ${g.bookie} paso a paso, con lo que vale y botones que te llevan a la cuota y al cálculo exactos.` })}`;
+  }
+  const steps = (OFFER_KINDS[g.kind] || OFFER_KINDS.other).steps(g.params || {}, g.bookie);
+  const started = state.offers.find((o) => o.from === g.id && o.status !== 'skip');
+  const doneSteps = new Set(started?.done || []);
+  const home = g.url || bookieHome(g.bookie);
+  return `<p class="casa-title"><b>${esc(g.title || '')}</b></p>
+    <div class="table-wrap"><table class="kv">${summaryRows(g).map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${v}</td></tr>`).join('')}</table></div>
+    ${g.conditions ? `<details class="steps-preview"><summary>Condiciones publicadas${g.reviewed ? ` (revisadas en ${esc(reviewedLabel(g.reviewed))})` : ''}</summary><p class="cond">${esc(g.conditions)}</p><p class="muted small">Las casas cambian sus ofertas a menudo: comprueba las condiciones en su web antes de depositar.</p></details>` : ''}
+    ${g.howto ? markdown(g.howto) : ''}
+    <h3>Hazlo aquí, paso a paso</h3>
+    <p class="muted small">Cada botón abre la herramienta con los números de este bono. Al pulsarlo, el bono se apunta en Mis bonos para que sigas por donde ibas.</p>
+    <ol class="casa-steps">${steps.map((st, i) => {
+      const a = st.action;
+      let btn = '';
+      const href = a && (a.kind === 'site' ? home : a.kind === 'exchange' ? EXCHANGE_HOME : '');
+      if (href) btn = `<a class="btn btn-ghost btn-xs" href="${esc(href)}" target="_blank" rel="noopener" data-act="guide-site" data-guide="${esc(g.id)}" data-step="${i}">${esc(a.label)} ${icon('external', 12)}</a>`;
+      else if (a && a.kind !== 'site' && a.kind !== 'exchange') btn = `<button class="btn btn-ghost btn-xs" data-act="guide-step" data-guide="${esc(g.id)}" data-step="${i}">${esc(a.label)} ${icon('arrow', 12)}</button>`;
+      return `<li class="${doneSteps.has(i) ? 'is-done' : ''}"><span>${esc(st.text)}</span>${btn}</li>`;
+    }).join('')}</ol>
+    <div class="lesson-actions">
+      <button class="btn btn-sm btn-primary" data-act="guide-begin" data-guide="${esc(g.id)}">${icon('arrow', 14)} ${started ? 'Continuar en Mis bonos' : 'Empezar este bono'}</button>
+      ${home ? `<a class="btn btn-sm" href="${esc(home)}" target="_blank" rel="noopener">Abrir ${esc(g.bookie)} ${icon('external', 13)}</a>` : ''}
+    </div>`;
+}
+
+function casaLessons() {
+  return content().guides.map((g) => ({
+    id: `casa-${g.id}`, title: `${g.bookie}: cómo se hace`, minutes: 5, group: 'casas', html: () => casaLesson(g),
+  }));
+}
+
+export function allLessons() {
+  return [...lessons().map((l) => ({ ...l, group: 'aprende' })), ...casaLessons()];
+}
+
 /* ------------------------------------------------------------ vista */
 
 function renderGuia() {
-  const list = lessons();
+  const list = allLessons();
   const done = state.guide.done;
   const current = list.find((l) => l.id === state.guide.current) || list[0];
   const idx = list.indexOf(current);
   const count = list.filter((l) => done[l.id]).length;
   const pct = Math.round((count / list.length) * 100);
-  const nav = `<ol class="lesson-list">${list.map((l, i) => `<li><button class="lesson-link ${l.id === current.id ? 'is-current' : ''} ${done[l.id] ? 'is-done' : ''}" data-act="guide-open" data-lesson="${l.id}" ${l.id === current.id ? 'aria-current="step"' : ''}>
-      <span class="lesson-n">${done[l.id] ? icon('check', 14) : i + 1}</span><span>${esc(l.title)}</span><span class="muted small">${l.minutes} min</span></button></li>`).join('')}</ol>`;
+  const item = (l, i) => `<li><button class="lesson-link ${l.id === current.id ? 'is-current' : ''} ${done[l.id] ? 'is-done' : ''}" data-act="guide-open" data-lesson="${l.id}" ${l.id === current.id ? 'aria-current="step"' : ''}>
+      <span class="lesson-n">${done[l.id] ? icon('check', 14) : i + 1}</span><span>${esc(l.title)}</span><span class="muted small">${l.minutes} min</span></button></li>`;
+  const groups = [['aprende', 'Aprende'], ['casas', 'Tus 5 casas']];
+  const nav = groups.map(([g, label]) => `<p class="toc-group">${label}</p><ol class="lesson-list">${list.map((l, i) => (l.group === g ? item(l, i) : '')).join('')}</ol>`).join('');
   return `${pageHead('Guía', 'Todo lo que necesitas para sacar dinero de los bonos, de cero y con ejemplos reales. Cada lección tiene botones que abren la herramienta con sus números.')}
   <div class="course">
     <aside class="course-nav">
@@ -312,9 +384,16 @@ const CALC_PRESETS = {
   refund: () => ({ type: 'refund', stake: 50, back: 4, lay: 4.1, commission: commission(), refund: 50, retention: 72 }),
 };
 const OM_PRESETS = {
-  calif: () => ({ view: 'fc', mode: 'normal', minOdds: 1.5, maxOdds: 12, minRatings: { ...state.om.minRatings, normal: 95 }, stake: 10 }),
-  snr: () => ({ view: 'fc', mode: 'snr', minOdds: 4, maxOdds: 9, minRatings: { ...state.om.minRatings, snr: 70 }, stake: 10 }),
+  calif: () => ({ mode: 'normal', minOdds: 1.5, maxOdds: 12, minRatings: { ...state.om.minRatings, normal: 95 }, stake: 10 }),
+  snr: () => ({ mode: 'snr', minOdds: 4, maxOdds: 8, minRatings: { ...state.om.minRatings, snr: 70 }, stake: 10 }),
 };
+
+const guideById = (id) => content().guides.find((g) => g.id === id && !g.locked);
+
+function beginFlow(offer, idx) {
+  const steps = offerSteps(offer);
+  state.flow = { offerId: offer.id, step: idx, total: steps.length, bookie: offer.bookie, text: steps[idx]?.text || '' };
+}
 
 registerActions({
   'guide-open': (b) => {
@@ -347,6 +426,35 @@ registerActions({
     save();
     go('oddsmatcher');
   },
+  'guide-begin': (b) => {
+    const g = guideById(b.dataset.guide);
+    if (!g) return;
+    const { offer, created } = offerFromSource(g, 'guides');
+    const next = Math.max(0, offerSteps(offer).findIndex((_, i) => !(offer.done || []).includes(i)));
+    beginFlow(offer, next);
+    state.ui.bonosTab = 'mis';
+    state.ui.offerFilter = 'open';
+    save();
+    toast(created ? `${g.bookie}: bono añadido a Mis bonos.` : `${g.bookie}: sigues donde lo dejaste.`, 'good');
+    go('bonos');
+    setTimeout(() => document.getElementById(`offer-${offer.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+  },
+  'guide-site': (b) => {
+    const g = guideById(b.dataset.guide);
+    if (!g) return;
+    const { offer } = offerFromSource(g, 'guides');
+    if (offer.status === 'todo') offer.status = 'active';
+    beginFlow(offer, Number(b.dataset.step));
+    save();
+    setTimeout(render, 50); // después de que el enlace haya abierto la web
+  },
+  'guide-step': (b) => {
+    const g = guideById(b.dataset.guide);
+    if (!g) return;
+    const { offer } = offerFromSource(g, 'guides');
+    save();
+    runStep(offer, Number(b.dataset.step));
+  },
   'guide-go': (b) => {
     const target = b.dataset.preset;
     if (target === 'bonos') { state.ui.bonosTab = 'bienvenida'; save(); go('bonos'); return; }
@@ -362,7 +470,7 @@ export function onGuideCheck(el) {
 }
 
 export const guideProgress = () => {
-  const total = 11;
-  const done = Object.keys(state.guide.done).length;
-  return { done: Math.min(done, total), total };
+  const list = allLessons();
+  const done = list.filter((l) => state.guide.done[l.id]).length;
+  return { done, total: list.length, basics: lessons().filter((l) => state.guide.done[l.id]).length };
 };

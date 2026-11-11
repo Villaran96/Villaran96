@@ -1,4 +1,4 @@
-// Calculadoras: favor-contra, favor-favor, combinadas y rollover.
+// Calculadoras: favor-contra, combinadas cubiertas y rollover.
 
 import {
   state, C, O, n, nz, save, render, go, route, registerActions, field, select, seg, money, pageHead,
@@ -8,7 +8,7 @@ import { fmt, esc, icon, sign, copyText } from '../util.js';
 import { TIPS } from '../data.js';
 
 function calcTabs(active) {
-  const tabs = [['calculadora', 'Favor-contra'], ['favor-favor', 'Favor-favor'], ['combinadas', 'Combinadas'], ['rollover', 'Rollover']];
+  const tabs = [['calculadora', 'Favor-contra'], ['combinadas', 'Combinadas'], ['rollover', 'Rollover']];
   return `<nav class="tabs" aria-label="Calculadoras">${tabs.map(([k, t]) => `<a href="#${k}" class="tab ${k === active ? 'is-active' : ''}" ${k === active ? 'aria-current="page"' : ''}>${t}</a>`).join('')}</nav>`;
 }
 
@@ -38,6 +38,7 @@ function renderBackLay() {
   const c = state.calc.bl;
   return `${flowBar()}${pageHead('Calculadoras', 'Cuánto apostar en contra para cubrir cualquier apuesta, con el resultado en cada caso.')}
   ${calcTabs('calculadora')}
+  <p class="calc-use">${icon('info', 15)} La de todos los días: calificantes y freebets de Bet365, DAZN Bet y Retabet, y el reembolso de Winamax.</p>
   <div class="calc-grid">
     <section class="panel">
       ${contextBanner(c.context, 'bl-clear')}
@@ -125,70 +126,13 @@ function refreshBackLay() {
   if (lab) lab.textContent = adjustLabel(state.calc.bl.adjust);
 }
 
-/* ------------------------------------------------------------ favor-favor */
-
-function dutchOpts(d) {
-  return d.mode === 'total' ? { totalStake: d.totalStake, step: nz(d.step, 0.01) } : { fixedIndex: nz(d.fixedIndex), fixedStake: d.fixedStake, step: nz(d.step, 0.01) };
-}
-
-function renderDutch() {
-  const d = state.calc.dutch;
-  return `${flowBar()}${pageHead('Calculadoras', 'Reparte apuestas a favor entre varios resultados para ganar lo mismo pase lo que pase.')}
-  ${calcTabs('favor-favor')}
-  <div class="calc-grid">
-    <section class="panel">
-      ${contextBanner(d.context, 'dutch-clear')}
-      <div class="field"><span class="field-label">Cómo repartir</span>${seg('calc.dutch.mode', [['fixed', 'Fijar una apuesta'], ['total', 'Repartir un total']])}</div>
-      <div class="form-grid pair">
-        ${d.mode === 'total' ? field('calc.dutch.totalStake', 'Total a repartir (con dinero)', { unit: '€' }) : field('calc.dutch.fixedStake', `Importe de la apuesta ${nz(d.fixedIndex) + 1}`, { unit: '€' })}
-        <div class="field"><span class="field-label">Redondear importes a</span>${seg('calc.dutch.step', [['0.01', '0,01 €'], ['0.1', '0,10 €'], ['1', '1 €']], { small: true })}</div>
-      </div>
-      <div class="legs">
-        <div class="legs-head"><span>Resultado</span><span>Cuota</span><span>Comisión</span><span>Freebet</span>${d.mode === 'fixed' ? '<span>Fijar</span>' : ''}<span></span></div>
-        ${d.legs.map((l, i) => `<div class="leg ${d.mode === 'fixed' ? '' : 'leg-nofix'}">
-          <input class="l-name" data-k="calc.dutch.legs.${i}.name" value="${esc(l.name ?? '')}" aria-label="Nombre del resultado ${i + 1}" placeholder="Resultado ${i + 1}">
-          <input class="in-back l-odds" data-k="calc.dutch.legs.${i}.odds" inputmode="decimal" value="${esc(l.odds ?? '')}" aria-label="Cuota del resultado ${i + 1}">
-          <span class="field-input l-comm"><input data-k="calc.dutch.legs.${i}.commission" inputmode="decimal" value="${esc(l.commission ?? '')}" placeholder="0" aria-label="Comisión del resultado ${i + 1}"><span class="unit">%</span></span>
-          <label class="toggle l-fb"><input type="checkbox" data-k="calc.dutch.legs.${i}.freebet" ${l.freebet ? 'checked' : ''}><span class="sr">Freebet en el resultado ${i + 1}</span></label>
-          ${d.mode === 'fixed' ? `<label class="radio l-fix"><input type="radio" name="dutch-fix" data-act-change="dutch-fix" value="${i}" ${nz(d.fixedIndex) === i ? 'checked' : ''}><span class="sr">Fijar el resultado ${i + 1}</span></label>` : ''}
-          <button class="btn btn-ghost btn-icon l-del" data-act="dutch-del" data-i="${i}" ${d.legs.length <= 2 ? 'disabled' : ''} aria-label="Quitar resultado ${i + 1}">${icon('trash', 16)}</button>
-        </div>`).join('')}
-        <button class="btn btn-ghost btn-sm" data-act="dutch-add" ${d.legs.length >= 8 ? 'disabled' : ''}>${icon('plus', 16)} Añadir resultado</button>
-      </div>
-      <details class="explain"><summary>${icon('info', 15)} Cómo se calcula</summary><p>Cada apuesta se elige para que cobres lo mismo gane el resultado que gane: importe = cobro ÷ cuota (o ÷ (cuota − 1) si es una freebet sin devolución). El beneficio es lo que cobras menos el dinero que has puesto.</p></details>
-    </section>
-    <section class="panel result" id="dutch-result" aria-live="polite">${dutchResult()}</section>
-  </div>`;
-}
-
-function dutchResult() {
-  const d = state.calc.dutch;
-  const res = C.dutch(d.legs, dutchOpts(d));
-  if (!res.valid) return `<div class="empty"><p>${esc(res.reason || 'Completa las cuotas (mayores que 1) y el importe.')}</p></div>`;
-  const anyFb = d.legs.some((l) => l.freebet);
-  return `<div class="hero-number">
-      <span class="eyebrow">Resultado asegurado</span>
-      <span class="big ${sign(res.profit)}">${fmt.signedEur(res.profit)}</span>
-      <span class="sub">${anyFb ? `retienes el <b>${fmt.pct(res.rating)}</b> de la freebet` : `retorno del <b>${fmt.pct2(res.rating)}</b>${res.rating > 100 ? ' · surebet' : ''}`}</span>
-    </div>
-    <div class="table-wrap"><table class="outcomes">
-      <thead><tr><th>Resultado</th><th>Apuesta</th><th>Cobras</th><th>Beneficio</th></tr></thead>
-      <tbody>${d.legs.map((l, i) => `<tr><th scope="row">${esc(l.name || `Resultado ${i + 1}`)}${l.freebet ? ' <span class="tag tag-fb">freebet</span>' : ''}<span class="muted small"> a ${fmt.odds(n(l.odds))}</span></th><td><b>${fmt.eur(res.stakes[i])}</b></td><td>${fmt.eur(res.returns[i])}</td><td>${money(res.profits[i])}</td></tr>`).join('')}</tbody>
-    </table></div>
-    <div class="metrics">
-      <div class="metric"><span>Dinero que pones</span><b>${fmt.eur(res.cashStake)}</b></div>
-      ${res.freebetTotal ? `<div class="metric"><span>En freebets</span><b>${fmt.eur(res.freebetTotal)}</b></div>` : ''}
-      <div class="metric"><span>Margen del mercado</span><b>${fmt.pct2(res.overround - 100)}</b></div>
-    </div>
-    <div class="actions"><button class="btn btn-primary" data-act="dutch-log">${icon('save', 16)} Ya lo he apostado: anotar</button></div>`;
-}
-
 /* ------------------------------------------------------------ combinadas */
 
 function renderAcca() {
   const a = state.calc.acca;
   return `${flowBar()}${pageHead('Calculadoras', 'Cubre una combinada selección a selección según se van jugando los partidos.')}
   ${calcTabs('combinadas')}
+  <p class="calc-use">${icon('info', 15)} La usas con la mitad de las freebets de <b>DAZN Bet</b>, que van en combinadas: modo «Freebet SNR», dos partidos distintos con cuota total entre 4 y 8.</p>
   <div class="calc-grid">
     <section class="panel">
       <div class="field"><span class="field-label">Tipo de apuesta</span>${seg('calc.acca.type', [['normal', 'Con dinero'], ['snr', 'Freebet SNR'], ['sr', 'Freebet SR']])}</div>
@@ -245,6 +189,7 @@ function accaResult() {
 function renderRollover() {
   return `${flowBar()}${pageHead('Calculadoras', 'Comprueba si un bono con rollover te sale a cuenta antes de empezarlo.')}
   ${calcTabs('rollover')}
+  <p class="calc-use">${icon('info', 15)} La usas con el bono de <b>Sportium</b> (200 € con rollover x8): dice cuánto hay que apostar, lo que cuesta y lo que te queda.</p>
   <div class="calc-grid">
     <section class="panel">
       <div class="form-grid pair">
@@ -285,13 +230,11 @@ function rollResult() {
 const refresher = (id, fn) => () => { const el = document.getElementById(id); if (el) el.innerHTML = fn(); };
 
 route('calculadora', { render: renderBackLay, refresh: refreshBackLay, nav: 'calculadora' });
-route('favor-favor', { render: renderDutch, refresh: refresher('dutch-result', dutchResult), nav: 'calculadora' });
 route('combinadas', { render: renderAcca, refresh: refresher('acca-result', accaResult), nav: 'calculadora' });
 route('rollover', { render: renderRollover, refresh: refresher('roll-result', rollResult), nav: 'calculadora' });
 
 registerActions({
   'bl-clear': () => { state.calc.bl.context = null; save(); render(); },
-  'dutch-clear': () => { state.calc.dutch.context = null; save(); render(); },
   'bl-reset-adjust': () => { state.calc.bl.adjust = 0; save(); render(); },
   'copy-instr': (b) => copyText(b.dataset.text),
   'bl-log': () => {
@@ -302,34 +245,23 @@ registerActions({
     logBet({ bookie: c.context?.bookie || state.flow?.bookie || '', kind, desc, profit: res.profit });
     render();
   },
-  'dutch-log': () => {
-    const d = state.calc.dutch;
-    const res = C.dutch(d.legs, dutchOpts(d));
-    if (!res.valid) return;
-    logBet({ bookie: state.flow?.bookie || '', kind: d.legs.some((l) => l.freebet) ? 'freebet' : 'other', desc: d.context ? `Favor-favor · ${d.context.event}` : 'Favor-favor', profit: res.profit });
-    render();
-  },
   'acca-log': () => {
     const res = C.accaLay(state.calc.acca);
     if (!res.valid) return;
     logBet({ bookie: state.flow?.bookie || '', kind: state.calc.acca.type === 'normal' ? 'qualifying' : 'freebet', desc: `Combinada de ${res.legs.length} a ${fmt.odds(res.accaOdds)}`, profit: res.settledProfit ?? res.profit });
     render();
   },
-  'dutch-add': () => { state.calc.dutch.legs.push({ name: '', odds: '' }); save(); render(); },
-  'dutch-del': (b) => {
-    const d = state.calc.dutch;
-    d.legs.splice(Number(b.dataset.i), 1);
-    if (nz(d.fixedIndex) >= d.legs.length) d.fixedIndex = 0;
-    save();
-    render();
-  },
   'acca-add': () => { state.calc.acca.legs.push({ back: '', lay: '', status: 'pending' }); save(); render(); },
   'acca-del': (b) => { state.calc.acca.legs.splice(Number(b.dataset.i), 1); save(); render(); },
   'roll-find': () => {
-    Object.assign(state.om, { view: 'fc', mode: 'normal', minOdds: 1.8, maxOdds: 4, open: null });
+    // Cuotas bajas: el rollover se libera con calificantes y así no hace falta mucho saldo en Betfair.
+    const fo = state.flow && state.offers.find((o) => o.id === state.flow.offerId);
+    const minOdds = fo?.kind === 'rollover' ? Math.max(1.01, C.num(fo.params?.minOdds) || 1.5) : 1.5;
+    Object.assign(state.om, {
+      mode: 'normal', minOdds, maxOdds: Math.max(2.5, minOdds + 0.5), stake: C.num(state.calc.roll.stakePerBet) || state.om.stake, open: null, check: null, limit: 60,
+    });
     save();
   },
 });
 
-export const onDutchFix = (el) => { state.calc.dutch.fixedIndex = Number(el.value); save(); render(); };
 export { go };

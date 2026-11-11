@@ -8,7 +8,7 @@ import {
   fmt, esc, uid, sign, storage, toast, icon, isoDay, copyQuiet,
 } from './util.js';
 import {
-  BOOKIES, findBookie, bookieHome, EXCHANGE_HOME, OFFER_KINDS,
+  BOOKIES, MAIN_BOOKIES, findBookie, bookieHome, EXCHANGE_HOME, OFFER_KINDS,
 } from './data.js';
 import {
   mergePlans, canUse, FEATURE_NAMES, requiredPlan, intervalLabel,
@@ -42,21 +42,17 @@ export function defaults() {
       commissions: { betfair_es: 2, betfair_ex_eu: 2, betfair_ex_uk: 2, matchbook: 2, smarkets: 2 },
       assumptions: { qualOdds: 2.5, snrOdds: 5, srOdds: 3, spread: 2, refundRetention: 72 },
       alertRating: 100,
-      myBookies: [],
+      myBookies: [...MAIN_BOOKIES],
       betfairTemplate: '',
       previewPlan: 'metodo',
     },
     om: {
-      view: 'fc', mode: 'normal', stake: 10, minOdds: 1.5, maxOdds: 12, minRatings: { normal: 90, snr: 65, sr: 85 }, window: '7d', q: '',
+      mode: 'normal', stake: 10, refund: 150, retention: 72, minOdds: 1.5, maxOdds: 12, minRatings: { normal: 90, snr: 65, sr: 85, refund: 40 }, window: '7d', q: '',
       bookies: [], exchanges: [], leagues: [], families: [], myOnly: false, minSize: '', sort: 'rating', dir: 'desc', limit: 60, autoRefresh: 0,
-      fbBook: '', ffStake: 10, ffMinRating: 60, open: null,
+      open: null, check: null,
     },
     calc: {
       bl: { type: 'normal', stake: 10, back: 2.5, lay: 2.56, commission: 2, refund: 10, retention: 72, adjust: 0, context: null },
-      dutch: {
-        legs: [{ name: 'Local', odds: 1.75 }, { name: 'Empate', odds: 3.9 }, { name: 'Visitante', odds: 5, freebet: true }],
-        mode: 'fixed', fixedIndex: 2, fixedStake: 10, totalStake: 100, step: 0.01, context: null,
-      },
       acca: {
         stake: 10, type: 'normal', commission: 2,
         legs: [{ back: 1.8, lay: 1.84, status: 'pending' }, { back: 2.1, lay: 2.16, status: 'pending' }, { back: 1.65, lay: 1.69, status: 'pending' }],
@@ -92,12 +88,11 @@ function loadState() {
       ...s.settings,
       commissions: { ...d.settings.commissions, ...(s.settings?.commissions || {}) },
       assumptions: { ...d.settings.assumptions, ...(s.settings?.assumptions || {}) },
-      myBookies: Array.isArray(s.settings?.myBookies) ? s.settings.myBookies : [],
+      myBookies: Array.isArray(s.settings?.myBookies) && s.settings.myBookies.length ? s.settings.myBookies : [...MAIN_BOOKIES],
     },
-    om: { ...d.om, ...s.om, minRatings: { ...d.om.minRatings, ...(s.om?.minRatings || {}) }, open: null },
+    om: { ...d.om, ...s.om, minRatings: { ...d.om.minRatings, ...(s.om?.minRatings || {}) }, open: null, check: null, mode: s.om?.mode === 'sr' ? 'normal' : (s.om?.mode || d.om.mode) },
     calc: {
       bl: { ...d.calc.bl, ...sc.bl },
-      dutch: { ...d.calc.dutch, ...sc.dutch },
       acca: { ...d.calc.acca, ...sc.acca },
       roll: { ...d.calc.roll, ...sc.roll },
     },
@@ -108,7 +103,7 @@ function loadState() {
     doneGuides: s.doneGuides || {},
     flow: s.flow || null,
     seeded: !!s.seeded,
-    ui: { ...d.ui, ...(s.ui || {}), addOffer: false, betForm: null, adminEdit: null, confirmReset: false },
+    ui: { ...d.ui, ...(s.ui || {}), addOffer: false, betForm: null, adminEdit: null, confirmReset: false, confirmPlan: null, confirmCancel: false },
     local: { ...d.local, ...(s.local || {}) },
   };
 }
@@ -205,7 +200,7 @@ export function content() {
   if (session.backend) return session.content || { guides: [], promos: [], lessons: [], access: {} };
   const c = state.local.content || {};
   const access = { guides: can('guides.welcome'), promos: can('promos.recurring'), metodo: can('metodo') };
-  const teaser = (x) => ({ id: x.id, bookie: x.bookie, kind: x.kind, locked: true });
+  const teaser = (x) => ({ id: x.id, bookie: x.bookie, kind: x.kind, title: x.title, locked: true });
   const lessons = c.lessons || DEFAULT_LESSONS;
   return {
     guides: (c.guides || DEFAULT_GUIDES).filter((x) => x.active !== false).map((g) => (access.guides ? g : teaser(g))),
@@ -423,6 +418,30 @@ export function offerSteps(o) {
   return kind.steps(o.params || {}, o.bookie);
 }
 
+export const offerTitle = (o) => o.title || (OFFER_KINDS[o.kind] || OFFER_KINDS.other).title(o.params || {});
+
+/** Bono propio que sale de una guía o promoción: el que ya existe o uno nuevo. */
+export function offerFromSource(item, source) {
+  const existing = state.offers.find((o) => o.from === item.id && o.status !== 'skip' && o.status !== 'done');
+  if (existing) return { offer: existing, created: false };
+  const offer = {
+    id: uid(),
+    bookie: item.bookie,
+    kind: item.kind,
+    title: item.title || '',
+    params: { ...(item.params || {}) },
+    status: 'active',
+    done: [],
+    deadline: '',
+    url: item.url || '',
+    from: item.id,
+    source,
+    created: Date.now(),
+  };
+  state.offers.push(offer);
+  return { offer, created: true };
+}
+
 /** Ejecuta la acción de un paso de un bono y deja el flujo abierto para volver. */
 export function runStep(offer, idx) {
   const steps = offerSteps(offer);
@@ -442,10 +461,12 @@ export function runStep(offer, idx) {
   if (a.kind === 'om') {
     const keys = a.om.bookie ? bookieKeysFor(a.om.bookie) : [];
     Object.assign(state.om, {
-      view: 'fc', mode: a.om.mode || 'normal', minOdds: a.om.minOdds || 1.01, maxOdds: a.om.maxOdds || (a.om.mode === 'normal' ? 12 : 15),
-      bookies: keys, myOnly: false, limit: 60, open: null,
+      mode: a.om.mode || 'normal', minOdds: a.om.minOdds || 1.01, maxOdds: a.om.maxOdds || (a.om.mode === 'normal' ? 12 : 15),
+      bookies: keys, myOnly: false, limit: 60, open: null, check: null,
     });
     if (a.om.stake > 0) state.om.stake = a.om.stake;
+    if (a.om.refund > 0) state.om.refund = a.om.refund;
+    if (a.om.mode === 'refund') state.om.sort = 'rating';
     if (a.om.bookie && !keys.length) toast(`No hay cuotas de ${a.om.bookie} en la fuente actual: se muestran todas las casas.`, 'warn');
     save();
     go('oddsmatcher');
@@ -457,6 +478,13 @@ export function runStep(offer, idx) {
     Object.assign(state.calc.roll, a.roll);
     save();
     go('rollover');
+  } else if (a.kind === 'acca') {
+    const acca = state.calc.acca;
+    Object.assign(acca, { type: a.acca.type || 'snr', stake: Math.round((a.acca.stake || acca.stake) * 100) / 100 });
+    if (acca.legs.length !== 2) acca.legs = [{ back: 2.2, lay: 2.26, status: 'pending' }, { back: 2.4, lay: 2.46, status: 'pending' }];
+    acca.legs.forEach((l) => { l.status = 'pending'; delete l.layStakePlaced; });
+    save();
+    go('combinadas');
   }
 }
 
@@ -498,6 +526,7 @@ export function flowBar() {
   return `<div class="flow" role="region" aria-label="Bono en curso">
     <div class="flow-text"><span class="eyebrow">Bono ${esc(f.bookie)} · paso ${f.step + 1} de ${f.total}</span><span>${esc(step?.text || f.text)}</span></div>
     <div class="flow-actions">
+      ${stepButton(offer, f.step, step, 'btn btn-sm')}
       <button class="btn btn-sm btn-primary" data-act="flow-done">${icon('check', 15)} Paso hecho</button>
       <button class="btn btn-sm" data-act="flow-back">Volver al bono</button>
       <button class="btn btn-ghost btn-icon" data-act="flow-close" aria-label="Cerrar el bono en curso">${icon('x', 15)}</button>
@@ -517,8 +546,15 @@ export function route(name, def) { routes[name] = def; }
 export function registerActions(obj) { Object.assign(actions, obj); }
 export const hasRoute = (name) => !!routes[name];
 
+// Direcciones antiguas que siguen funcionando (por ejemplo, enlaces guardados).
+const LEGACY_ROUTES = { 'favor-favor': 'calculadora', dutching: 'calculadora' };
+
 export function currentRoute() {
-  const name = (location.hash || '').replace('#', '');
+  let name = (location.hash || '').replace('#', '');
+  if (LEGACY_ROUTES[name]) {
+    name = LEGACY_ROUTES[name];
+    history.replaceState(null, '', `${location.pathname}${location.search}#${name}`);
+  }
   return routes[name] ? name : 'inicio';
 }
 
@@ -817,4 +853,4 @@ export function applyTheme(touched = false) {
   else if (touched) document.documentElement.removeAttribute('data-theme');
 }
 
-export { BOOKIES, findBookie, bookieHome };
+export { BOOKIES, MAIN_BOOKIES, findBookie, bookieHome };

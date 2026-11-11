@@ -5,24 +5,25 @@ import { fmt } from './util.js';
 import { num } from './calc.js';
 
 /**
- * Casas con licencia de apuestas deportivas en España (revisa el listado de
- * operadores de la DGOJ en ordenacionjuego.es). La clave coincide con la de los
- * datos de cuotas cuando es posible; la web abre la portada si la fuente de
- * cuotas no da el enlace directo al partido.
+ * Casas con licencia de apuestas deportivas en España (revisa el listado de la DGOJ
+ * en ordenacionjuego.es). Las cinco primeras son las del método; el resto se puede
+ * usar al añadir bonos a mano. La web abre la portada si la fuente de cuotas no da
+ * el enlace directo al partido.
  */
 export const BOOKIES = [
   ['bet365', 'Bet365', 'https://www.bet365.es'],
-  ['codere', 'Codere', 'https://www.codere.es'],
+  ['winamax', 'Winamax', 'https://www.winamax.es/apuestas-deportivas'],
+  ['daznbet', 'DAZN Bet', 'https://www.daznbet.es'],
   ['sportium', 'Sportium', 'https://www.sportium.es'],
+  ['retabet', 'Retabet', 'https://www.retabet.es'],
+  ['codere', 'Codere', 'https://www.codere.es'],
   ['bwin', 'Bwin', 'https://www.bwin.es'],
   ['williamhill', 'William Hill', 'https://www.williamhill.es'],
   ['betfair_sb', 'Betfair Sportsbook', 'https://www.betfair.es/sport'],
   ['luckia', 'Luckia', 'https://www.luckia.es'],
-  ['retabet', 'Retabet', 'https://www.retabet.es'],
   ['marcaapuestas', 'Marca Apuestas', 'https://www.marcaapuestas.es'],
   ['kirolbet', 'Kirolbet', 'https://www.kirolbet.es'],
   ['888sport', '888sport', 'https://www.888sport.es'],
-  ['winamax', 'Winamax', 'https://www.winamax.es'],
   ['betway', 'Betway', 'https://www.betway.es'],
   ['marathonbet', 'Marathonbet', 'https://www.marathonbet.es'],
   ['versus', 'Versus', 'https://www.versus.es'],
@@ -30,22 +31,23 @@ export const BOOKIES = [
   ['interwetten', 'Interwetten', 'https://www.interwetten.es'],
   ['pokerstars', 'PokerStars Sports', 'https://www.pokerstars.es/sports'],
   ['juegging', 'Juegging', 'https://www.juegging.es'],
-  ['daznbet', 'DAZN Bet', 'https://www.daznbet.es'],
   ['efbet', 'Efbet', 'https://www.efbet.es'],
   ['admiralbet', 'Admiralbet', 'https://www.admiralbet.es'],
   ['goldenpark', 'Goldenpark', 'https://www.goldenpark.es'],
   ['casinobarcelona', 'Casino Barcelona', 'https://www.casinobarcelona.es'],
-  ['casinogranmadrid', 'Casino Gran Madrid', 'https://www.casinogranmadrid.es'],
   ['betsson', 'Betsson', 'https://www.betsson.es'],
   ['leovegas', 'LeoVegas', 'https://www.leovegas.es'],
   ['tonybet', 'TonyBet', 'https://www.tonybet.es'],
 ];
 
+/** Las casas del método. */
+export const MAIN_BOOKIES = BOOKIES.slice(0, 5).map(([, name]) => name);
+
 export const EXCHANGE_HOME = 'https://www.betfair.es/exchange/plus/';
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-/** Busca una casa del catálogo por clave o por nombre parecido. */
+/** Busca una casa del catálogo por clave o por nombre parecido («Winamax ES», «Retabet ES»…). */
 export function findBookie(keyOrName) {
   const k = norm(keyOrName);
   if (!k) return null;
@@ -60,63 +62,117 @@ export const bookieHome = (keyOrName) => (findBookie(keyOrName) || [])[2] || nul
 const e0 = (x) => fmt.eur0(num(x));
 const odds = (x) => fmt.odds(num(x));
 
+/* ------------------------------------------------------------ pasos */
+
+const fbMode = (p) => (p.freebetType === 'sr' ? 'sr' : 'snr');
+
+function registerStep(p, bk) {
+  const extra = [
+    p.code ? ` Código de registro: ${p.code}.` : '',
+    num(p.claimDays) > 0 ? ` Pide la oferta en los ${num(p.claimDays)} días siguientes al registro.` : '',
+  ].join('');
+  return { text: `Regístrate en ${bk} con tus datos reales y verifica la cuenta con tu DNI.${extra}`, action: { kind: 'site', label: `Abrir ${bk}` } };
+}
+
+const depositText = (amount, p) => `Deposita ${e0(amount)}${num(p.minDeposit) > 0 ? ` (el mínimo son ${e0(p.minDeposit)})` : ''}.`;
+
+/** Pasos de las apuestas gratis: en trozos si la casa limita lo que vale cada freebet. */
+function freebetSteps(total, p, bk, intro) {
+  const per = num(p.chunk) > 0 ? Math.min(num(p.chunk), total) : total;
+  const many = per < total;
+  const expiry = num(p.expiryDays) > 0 ? ` Caducan a los ${num(p.expiryDays)} días.` : '';
+  return [
+    {
+      text: `${intro}${many ? ` Llegan en freebets de hasta ${e0(per)}.` : ''}${expiry} Busca cuotas entre 4 y 8.`,
+      action: { kind: 'om', label: 'Buscar cuota', om: { mode: fbMode(p), minOdds: 4, maxOdds: 8, stake: per, bookie: bk } },
+    },
+    { text: many ? 'Juega cada freebet a favor y cúbrela en contra, de una en una.' : 'Juega la freebet a favor y cúbrela en contra.', action: { kind: 'bl', label: 'Calcular', bl: { type: fbMode(p), stake: per } } },
+  ];
+}
+
 /**
- * Tipos de promoción: campos, título y pasos. Los pasos llevan una acción que abre
- * el oddsmatcher filtrado o la calculadora rellena, con el importe correcto.
+ * Tipos de promoción: campos, título y pasos. Los pasos se adaptan a los detalles
+ * de cada casa (código, depósito mínimo, caducidad, freebets troceadas, parte en
+ * combinadas, freebet extra) y llevan acciones que abren el oddsmatcher filtrado,
+ * la calculadora rellena o la web de la casa.
  */
+export const DETAIL_FIELDS = {
+  code: { key: 'code', label: 'Código de registro', type: 'text' },
+  minDeposit: { key: 'minDeposit', label: 'Depósito mínimo', unit: '€' },
+  claimDays: { key: 'claimDays', label: 'Días para pedir la oferta' },
+  expiryDays: { key: 'expiryDays', label: 'Días para usar las freebets' },
+  chunk: { key: 'chunk', label: 'Máximo por freebet', unit: '€' },
+  accaShare: { key: 'accaShare', label: 'Freebets en combinadas', unit: '%' },
+  extra: { key: 'extra', label: 'Freebet extra', unit: '€' },
+  days: { key: 'days', label: 'Plazo para completarlo', unit: 'días' },
+};
+
 export const OFFER_KINDS = {
   bet_get: {
     label: 'Apuesta y recibe',
-    hint: 'Apuestas con tu dinero y la casa te da una apuesta gratis.',
+    hint: 'Apuestas con tu dinero y la casa te da apuestas gratis.',
     fields: [
       { key: 'qualStake', label: 'Apuesta calificante', unit: '€', def: 10 },
       { key: 'minOdds', label: 'Cuota mínima', def: 1.5 },
-      { key: 'freebet', label: 'Apuesta gratis que recibes', unit: '€', def: 25 },
+      { key: 'freebet', label: 'Apuestas gratis que recibes', unit: '€', def: 25 },
       { key: 'freebetType', label: 'Tipo de apuesta gratis', type: 'select', options: [['snr', 'Sin devolución (SNR)'], ['sr', 'Con devolución (SR)']], def: 'snr' },
     ],
+    details: ['code', 'minDeposit', 'claimDays', 'expiryDays', 'chunk', 'accaShare', 'extra'],
     title: (p) => `Apuesta ${e0(p.qualStake)} y recibe ${e0(p.freebet)} en apuestas gratis`,
-    steps: (p, bk) => [
-      { text: `Regístrate en ${bk} con tus datos reales y verifica la cuenta con tu DNI.`, action: { kind: 'site', label: `Abrir ${bk}` } },
-      { text: `Deposita al menos ${e0(p.qualStake)}.` },
-      { text: `Busca una cuota de ${odds(p.minOdds)} o más con buen rating para la apuesta calificante.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'normal', minOdds: num(p.minOdds), stake: num(p.qualStake), bookie: bk } } },
-      { text: `Apuesta ${e0(p.qualStake)} a favor en ${bk} y cúbrela en contra en el exchange.`, action: { kind: 'bl', label: 'Calcular', bl: { type: 'normal', stake: num(p.qualStake) } } },
-      { text: `Cuando recibas la apuesta gratis de ${e0(p.freebet)}, busca cuotas altas (entre 4 y 8).`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: p.freebetType === 'sr' ? 'sr' : 'snr', minOdds: 4, maxOdds: 9, stake: num(p.freebet), bookie: bk } } },
-      { text: 'Juega la apuesta gratis a favor y cúbrela en contra.', action: { kind: 'bl', label: 'Calcular', bl: { type: p.freebetType === 'sr' ? 'sr' : 'snr', stake: num(p.freebet) } } },
-      { text: `Retira el saldo de ${bk} y del exchange, y marca el bono como completado.` },
-    ],
+    steps: (p, bk) => {
+      const list = [
+        registerStep(p, bk),
+        { text: depositText(p.qualStake, p) },
+        { text: `Busca una cuota de ${odds(p.minOdds)} o más con buen rating para la apuesta calificante de ${e0(p.qualStake)}.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'normal', minOdds: num(p.minOdds), stake: num(p.qualStake), bookie: bk } } },
+        { text: `Apuesta ${e0(p.qualStake)} a favor en ${bk} y cúbrela en contra en Betfair.`, action: { kind: 'bl', label: 'Calcular', bl: { type: 'normal', stake: num(p.qualStake) } } },
+      ];
+      const share = Math.min(100, Math.max(0, num(p.accaShare) || 0));
+      const total = num(p.freebet);
+      const single = total * (1 - share / 100);
+      if (single > 0) list.push(...freebetSteps(single, p, bk, share ? `Recibirás ${e0(total)} en apuestas gratis: ${e0(single)} son para cualquier mercado.` : `Recibirás ${e0(total)} en apuestas gratis.`));
+      if (share > 0) {
+        list.push({
+          text: `Los otros ${e0(total * share / 100)} son para combinadas: haz una de 2 partidos distintos con cuota total entre 4 y 8 y cúbrela selección a selección.`,
+          action: { kind: 'acca', label: 'Calculadora de combinadas', acca: { type: fbMode(p), stake: total * share / 100 } },
+        });
+      }
+      if (num(p.extra) > 0) list.push({ text: `Juega también la freebet extra de ${e0(p.extra)} y cúbrela.`, action: { kind: 'bl', label: 'Calcular', bl: { type: 'snr', stake: num(p.extra) } } });
+      list.push({ text: `Retira el saldo de ${bk} y de Betfair, y marca el bono como completado.` });
+      return list;
+    },
   },
   refund: {
     label: 'Reembolso si pierdes',
-    hint: 'Si tu primera apuesta pierde, te devuelven el importe (normalmente en apuesta gratis).',
+    hint: 'Si tu apuesta pierde, te devuelven el importe (o más) en apuestas gratis.',
     fields: [
-      { key: 'stake', label: 'Apuesta máxima reembolsable', unit: '€', def: 50 },
-      { key: 'refund', label: 'Reembolso', unit: '€', def: 50 },
+      { key: 'stake', label: 'Apuesta que cuenta para el reembolso', unit: '€', def: 50 },
+      { key: 'refund', label: 'Reembolso si pierde', unit: '€', def: 50 },
       { key: 'minOdds', label: 'Cuota mínima', def: 1.5 },
     ],
-    title: (p) => `Reembolso de hasta ${e0(p.refund)} si pierde tu primera apuesta`,
+    details: ['code', 'minDeposit', 'days', 'expiryDays', 'chunk'],
+    title: (p) => `Reembolso de ${e0(p.refund)} si pierde tu apuesta de ${e0(p.stake)}`,
     steps: (p, bk) => [
-      { text: `Regístrate en ${bk} y verifica la cuenta.`, action: { kind: 'site', label: `Abrir ${bk}` } },
-      { text: `Deposita ${e0(p.stake)}.` },
-      { text: 'Busca una cuota alta (entre 3 y 6) con buen rating: cuanto más alta, más vale el reembolso.', action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'normal', minOdds: Math.max(3, num(p.minOdds) || 0), maxOdds: 7, stake: num(p.stake), bookie: bk } } },
-      { text: `Apuesta ${e0(p.stake)} a favor y cubre en contra contando con el reembolso.`, action: { kind: 'bl', label: 'Calcular', bl: { type: 'refund', stake: num(p.stake), refund: num(p.refund) } } },
-      { text: `Si la apuesta a favor pierde, recibirás ${e0(p.refund)}: úsalos como apuesta gratis.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'snr', minOdds: 4, maxOdds: 9, stake: num(p.refund), bookie: bk } } },
-      { text: 'Juega el reembolso y cúbrelo en contra.', action: { kind: 'bl', label: 'Calcular', bl: { type: 'snr', stake: num(p.refund) } } },
+      registerStep(p, bk),
+      { text: depositText(p.stake, p) },
+      { text: `Busca una cuota alta (entre 3 y 8) en modo Reembolso: el oddsmatcher calcula cuánto vale cada partido contando con los ${e0(p.refund)} de reembolso.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'refund', minOdds: Math.max(3, num(p.minOdds) || 0), maxOdds: 8, stake: num(p.stake), refund: num(p.refund), bookie: bk } } },
+      { text: `Apuesta ${e0(p.stake)} a favor y cubre en contra contando con el reembolso.${num(p.days) > 0 ? ` Tiene que ser en los ${num(p.days)} días siguientes al depósito.` : ''}`, action: { kind: 'bl', label: 'Calcular', bl: { type: 'refund', stake: num(p.stake), refund: num(p.refund) } } },
+      ...freebetSteps(num(p.refund), p, bk, `Si gana la apuesta a favor, el bono acaba aquí con el beneficio asegurado. Si pierde, recibirás ${e0(p.refund)} en apuestas gratis.`),
       { text: 'Retira y marca el bono como completado.' },
     ],
   },
   freebet: {
     label: 'Apuesta gratis directa',
-    hint: 'Te dan una apuesta gratis sin tener que apostar antes.',
+    hint: 'Te dan apuestas gratis sin tener que apostar antes.',
     fields: [
-      { key: 'freebet', label: 'Apuesta gratis', unit: '€', def: 10 },
+      { key: 'freebet', label: 'Apuestas gratis', unit: '€', def: 10 },
       { key: 'minOdds', label: 'Cuota mínima', def: 1.5 },
       { key: 'freebetType', label: 'Tipo', type: 'select', options: [['snr', 'Sin devolución (SNR)'], ['sr', 'Con devolución (SR)']], def: 'snr' },
     ],
-    title: (p) => `${e0(p.freebet)} en apuesta gratis`,
+    details: ['code', 'expiryDays', 'chunk'],
+    title: (p) => `${e0(p.freebet)} en apuestas gratis`,
     steps: (p, bk) => [
-      { text: `Activa la promoción en ${bk}.`, action: { kind: 'site', label: `Abrir ${bk}` } },
-      { text: 'Busca una cuota alta (entre 4 y 8) en modo apuesta gratis.', action: { kind: 'om', label: 'Buscar cuota', om: { mode: p.freebetType === 'sr' ? 'sr' : 'snr', minOdds: Math.max(4, num(p.minOdds) || 0), maxOdds: 9, stake: num(p.freebet), bookie: bk } } },
-      { text: `Juega los ${e0(p.freebet)} a favor y cúbrelos en contra.`, action: { kind: 'bl', label: 'Calcular', bl: { type: p.freebetType === 'sr' ? 'sr' : 'snr', stake: num(p.freebet) } } },
+      { text: `Activa la promoción en ${bk}.${p.code ? ` Código: ${p.code}.` : ''}`, action: { kind: 'site', label: `Abrir ${bk}` } },
+      ...freebetSteps(num(p.freebet), p, bk, `Tienes ${e0(p.freebet)} en apuestas gratis.`),
       { text: 'Retira y marca el bono como completado.' },
     ],
   },
@@ -130,14 +186,20 @@ export const OFFER_KINDS = {
       { key: 'base', label: 'Se multiplica sobre', type: 'select', options: [['bonus', 'El bono'], ['both', 'Depósito + bono'], ['deposit', 'El depósito']], def: 'bonus' },
       { key: 'minOdds', label: 'Cuota mínima', def: 1.8 },
     ],
+    details: ['code', 'minDeposit', 'days'],
     title: (p) => `Bono de ${e0(p.bonus)} con rollover x${num(p.multiplier) || 0}`,
-    steps: (p, bk) => [
-      { text: 'Comprueba si te sale a cuenta antes de empezar.', action: { kind: 'roll', label: 'Calcular rollover', roll: { deposit: num(p.deposit), bonus: num(p.bonus), multiplier: num(p.multiplier), base: p.base } } },
-      { text: `Regístrate en ${bk}, verifica la cuenta y deposita ${e0(p.deposit)}.`, action: { kind: 'site', label: `Abrir ${bk}` } },
-      { text: `Libera el rollover con apuestas cubiertas de cuota ${odds(p.minOdds)} o más y rating alto.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'normal', minOdds: num(p.minOdds), maxOdds: 4, bookie: bk } } },
-      { text: 'Cubre cada apuesta en contra con la calculadora.', action: { kind: 'bl', label: 'Calcular', bl: { type: 'normal' } } },
-      { text: 'Al completar el rollover, retira y marca el bono como completado.' },
-    ],
+    steps: (p, bk) => {
+      const base = p.base === 'deposit' ? num(p.deposit) : p.base === 'both' ? num(p.deposit) + num(p.bonus) : num(p.bonus);
+      const turnover = base * (num(p.multiplier) || 0);
+      return [
+        { text: 'Comprueba lo que vale antes de empezar.', action: { kind: 'roll', label: 'Calcular rollover', roll: { deposit: num(p.deposit), bonus: num(p.bonus), multiplier: num(p.multiplier), base: p.base } } },
+        registerStep(p, bk),
+        { text: depositText(p.deposit, p) },
+        { text: `Libera el rollover: tienes que apostar ${e0(turnover)} a cuota ${odds(p.minOdds)} o más${num(p.days) > 0 ? ` en ${num(p.days)} días` : ''}. Elige calificantes con rating alto y cuotas bajas (hasta 2,5) para no necesitar mucho saldo en Betfair.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'normal', minOdds: num(p.minOdds), maxOdds: 2.5, stake: Math.min(100, num(p.deposit) || 100), bookie: bk } } },
+        { text: 'Cubre cada apuesta en contra y anótala. Repite hasta completar el rollover.', action: { kind: 'bl', label: 'Calcular', bl: { type: 'normal', stake: Math.min(100, num(p.deposit) || 100) } } },
+        { text: 'Al completarlo, retira y marca el bono como completado.' },
+      ];
+    },
   },
   boost: {
     label: 'Cuota mejorada',
@@ -147,9 +209,10 @@ export const OFFER_KINDS = {
       { key: 'boostedOdds', label: 'Cuota mejorada', def: 3 },
       { key: 'layOdds', label: 'Cuota en contra en el exchange', def: 2.6 },
     ],
+    details: [],
     title: (p) => `Cuota mejorada a ${odds(p.boostedOdds)} (máx. ${e0(p.stake)})`,
     steps: (p, bk) => [
-      { text: 'Mira la cuota en contra actual en el exchange para esa selección.', action: { kind: 'exchange', label: 'Abrir Betfair' } },
+      { text: 'Mira la cuota en contra actual en Betfair para esa selección.', action: { kind: 'exchange', label: 'Abrir Betfair' } },
       { text: `Apuesta ${e0(p.stake)} a ${odds(p.boostedOdds)} en ${bk} y cúbrela en contra.`, action: { kind: 'bl', label: 'Calcular', bl: { type: 'normal', stake: num(p.stake), back: num(p.boostedOdds), lay: num(p.layOdds) } } },
       { text: 'Marca la promoción como completada.' },
     ],
@@ -160,6 +223,7 @@ export const OFFER_KINDS = {
     fields: [
       { key: 'manualValue', label: 'Valor estimado', unit: '€', def: 10 },
     ],
+    details: ['code'],
     title: (p) => `Promoción de valor estimado ${e0(p.manualValue)}`,
     steps: (p, bk) => [
       { text: `Lee las condiciones de la promoción en ${bk}.`, action: { kind: 'site', label: `Abrir ${bk}` } },
@@ -189,14 +253,14 @@ export const GLOSSARY = [
   ['Comisión', 'El porcentaje que se queda el exchange de tus ganancias netas en cada mercado. Revisa la tuya en tu cuenta.'],
   ['Rating', 'Lo buena que es una pareja de cuotas. En calificantes, 100 % es no perder nada; en apuestas gratis, el % que conviertes en dinero.'],
   ['Apuesta calificante', 'La apuesta que exige la casa para darte la promoción. Se cubre para perder lo mínimo, normalmente céntimos.'],
+  ['Cuota mínima', 'La cuota más baja que acepta la promoción. Si apuestas por debajo, la apuesta no cuenta.'],
   ['Freebet SNR', 'Apuesta gratis sin devolución del importe: si aciertas cobras solo la ganancia, no el importe. Es la más habitual en España.'],
   ['Freebet SR', 'Apuesta gratis con devolución del importe: si aciertas cobras la ganancia más el importe. Vale más que una SNR.'],
+  ['Créditos de apuesta', 'El nombre que da Bet365 a sus apuestas gratis. Funcionan como freebets SNR y se pueden repartir en varias apuestas.'],
   ['Retención', 'El porcentaje del valor de una apuesta gratis que conviertes en dinero al cubrirla. Con una SNR bien elegida, entre el 75 y el 85 %.'],
-  ['Reembolso', 'Si pierde tu apuesta, la casa te devuelve el importe, casi siempre como apuesta gratis.'],
-  ['Rollover', 'Las veces que tienes que apostar un bono antes de poder retirarlo. Un x6 sobre 100 € son 600 € en apuestas.'],
+  ['Reembolso', 'Si pierde tu apuesta, la casa te devuelve el importe (Winamax, el 150 %), casi siempre como apuestas gratis.'],
+  ['Rollover', 'Las veces que tienes que apostar un bono antes de poder retirarlo. Un x8 sobre 200 € son 1.600 € en apuestas.'],
   ['Underlay y overlay', 'Poner en contra menos (underlay) o más (overlay) de lo que iguala el resultado, para que gane más uno de los dos casos.'],
-  ['Favor-favor', 'Cubrir todos los resultados con apuestas a favor en casas distintas, sin exchange. También se llama dutching.'],
-  ['Surebet', 'Combinación de cuotas a favor en casas distintas que da beneficio sea cual sea el resultado.'],
   ['Liquidez', 'Dinero disponible en el exchange para casar tu apuesta en contra a esa cuota. Si pones más, una parte queda sin casar.'],
   ['Combinada cubierta', 'Una combinada en la casa que se cubre selección a selección en el exchange, a medida que se juegan los partidos.'],
   ['Escalón de cuota', 'En Betfair las cuotas solo pueden tomar ciertos valores: de 0,01 en 0,01 hasta 2, de 0,02 en 0,02 hasta 3, etc.'],
@@ -207,5 +271,5 @@ export const TIPS = {
   normal: 'Busca un rating cercano al 100 %: la calificante solo sirve para desbloquear la promoción.',
   snr: 'Con apuestas gratis sin devolución conviene una cuota alta (4 a 8): retienes más.',
   sr: 'Con devolución del importe puedes usar cuotas más bajas y retener casi todo.',
-  refund: 'La retención es el % del reembolso que esperas convertir en dinero si te lo dan como apuesta gratis (entre 70 y 80 % es lo habitual).',
+  refund: 'Pon lo que te devuelven si pierdes (en Winamax, el 150 % de lo apostado) y el % que esperas convertir de esas freebets (70–80 % es lo habitual).',
 };

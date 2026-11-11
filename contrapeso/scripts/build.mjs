@@ -9,7 +9,7 @@ const siteArg = process.argv.indexOf('--site');
 const site = siteArg > 0 ? String(process.argv[siteArg + 1] || '').replace(/\/$/, '') : '';
 
 const TITLE = 'Contrapeso · Oddsmatcher y calculadoras de matched betting';
-const DESCRIPTION = 'Oddsmatcher con cuotas reales, calculadoras favor-contra, favor-favor, combinadas y rollover, guía de bonos paso a paso y registro de beneficios.';
+const DESCRIPTION = 'Oddsmatcher con cuotas reales, calculadoras favor-contra, combinadas y rollover, guía paso a paso de Bet365, Winamax, DAZN Bet, Sportium y Retabet y registro de beneficios.';
 
 const page = await readFile(`${root}page.html`, 'utf8');
 const body = page

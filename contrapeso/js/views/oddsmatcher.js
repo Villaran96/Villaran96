@@ -1,10 +1,10 @@
-// Oddsmatcher: favor-contra y favor-favor, con filtros, enlaces directos y el
-// cálculo de cada fila explicado.
+// Oddsmatcher: cuota a favor de las casas frente a la mejor cuota en contra del
+// exchange, con filtros, enlaces directos y el cálculo de cada fila explicado.
 
 import {
   state, odds, C, O, n, nz, get, set, save, can, plans, available, filterSet, commissionsNum, bookieKeysFor,
-  statusHTML, onStatusPaint, loadOdds, scheduleRefresh, backLinkOf, layLinkOf, extLink, flowBar, lockCard,
-  pageHead, seg, field, select, oddChip, money, ratingBar, route, registerActions, go, render, logBet, DAY,
+  statusHTML, onStatusPaint, loadOdds, scheduleRefresh, backLinkOf, layLinkOf, extLink, flowBar,
+  pageHead, seg, field, select, oddChip, money, route, registerActions, go, render, logBet, DAY,
 } from '../core.js';
 import {
   fmt, esc, icon, toast, isoDay,
@@ -30,23 +30,28 @@ function bookieFilter() {
   const av = available().keys;
   if (state.om.myOnly) {
     const keys = bookieKeysFor(state.settings.myBookies);
-    return keys.length ? new Set(keys) : null;
+    return keys.length ? new Set(keys) : new Set();
   }
   return filterSet(state.om.bookies, av.bookies);
 }
 
+/** Casas marcadas como «mis casas» que no vienen en la fuente de cuotas actual. */
+function missingBookies() {
+  return state.settings.myBookies.filter((name) => !bookieKeysFor(name).length);
+}
+
 let lastRows = new Map();
-let lastDutches = new Map();
-let totalRows = 0;
 
 export function omRows() {
   const o = state.om;
   const av = available().keys;
   const now = Date.now();
   const minR = n(o.minRatings[o.mode]);
-  const rows = O.findMatches(odds.events, {
+  const rows = C.num(o.stake) > 0 ? O.findMatches(odds.events, {
     mode: o.mode,
     stake: nz(o.stake, 10),
+    refund: nz(o.refund),
+    retention: nz(o.retention, 72),
     commissions: commissionsNum(),
     defaultCommission: nz(state.settings.defaultCommission),
     bookies: bookieFilter(),
@@ -60,31 +65,11 @@ export function omRows() {
     to: windowEnd(o.window, now),
     q: o.q,
     now,
-  });
+  }) : [];
   const dir = o.dir === 'asc' ? 1 : -1;
   const key = { rating: (r) => r.rating, start: (r) => r.start, back: (r) => r.back, lay: (r) => r.lay }[o.sort] || ((r) => r.rating);
   rows.sort((a, b) => (key(a) - key(b)) * dir || b.rating - a.rating);
   rows.forEach((r) => lastRows.set(r.id, r));
-  return rows;
-}
-
-function ffRows() {
-  const o = state.om;
-  const av = available().keys;
-  const now = Date.now();
-  const rows = O.findDutches(odds.events, {
-    bookies: bookieFilter(),
-    leagues: filterSet(o.leagues, av.leagues),
-    families: filterSet(o.families, av.families),
-    freebetBook: o.fbBook || null,
-    stake: nz(o.ffStake, 10),
-    minRating: Number.isFinite(n(o.ffMinRating)) ? n(o.ffMinRating) : -Infinity,
-    to: windowEnd(o.window, now),
-    q: o.q,
-    now,
-  });
-  rows.sort((a, b) => b.rating - a.rating);
-  lastDutches = new Map(rows.map((r) => [r.id, r]));
   return rows;
 }
 
@@ -113,7 +98,8 @@ function multiPicker(k, label, items, { allLabel = 'Todas' } = {}) {
 
 const PRESETS = [
   ['calif', 'Calificantes de 95 % o más', () => ({ mode: 'normal', minOdds: 1.5, maxOdds: 12, minRatings: { ...state.om.minRatings, normal: 95 } })],
-  ['snr', 'Freebets a cuota 4–9', () => ({ mode: 'snr', minOdds: 4, maxOdds: 9, minRatings: { ...state.om.minRatings, snr: 70 } })],
+  ['snr', 'Freebets a cuota 4–8', () => ({ mode: 'snr', minOdds: 4, maxOdds: 8, minRatings: { ...state.om.minRatings, snr: 70 } })],
+  ['refund', 'Reembolso del 150 % (Winamax)', () => ({ mode: 'refund', stake: 100, refund: 150, minOdds: 3, maxOdds: 8, sort: 'rating', dir: 'desc' })],
   ['hoy', 'Solo hoy', () => ({ window: state.om.window === 'today' ? '7d' : 'today' })],
   ['mias', 'Solo mis casas', () => ({ myOnly: !state.om.myOnly })],
   ['liq', 'Con liquidez de 100 € o más', () => ({ minSize: nz(state.om.minSize) >= 100 ? '' : 100 })],
@@ -123,6 +109,7 @@ function presetOn(id) {
   const o = state.om;
   if (id === 'calif') return o.mode === 'normal' && n(o.minRatings.normal) >= 95;
   if (id === 'snr') return o.mode === 'snr' && nz(o.minOdds) >= 4;
+  if (id === 'refund') return o.mode === 'refund';
   if (id === 'hoy') return o.window === 'today';
   if (id === 'mias') return !!o.myOnly;
   if (id === 'liq') return nz(o.minSize) >= 100;
@@ -132,44 +119,25 @@ function presetOn(id) {
 function omStatusHTML() {
   const warn = odds.error ? `<div class="banner banner-warn">${icon('info', 16)}<span>${esc(odds.error)}${odds.fallback ? ' Mientras tanto ves cuotas de demostración.' : ''}</span>${/clave/i.test(odds.error) ? '<a class="btn btn-ghost btn-sm" href="#ajustes">Ajustes</a>' : ''}</div>` : '';
   const demo = odds.source === 'demo' && !odds.error
-    ? `<div class="banner banner-demo">${icon('info', 16)}<span>Cuotas simuladas para que pruebes la herramienta. Con el servidor publicado verás las cuotas reales de las casas y de Betfair.es.</span><a class="btn btn-ghost btn-sm" href="#ajustes">Fuente de cuotas</a></div>` : '';
+    ? `<div class="banner banner-demo">${icon('info', 16)}<span>Cuotas simuladas de tus 5 casas para que pruebes la herramienta. Con el servidor publicado verás las cuotas reales y las de Betfair.es.</span><a class="btn btn-ghost btn-sm" href="#ajustes">Fuente de cuotas</a></div>` : '';
+  const missing = odds.source !== 'demo' ? missingBookies() : [];
+  const miss = missing.length
+    ? `<div class="banner banner-warn">${icon('info', 16)}<span>Tu fuente de cuotas no trae ${esc(missing.join(', '))}. Para verlas aquí hace falta un proveedor que las cubra (Ajustes → Fuente de cuotas). Mientras, abre cualquier partido y escribe la cuota real de la casa: el cálculo se hace igual.</span></div>` : '';
   const warnings = odds.warnings && odds.warnings.length ? `<details class="warn-list"><summary>${odds.warnings.length} avisos de la fuente de cuotas</summary><ul>${odds.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></details>` : '';
-  return `${warn}${demo}${warnings}`;
+  return `${warn}${demo}${miss}${warnings}`;
 }
+
+const MODE_HINT = {
+  normal: 'Rating 100 % = no pierdes nada en la apuesta calificante.',
+  snr: 'Rating = % de la apuesta gratis que conviertes en dinero.',
+  refund: 'Rating = beneficio en % de lo que apuestas, contando con lo que vale el reembolso si pierdes.',
+};
 
 function renderOddsmatcher() {
   const o = state.om;
   const { bookies, exchanges, leagues, families } = available().data;
   const filtersOpen = window.matchMedia('(min-width: 900px)').matches;
-  const modeHint = {
-    normal: 'Rating 100 % = no pierdes nada en la apuesta calificante.',
-    snr: 'Rating = % de la apuesta gratis (sin devolución) que conviertes en dinero.',
-    sr: 'Rating = % de la apuesta gratis (con devolución) que conviertes en dinero.',
-  }[o.mode];
-
-  const fcFilters = `
-    <div class="field"><span class="field-label">Tipo de apuesta <a class="link small" href="#guia" data-act="guide-open" data-lesson="g4">¿Qué es SNR y SR?</a></span>${seg('om.mode', [['normal', 'Calificante'], ['snr', 'Freebet SNR'], ['sr', 'Freebet SR']])}<span class="field-hint">${modeHint}</span></div>
-    <div class="filter-grid">
-      ${field('om.stake', o.mode === 'normal' ? 'Importe a favor' : 'Importe de la freebet', { unit: '€' })}
-      ${field('om.minOdds', 'Cuota mínima')}
-      ${field('om.maxOdds', 'Cuota máxima')}
-      ${field(`om.minRatings.${o.mode}`, 'Rating mínimo', { unit: '%' })}
-      ${field('om.minSize', 'Liquidez mínima', { unit: '€', placeholder: 'Sin mínimo' })}
-    </div>`;
-
-  const ffFilters = `
-    <div class="filter-grid">
-      ${select('om.fbBook', 'Apuesta gratis en', [['', 'Ninguna (todo con dinero)'], ...bookies], { full: true })}
-      ${field('om.ffStake', o.fbBook ? 'Importe de la freebet' : 'Total a repartir', { unit: '€' })}
-      ${field('om.ffMinRating', 'Rating mínimo', { unit: '%' })}
-    </div>
-    <p class="field-hint">${o.fbBook ? 'Juegas la freebet en un resultado y cubres los demás con dinero en otras casas, sin exchange. Rating = % de la freebet que conviertes.' : 'Cubres todos los resultados con dinero en casas distintas. Un rating por encima del 100 % es una surebet.'}</p>`;
-
-  return `${flowBar()}${pageHead('Oddsmatcher', 'Cada cuota a favor de las casas junto a la mejor cuota en contra del exchange, con el cálculo hecho y el enlace directo a los dos sitios.', `
-      <div class="seg seg-lg" role="tablist" aria-label="Tipo de búsqueda">
-        <button type="button" role="tab" aria-selected="${o.view === 'fc'}" data-set="om.view" data-v="fc">Favor-contra</button>
-        <button type="button" role="tab" aria-selected="${o.view === 'ff'}" data-set="om.view" data-v="ff">Favor-favor</button>
-      </div>`)}
+  return `${flowBar()}${pageHead('Oddsmatcher', 'La cuota a favor de cada casa junto a la mejor cuota en contra de Betfair, con el cálculo hecho y el enlace directo a los dos sitios.')}
     <div class="om-bar">
       <span class="status-inline" data-status="full">${statusHTML()}</span>
       <div class="om-bar-actions">
@@ -182,27 +150,30 @@ function renderOddsmatcher() {
       </div>
     </div>
     <div id="om-status">${omStatusHTML()}</div>
-    ${o.view === 'fc' ? `<div class="presets" role="group" aria-label="Filtros rápidos">${PRESETS.map(([id, label]) => `<button class="chip ${presetOn(id) ? 'is-on' : ''}" data-act="om-preset" data-id="${id}" aria-pressed="${presetOn(id)}">${label}</button>`).join('')}</div>` : ''}
+    <div class="presets" role="group" aria-label="Filtros rápidos">${PRESETS.map(([id, label]) => `<button class="chip ${presetOn(id) ? 'is-on' : ''}" data-act="om-preset" data-id="${id}" aria-pressed="${presetOn(id)}">${label}</button>`).join('')}</div>
     <details class="panel om-filters" ${filtersOpen ? 'open' : ''}>
       <summary class="panel-head"><h2>${icon('filter', 16)} Filtros</h2><span class="muted small">Se guardan solos</span></summary>
       <div class="om-filter-body">
-        ${o.view === 'fc' ? fcFilters : ffFilters}
+        <div class="field"><span class="field-label">Tipo de apuesta <a class="link small" href="#guia" data-act="guide-open" data-lesson="g4">¿Qué es una freebet SNR?</a></span>${seg('om.mode', [['normal', 'Calificante'], ['snr', 'Freebet'], ['refund', 'Reembolso']])}<span class="field-hint">${MODE_HINT[o.mode] || ''}</span></div>
+        <div class="filter-grid">
+          ${field('om.stake', o.mode === 'snr' ? 'Importe de la freebet' : 'Importe a favor', { unit: '€' })}
+          ${o.mode === 'refund' ? `${field('om.refund', 'Reembolso si pierde', { unit: '€' })}${field('om.retention', 'Retención esperada', { unit: '%' })}` : ''}
+          ${field('om.minOdds', 'Cuota mínima')}
+          ${field('om.maxOdds', 'Cuota máxima')}
+          ${field(`om.minRatings.${o.mode}`, 'Rating mínimo', { unit: '%' })}
+          ${field('om.minSize', 'Liquidez mínima', { unit: '€', placeholder: 'Sin mínimo' })}
+        </div>
         <div class="filter-grid">
           <label class="field" for="f-om-q"><span class="field-label">Buscar</span><span class="field-input with-icon">${icon('search', 16)}<input id="f-om-q" data-k="om.q" type="search" value="${esc(o.q)}" placeholder="Equipo o liga" autocomplete="off"></span></label>
           ${select('om.window', 'Cuándo', [['today', 'Hoy'], ['24h', 'Próximas 24 h'], ['48h', 'Próximas 48 h'], ['7d', 'Próximos 7 días'], ['all', 'Todo']])}
           ${multiPicker('om.families', 'Mercados', families, { allLabel: 'Todos' })}
           ${multiPicker('om.bookies', 'Casas', bookies)}
-          ${o.view === 'fc' ? multiPicker('om.exchanges', 'Exchanges', exchanges, { allLabel: 'Todos' }) : ''}
+          ${exchanges.length > 1 ? multiPicker('om.exchanges', 'Exchanges', exchanges, { allLabel: 'Todos' }) : ''}
           ${multiPicker('om.leagues', 'Ligas', leagues.map((l) => [l, l]))}
         </div>
       </div>
     </details>
-    <section id="om-results" class="om-results">${results()}</section>`;
-}
-
-function results() {
-  if (state.om.view === 'ff') return can('odds.dutch') ? ffResults() : lockCard('odds.dutch');
-  return omResults();
+    <section id="om-results" class="om-results">${omResults()}</section>`;
 }
 
 function sortBtn(key, label) {
@@ -216,6 +187,20 @@ function extIcon(link, label, copy) {
   return `<a class="ext-icon" href="${esc(link.href)}" target="_blank" rel="noopener" data-act="ext" data-exact="${link.exact ? 1 : 0}" data-copy="${esc(copy)}" data-site="${esc(label)}" aria-label="Abrir ${esc(label)}${link.exact ? ' en este partido' : ''}" title="${link.exact ? `Abrir el partido en ${esc(label)}` : `Abrir ${esc(label)} y copiar el partido`}">${icon('external', 14)}</a>`;
 }
 
+function ratingClassFor(r, mode) {
+  if (!Number.isFinite(r)) return 'r-low';
+  if (mode === 'refund') return r >= 80 ? 'r-hot' : r >= 65 ? 'r-good' : r >= 50 ? 'r-ok' : 'r-low';
+  if (mode === 'snr') return r >= 85 ? 'r-hot' : r >= 75 ? 'r-good' : r >= 65 ? 'r-ok' : 'r-low';
+  return r >= 100 ? 'r-hot' : r >= 97 ? 'r-good' : r >= 94 ? 'r-ok' : 'r-low';
+}
+
+function ratingBarFor(r, mode) {
+  const [lo, hi] = mode === 'snr' ? [50, 95] : mode === 'refund' ? [0, 100] : [85, 102];
+  const w = Math.max(3, Math.min(100, ((r - lo) / (hi - lo)) * 100));
+  return `<span class="rating ${ratingClassFor(r, mode)}"><b>${fmt.pct(r)}</b><span class="rbar"><i style="width:${w.toFixed(1)}%"></i></span></span>`;
+}
+export { ratingBarFor };
+
 function rowHTML(r, mode) {
   const evName = `${r.event.home} – ${r.event.away}`;
   const open = state.om.open === r.id;
@@ -226,55 +211,82 @@ function rowHTML(r, mode) {
       <div class="c-sel"><span class="code">${esc(r.label.code)}</span><span>${esc(r.label.text)}</span></div>
       <div class="c-back"><span class="book">${esc(r.bookTitle)}</span>${oddChip(r.back, 'back')}${extIcon(backLinkOf(r), r.bookTitle, evName)}</div>
       <div class="c-lay">${oddChip(r.lay, 'lay')}<span class="ex"><span class="book">${esc(r.exTitle)}</span>${r.laySize != null ? `<span class="liq">${fmt.eur0(r.laySize)} disponibles</span>` : ''}</span>${extIcon(layLinkOf(r), r.exTitle, evName)}</div>
-      <div class="c-rating">${ratingBar(r.rating, mode)}${money(r.profit, 'small')}</div>
+      <div class="c-rating">${ratingBarFor(r.rating, mode)}${money(r.profit, 'small')}</div>
       <div class="c-act"><button class="btn btn-sm btn-primary" data-act="om-calc" data-id="${esc(r.id)}" data-mode="${mode}">Calcular</button><button class="btn btn-ghost btn-icon row-more" data-act="om-toggle" data-id="${esc(r.id)}" aria-expanded="${open}" aria-label="Ver el cálculo">${icon('chevron', 16)}</button></div>
     </div>
     ${open ? rowDetail(r, mode) : ''}
   </div>`;
 }
 
-/** Explicación completa de una fila: qué apostar, dónde, cuánto y por qué. */
-export function rowDetail(r, mode) {
+/** Cuotas con las que se calcula una fila: las del listado o las que ha escrito el usuario. */
+function oddsFor(r) {
+  const c = state.om.check;
+  if (c && c.id === r.id) {
+    const back = C.num(c.back);
+    const lay = C.num(c.lay);
+    return { back: back > 1 ? back : r.back, lay: lay > 1 ? lay : r.lay, edited: (back > 1 && back !== r.back) || (lay > 1 && lay !== r.lay) };
+  }
+  return { back: r.back, lay: r.lay, edited: false };
+}
+
+function detailCalc(r, mode) {
   const stake = nz(state.om.stake, 10);
-  const c = r.commission;
-  const res = C.backLay({ stake, back: r.back, lay: r.lay, commission: c, type: mode });
-  if (!res.valid) return '';
-  const free = mode !== 'normal';
+  const cm = r.commission;
+  const { back, lay, edited } = oddsFor(r);
+  const refundVal = nz(state.om.refund) * nz(state.om.retention, 72) / 100;
+  const res = C.backLay({
+    stake, back, lay, commission: cm, type: mode, refund: nz(state.om.refund), retention: nz(state.om.retention, 72),
+  });
+  if (!res.valid) return '<p class="muted">Escribe cuotas mayores que 1.</p>';
+  const free = mode === 'snr';
   const sel = r.label.text;
   const evName = `${r.event.home} – ${r.event.away}`;
-  const bookWin = mode === 'sr' ? stake * r.back : stake * (r.back - 1);
+  const bookWin = stake * (back - 1);
   const bookLose = free ? 0 : -stake;
-  const exWin = res.layStake * (1 - c / 100);
-  const pct = (x) => fmt.pct2(x);
-  const formula = mode === 'snr'
-    ? `Retención = (${fmt.odds(r.back)} − 1) × (1 − ${fmt.n2(c)} %) ÷ (${fmt.odds(r.lay)} − ${fmt.n2(c)} %) = <b>${pct(res.rating)}</b>. De cada ${fmt.eur(stake)} de freebet te quedas ${fmt.eur(res.profit)}.`
-    : mode === 'sr'
-      ? `Retención = ${fmt.odds(r.back)} × (1 − ${fmt.n2(c)} %) ÷ (${fmt.odds(r.lay)} − ${fmt.n2(c)} %) = <b>${pct(res.rating)}</b>.`
-      : `Rating = ${fmt.odds(r.back)} × (1 − ${fmt.n2(c)} %) ÷ (${fmt.odds(r.lay)} − ${fmt.n2(c)} %) = <b>${pct(res.rating)}</b>. ${res.rating >= 100 ? 'Ganas dinero en la calificante.' : `Por cada 100 € apostados pierdes ${fmt.eur(100 - res.rating)}.`}`;
+  const exWin = res.layStake * (1 - cm / 100);
+  let formula;
+  if (mode === 'snr') formula = `Retención = (${fmt.odds(back)} − 1) × (1 − ${fmt.n2(cm)} %) ÷ (${fmt.odds(lay)} − ${fmt.n2(cm)} %) = <b>${fmt.pct2(res.rating)}</b>. De cada ${fmt.eur(stake)} de freebet te quedas ${fmt.eur(res.profit)}.`;
+  else if (mode === 'refund') formula = `En contra = (${fmt.eur(stake)} × ${fmt.odds(back)} − ${fmt.eur(nz(state.om.refund))} × ${fmt.pct(nz(state.om.retention, 72))}) ÷ (${fmt.odds(lay)} − ${fmt.n2(cm)} %) = <b>${fmt.eur(res.layStake)}</b>. Si pierde la apuesta a favor, el reembolso de ${fmt.eur(nz(state.om.refund))} vale unos ${fmt.eur(refundVal)}.`;
+  else formula = `Rating = ${fmt.odds(back)} × (1 − ${fmt.n2(cm)} %) ÷ (${fmt.odds(lay)} − ${fmt.n2(cm)} %) = <b>${fmt.pct2(res.rating)}</b>. ${res.rating >= 100 ? 'Ganas dinero en la calificante.' : `Por cada 100 € apostados pierdes ${fmt.eur(100 - res.rating)}.`}`;
   let liq;
   if (r.laySize == null) liq = `<p class="muted small">${icon('info', 14)} Esta fuente no da la liquidez: comprueba en ${esc(r.exTitle)} que se casa toda tu apuesta en contra.</p>`;
   else if (r.laySize >= res.layStake) liq = `<p class="small ok">${icon('check', 14)} Hay ${fmt.eur(r.laySize)} disponibles en contra a ${fmt.odds(r.lay)}: suficiente para tus ${fmt.eur(res.layStake)}.</p>`;
   else liq = `<p class="small warn">${icon('info', 14)} Solo hay ${fmt.eur(r.laySize)} disponibles a ${fmt.odds(r.lay)} y necesitas ${fmt.eur(res.layStake)}. Lo que no se case quedará pendiente: baja el importe o elige otra cuota.</p>`;
-  const age = (t) => (t ? fmt.ago(t) : 'sin hora');
-  return `<div class="om-detail" role="region" aria-label="Cálculo de ${esc(evName)}">
+  return `${edited ? `<p class="small warn">${icon('info', 14)} Calculado con las cuotas que has escrito.</p>` : ''}
     <ol class="how">
-      <li><span>Apuesta <b>${fmt.eur(stake)}</b>${free ? ' de tu apuesta gratis' : ''} <b class="back-ink">a favor</b> de «${esc(sel)}» (${esc(r.marketLabel)}) en <b>${esc(r.bookTitle)}</b> a <b>${fmt.odds(r.back)}</b>.</span>${extLink(backLinkOf(r), r.bookTitle, evName)}</li>
-      <li><span>Apuesta <b>${fmt.eur(res.layStake)}</b> <b class="lay-ink">en contra</b> de «${esc(sel)}» en <b>${esc(r.exTitle)}</b> a <b>${fmt.odds(r.lay)}</b>. Necesitas <b>${fmt.eur(res.liability)}</b> de saldo en el exchange (responsabilidad).</span>${extLink(layLinkOf(r), r.exTitle, evName)}</li>
-      <li><span>Pase lo que pase, el resultado es <b class="${res.profit >= 0 ? 'pos' : 'neg'}">${fmt.signedEur(res.profit)}</b>.</span></li>
+      <li><span>Apuesta <b>${fmt.eur(stake)}</b>${free ? ' de tu apuesta gratis' : ''} <b class="back-ink">a favor</b> de «${esc(sel)}» (${esc(r.marketLabel)}) en <b>${esc(r.bookTitle)}</b> a <b>${fmt.odds(back)}</b>.</span>${extLink(backLinkOf(r), r.bookTitle, evName)}</li>
+      <li><span>Apuesta <b>${fmt.eur(res.layStake)}</b> <b class="lay-ink">en contra</b> de «${esc(sel)}» en <b>${esc(r.exTitle)}</b> a <b>${fmt.odds(lay)}</b>. Necesitas <b>${fmt.eur(res.liability)}</b> de saldo en el exchange (responsabilidad).</span>${extLink(layLinkOf(r), r.exTitle, evName)}</li>
+      <li><span>Pase lo que pase, el resultado es <b class="${res.profit >= 0 ? 'pos' : 'neg'}">${fmt.signedEur(res.profit)}</b>${mode === 'refund' ? ' (si pierde la apuesta a favor, contando lo que sacas del reembolso)' : ''}.</span></li>
     </ol>
     <div class="table-wrap"><table class="outcomes">
       <thead><tr><th>Si…</th><th>Casa</th><th>Exchange</th><th>Total</th></tr></thead>
       <tbody>
         <tr><th scope="row"><span class="dot-back"></span>«${esc(sel)}» sí</th><td>${money(bookWin)}</td><td>${money(-res.liability)}</td><td><b>${money(res.ifBackWins)}</b></td></tr>
-        <tr><th scope="row"><span class="dot-lay"></span>«${esc(sel)}» no</th><td>${money(bookLose)}</td><td>${money(exWin)}</td><td><b>${money(res.ifLayWins)}</b></td></tr>
+        <tr><th scope="row"><span class="dot-lay"></span>«${esc(sel)}» no</th><td>${money(bookLose)}${mode === 'refund' ? `<span class="muted small"> + ${fmt.eur(refundVal)} del reembolso</span>` : ''}</td><td>${money(exWin)}</td><td><b>${money(res.ifLayWins)}</b></td></tr>
       </tbody>
     </table></div>
     <p class="formula">${formula}</p>
-    ${liq}
-    <p class="muted small">${icon('clock', 14)} Cuota de ${esc(r.bookTitle)} actualizada ${age(r.backUpdated)}; exchange ${age(r.layUpdated)}. Las cuotas cambian: compruébalas antes de apostar.</p>
+    ${liq}`;
+}
+
+/** Explicación completa de una fila: qué apostar, dónde, cuánto y por qué. */
+export function rowDetail(r, mode) {
+  const { back, lay } = oddsFor(r);
+  const age = (t) => (t ? fmt.ago(t) : 'sin hora');
+  const res = C.backLay({ stake: nz(state.om.stake, 10), back, lay, commission: r.commission, type: mode, refund: nz(state.om.refund), retention: nz(state.om.retention, 72) });
+  return `<div class="om-detail" role="region" aria-label="Cálculo de ${esc(r.event.home)} – ${esc(r.event.away)}">
+    <div id="om-detail-calc">${detailCalc(r, mode)}</div>
+    <div class="check-real">
+      <span class="field-label">${icon('pen', 14)} ¿Ha cambiado alguna cuota? Escribe la real y se recalcula todo</span>
+      <div class="form-grid pair">
+        <label class="field field-back" for="f-om-check-back"><span class="field-label">A favor en ${esc(r.bookTitle)}</span><span class="field-input"><input id="f-om-check-back" data-k="om.check.back" inputmode="decimal" value="${esc(back)}" autocomplete="off"></span></label>
+        <label class="field field-lay" for="f-om-check-lay"><span class="field-label">En contra en ${esc(r.exTitle)}</span><span class="field-input"><input id="f-om-check-lay" data-k="om.check.lay" inputmode="decimal" value="${esc(lay)}" autocomplete="off"></span></label>
+      </div>
+    </div>
+    <p class="muted small">${icon('clock', 14)} Cuota de ${esc(r.bookTitle)} actualizada ${age(r.backUpdated)}; exchange ${age(r.layUpdated)}. Compruébalas antes de apostar.</p>
     <div class="actions">
       <button class="btn btn-primary btn-sm" data-act="om-calc" data-id="${esc(r.id)}" data-mode="${mode}">${icon('calc', 15)} Abrir en la calculadora</button>
-      <button class="btn btn-sm" data-act="om-log" data-id="${esc(r.id)}" data-mode="${mode}">${icon('save', 15)} Ya lo he apostado: anotar ${fmt.signedEur(res.profit)}</button>
+      <button class="btn btn-sm" data-act="om-log" data-id="${esc(r.id)}" data-mode="${mode}" id="om-log-btn">${icon('save', 15)} Ya lo he apostado: anotar ${res.valid ? fmt.signedEur(res.profit) : ''}</button>
     </div>
   </div>`;
 }
@@ -282,14 +294,15 @@ export function rowDetail(r, mode) {
 function omResults() {
   const o = state.om;
   const rows = omRows();
-  totalRows = rows.length;
   const full = can('odds.full');
   const limit = full ? nz(o.limit, 60) : FREE_ODDS_ROWS;
   const shown = rows.slice(0, limit);
+  const unit = o.mode === 'normal' ? 'de calificante' : o.mode === 'snr' ? 'de apuesta gratis' : `apostados con ${fmt.eur(nz(o.refund))} de reembolso`;
   const head = `<div class="results-head"><span><b>${rows.length.toLocaleString('es-ES')}</b> ${rows.length === 1 ? 'cuota' : 'cuotas'}${rows.length > shown.length ? `, se muestran ${shown.length}` : ''}</span>
-    <span class="muted small">Beneficio con ${fmt.eur(nz(o.stake, 10))} ${o.mode === 'normal' ? 'de calificante' : 'de apuesta gratis'} · pulsa un partido para ver el cálculo</span></div>`;
+    <span class="muted small">Beneficio con ${fmt.eur(nz(o.stake, 10))} ${unit} · pulsa un partido para ver el cálculo</span></div>`;
   if (!rows.length) {
-    return `${head}<div class="empty panel"><p>Ninguna cuota cumple los filtros.</p><p class="muted small">Baja el rating mínimo, amplía el rango de cuotas o quita el filtro de casas.</p><button class="btn btn-sm" data-act="om-reset">Quitar filtros</button></div>`;
+    const noMine = o.myOnly && !bookieKeysFor(state.settings.myBookies).length;
+    return `${head}<div class="empty panel"><p>${noMine ? 'La fuente de cuotas no trae ninguna de tus casas.' : 'Ninguna cuota cumple los filtros.'}</p><p class="muted small">${noMine ? 'Quita «Solo mis casas» o conecta un proveedor que las cubra.' : 'Baja el rating mínimo, amplía el rango de cuotas o quita el filtro de casas.'}</p><button class="btn btn-sm" data-act="om-reset">Quitar filtros</button></div>`;
   }
   const lockRow = !full && rows.length > shown.length
     ? `<div class="om-lock">${icon('lock', 18)}<span><b>${(rows.length - shown.length).toLocaleString('es-ES')} cuotas más</b> con tus filtros. ${odds.limited ? 'Tu plan recibe solo los mejores partidos.' : ''} Desbloquéalas todas con el plan ${esc(plans().bienvenida.name)}.</span><a class="btn btn-primary btn-sm" href="#planes">Ver planes</a></div>`
@@ -305,33 +318,20 @@ function omResults() {
   ${full && rows.length > limit ? `<div class="more"><button class="btn" data-act="om-more">Mostrar ${Math.min(60, rows.length - limit)} más</button></div>` : ''}`;
 }
 
-function ffResults() {
-  const o = state.om;
-  const rows = ffRows();
-  const limit = nz(o.limit, 60);
-  const shown = rows.slice(0, limit);
-  const head = `<div class="results-head"><span><b>${rows.length.toLocaleString('es-ES')}</b> ${rows.length === 1 ? 'combinación' : 'combinaciones'}</span><span class="muted small">${o.fbBook ? `Freebet de ${fmt.eur(nz(o.ffStake, 10))}` : `Repartiendo ${fmt.eur(nz(o.ffStake, 10))}`}</span></div>`;
-  if (!rows.length) return `${head}<div class="empty panel"><p>No hay combinaciones con esos filtros.</p><p class="muted small">Baja el rating mínimo o elige otra casa para la apuesta gratis.</p></div>`;
-  return `${head}<div class="ff-list">${shown.map((d) => {
-    const evName = `${d.event.home} – ${d.event.away}`;
-    return `<article class="ff-card">
-      <header>
-        <div class="c-event"><b>${esc(evName)}</b><span>${esc(d.event.league)} · ${esc(d.marketLabel)} · ${esc(fmt.date(d.start))} ${esc(fmt.time(d.start))}</span></div>
-        ${ratingBar(d.rating, o.fbBook ? 'snr' : 'normal')}
-      </header>
-      <ul class="ff-legs">${d.legs.map((l, i) => {
-        const lab = O.outcomeLabel(d.event, d.mk, l.ok);
-        return `<li><span class="code">${esc(lab.code)}</span><span class="ff-name">${esc(lab.text)}</span><span class="book">${esc(l.title)}${l.freebet ? ' <span class="tag tag-fb">freebet</span>' : ''} ${extIcon(backLinkOf({ backLink: l.link, bookKey: l.key, bookTitle: l.title }), l.title, evName)}</span>${oddChip(l.odds, 'back')}<span class="ff-stake">${fmt.eur(d.result.stakes[i])}</span></li>`;
-      }).join('')}</ul>
-      <footer><span>Beneficio ${money(d.profit)}</span><button class="btn btn-sm btn-primary" data-act="ff-calc" data-id="${esc(d.id)}">Calcular</button></footer>
-    </article>`;
-  }).join('')}</div>
-  ${rows.length > limit ? '<div class="more"><button class="btn" data-act="om-more">Mostrar más</button></div>' : ''}`;
-}
-
 export function refreshOm() {
   const el = document.getElementById('om-results');
-  if (el) el.innerHTML = results();
+  if (el) el.innerHTML = omResults();
+}
+
+function refreshDetail() {
+  const r = lastRows.get(state.om.open);
+  const el = document.getElementById('om-detail-calc');
+  if (!r || !el) return;
+  el.innerHTML = detailCalc(r, state.om.mode);
+  const { back, lay } = oddsFor(r);
+  const res = C.backLay({ stake: nz(state.om.stake, 10), back, lay, commission: r.commission, type: state.om.mode, refund: nz(state.om.refund), retention: nz(state.om.retention, 72) });
+  const btn = document.getElementById('om-log-btn');
+  if (btn && res.valid) btn.innerHTML = `${icon('save', 15)} Ya lo he apostado: anotar ${fmt.signedEur(res.profit)}`;
 }
 
 onStatusPaint(() => {
@@ -339,20 +339,25 @@ onStatusPaint(() => {
   if (el) el.innerHTML = omStatusHTML();
 });
 
-route('oddsmatcher', { render: renderOddsmatcher, refresh: refreshOm, usesOdds: true, nav: 'oddsmatcher' });
+route('oddsmatcher', {
+  render: renderOddsmatcher, refresh: refreshOm, refreshDetail, usesOdds: true, nav: 'oddsmatcher',
+});
 
 /* ------------------------------------------------------------ acciones */
 
 function calcFromRow(r, mode) {
   const bl = backLinkOf(r);
   const ll = layLinkOf(r);
+  const { back, lay } = oddsFor(r);
   state.calc.bl = {
     ...state.calc.bl,
     type: mode,
     stake: nz(state.om.stake, 10),
-    back: r.back,
-    lay: r.lay,
+    back,
+    lay,
     commission: r.commission,
+    refund: mode === 'refund' ? nz(state.om.refund) : state.calc.bl.refund,
+    retention: mode === 'refund' ? nz(state.om.retention, 72) : state.calc.bl.retention,
     adjust: 0,
     context: {
       event: `${r.event.home} – ${r.event.away}`, league: r.event.league, start: r.start, market: r.marketLabel, sel: r.label.text, bookie: r.bookTitle, exchange: r.exTitle,
@@ -374,7 +379,11 @@ registerActions({
   },
   'om-more': () => { state.om.limit = nz(state.om.limit, 60) + 60; refreshOm(); },
   'om-toggle': (b) => {
-    state.om.open = state.om.open === b.dataset.id ? null : b.dataset.id;
+    const id = b.dataset.id;
+    const open = state.om.open === id ? null : id;
+    state.om.open = open;
+    const r = lastRows.get(id);
+    state.om.check = open && r ? { id, back: r.back, lay: r.lay } : null;
     refreshOm();
   },
   'om-preset': (b) => {
@@ -385,13 +394,13 @@ registerActions({
       go('ajustes');
       return;
     }
-    Object.assign(state.om, preset[2](), { limit: 60, open: null });
+    Object.assign(state.om, preset[2](), { limit: 60, open: null, check: null });
     save();
     render();
   },
   'om-reset': () => {
     Object.assign(state.om, {
-      minOdds: 1.01, maxOdds: 1000, minRatings: { normal: 80, snr: 50, sr: 70 }, window: 'all', q: '', bookies: [], exchanges: [], leagues: [], families: [], myOnly: false, minSize: '', limit: 60,
+      minOdds: 1.01, maxOdds: 1000, minRatings: { normal: 80, snr: 50, sr: 70, refund: 0 }, window: 'all', q: '', bookies: [], exchanges: [], leagues: [], families: [], myOnly: false, minSize: '', limit: 60,
     });
     save();
     render();
@@ -406,25 +415,11 @@ registerActions({
     const r = lastRows.get(b.dataset.id);
     if (!r) return;
     const mode = b.dataset.mode || 'normal';
-    const res = C.backLay({ stake: nz(state.om.stake, 10), back: r.back, lay: r.lay, commission: r.commission, type: mode });
-    logBet({ bookie: r.bookTitle, kind: mode === 'normal' ? 'qualifying' : 'freebet', desc: `${r.event.home} – ${r.event.away} · ${r.label.text}`, profit: res.profit });
+    const { back, lay } = oddsFor(r);
+    const res = C.backLay({ stake: nz(state.om.stake, 10), back, lay, commission: r.commission, type: mode, refund: nz(state.om.refund), retention: nz(state.om.retention, 72) });
+    if (!res.valid) return;
+    logBet({ bookie: r.bookTitle, kind: { normal: 'qualifying', snr: 'freebet', refund: 'refund' }[mode] || 'qualifying', desc: `${r.event.home} – ${r.event.away} · ${r.label.text}`, profit: res.profit });
     render();
-  },
-  'ff-calc': (b) => {
-    const d = lastDutches.get(b.dataset.id);
-    if (!d) return;
-    const fixedIndex = d.freebetIndex >= 0 ? d.freebetIndex : 0;
-    state.calc.dutch = {
-      ...state.calc.dutch,
-      legs: d.legs.map((l) => ({ name: `${O.outcomeLabel(d.event, d.mk, l.ok).text} · ${l.title}`, odds: l.odds, freebet: !!l.freebet, commission: '' })),
-      mode: d.freebetIndex >= 0 ? 'fixed' : 'total',
-      fixedIndex,
-      fixedStake: nz(state.om.ffStake, 10),
-      totalStake: nz(state.om.ffStake, 10),
-      context: { event: `${d.event.home} – ${d.event.away}`, league: d.event.league, start: d.start, market: d.marketLabel },
-    };
-    save();
-    go('favor-favor');
   },
 });
 

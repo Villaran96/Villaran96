@@ -7,7 +7,7 @@ import {
 import { icon, logoMark, esc, toast } from './util.js';
 import './views/home.js';
 import { onAutoRefreshChange } from './views/oddsmatcher.js';
-import { onDutchFix } from './views/calculators.js';
+import './views/calculators.js';
 import { onStepToggle } from './views/bonos.js';
 import { onGuideCheck } from './views/guia.js';
 import { submitBet } from './views/beneficios.js';
@@ -22,7 +22,7 @@ import './views/menu.js';
 const main = document.getElementById('main');
 setMain(main);
 
-const NUMERIC_SET = new Set(['calc.dutch.step', 'om.autoRefresh']);
+const NUMERIC_SET = new Set(['om.autoRefresh']);
 
 /* ------------------------------------------------------------ escritura en campos */
 
@@ -32,8 +32,8 @@ main.addEventListener('input', (e) => {
   const k = el.dataset.k;
   if (!k) return;
   set(k, el.type === 'checkbox' ? el.checked : el.value);
+  if (k.startsWith('om.check.')) { view?.refreshDetail?.(); return; }
   if (k.startsWith('om.') && k !== 'om.autoRefresh') {
-    if (k === 'om.fbBook') { render(); return; }
     state.om.limit = 60;
     view?.refresh?.();
     return;
@@ -44,7 +44,6 @@ main.addEventListener('input', (e) => {
 
 const CHANGE = {
   'auto-refresh': onAutoRefreshChange,
-  'dutch-fix': onDutchFix,
   'step-toggle': onStepToggle,
   'guide-check': onGuideCheck,
   'cert-toggle': onCertToggle,
@@ -104,7 +103,7 @@ document.addEventListener('click', (e) => {
     if (k === 'settings.theme') applyTheme(true);
     if (k === 'settings.previewPlan') paintAccount();
     if (k === 'settings.provider') loadOdds({ force: true });
-    if (k.startsWith('om.')) { state.om.limit = 60; state.om.open = null; }
+    if (k.startsWith('om.')) { state.om.limit = 60; state.om.open = null; state.om.check = null; }
     render();
     return;
   }
