@@ -138,75 +138,128 @@ test('cliente de Betfair: inicia sesión en .es, reintenta al caducar la sesión
 import { normEvent, parseBooks, toModel, createOddsApiIo } from '../server/oddsapiio.mjs';
 import { mergeBookmakers } from '../server/merge.mjs';
 
-const ioEvent = { id: 123, home: 'Sevilla', away: 'Real Betis', date: start, league: { name: 'Spain - LaLiga', slug: 'spain-laliga' } };
+const ioEvent = { id: 123, home: 'Sevilla', away: 'Real Betis', date: start, status: 'pending', league: { name: 'Spain - LaLiga', slug: 'spain-laliga' }, sport: { name: 'Football', slug: 'football' } };
+// Forma de GET /v3/odds según la especificación OpenAPI de odds-api.io (cuotas en texto,
+// enlaces por casa en urls y por resultado en homeLink…, exchange con layHome y depthLayHome).
 const ioOdds = {
   id: 123,
   home: 'Sevilla',
   away: 'Real Betis',
   date: start,
-  urls: { Bet365: 'https://www.bet365.es/#/AC/B1/C1/D8/E123/', 'Retabet ES': 'https://www.retabet.es/evento/123' },
+  status: 'pending',
+  urls: { 'Bet365 ES': 'https://www.bet365.es/#/AC/B1/C1/D8/E123/', 'Retabet ES': 'https://www.retabet.es/evento/123', 'Betfair Exchange': 'https://www.betfair.com/exchange/plus/football/market/1.234' },
   bookmakers: {
-    Bet365: [
-      { name: 'ML', odds: [{ home: '2.62', draw: '3.30', away: '2.90' }] },
-      { name: 'Totals', odds: [{ hdp: 2.5, over: '2.04', under: '1.80' }, { hdp: 3.5, over: '3.40', under: '1.30' }] },
+    'Bet365 ES': [
+      { name: 'ML', updatedAt: '2026-11-11T10:00:00Z', odds: [{ home: '2.62', draw: '3.30', away: '2.90', homeLink: 'https://www.bet365.es/dl/sportsbookredirect?bs=123-1' }] },
+      { name: 'Totals', odds: [{ hdp: 2.5, over: '2.04', under: '1.80' }, { max: 3.5, over: '3.40', under: '1.30' }] },
+      { name: 'Totals HT', odds: [{ hdp: 1.5, over: '3.10', under: '1.36' }] },
+      { name: 'Total Shots', odds: [{ hdp: 22.5, over: '1.9', under: '1.9' }] },
       { name: 'Corners Totals', odds: [{ hdp: 9.5, over: '1.9', under: '1.9' }] },
     ],
-    'Retabet ES': [{ name: 'ML', odds: [{ home: 2.66, draw: 3.25, away: 2.85 }] }],
-    'DAZN Bet': [{ name: 'Both Teams To Score', odds: [{ yes: '1.75', no: '2.05' }] }],
+    Bet365: [{ name: 'ML', odds: [{ home: '9.00', draw: '9.00', away: '9.00' }] }],
+    'Retabet ES': [
+      { name: 'ML', odds: [{ home: 2.66, draw: 3.25, away: 2.85 }] },
+      { name: 'Goals Over/Under', odds: [{ hdp: '2.5', over: '2.00', under: '1.82' }] },
+      { name: 'Both Teams To Score', odds: [{ yes: '1.75', no: '2.05' }] },
+    ],
+    'Winamax FR': [{ name: 'ML', odds: [{ home: '2.70', draw: '3.20', away: '2.80' }] }],
+    'DAZN Bet IT': [{ name: 'ML', odds: [{ home: '2.50', draw: '3.10', away: '3.00' }] }],
+    'Betfair Exchange': [
+      { name: 'ML', odds: [{ home: '2.58', layHome: '2.62', depthLayHome: '1850', draw: '3.35', layDraw: '3.45', depthLayDraw: '420', away: '2.92', layAway: '2.98', depthLayAway: '900' }] },
+      { name: 'Totals', odds: [{ hdp: 2.5, over: '2.06', layOver: '2.10', depthLayOver: '600', under: '1.92', layUnder: '1.96', depthLayUnder: '700' }] },
+    ],
   },
 };
 
-test('odds-api.io: lee eventos y cuotas con nombres de campo distintos', () => {
+test('odds-api.io: lee la respuesta oficial (casas españolas, enlaces y mercados exactos)', () => {
   assert.deepEqual(normEvent(ioEvent), { id: '123', home: 'Sevilla', away: 'Real Betis', start, league: 'Spain - LaLiga' });
   assert.equal(normEvent({ eventId: 'x', homeTeam: { name: 'A' }, awayTeam: { name: 'B' }, startTime: Date.parse(start) / 1000 }).home, 'A');
   assert.equal(normEvent({ id: 1 }), null);
   const books = parseBooks(ioOdds);
-  const b365 = books.find((b) => b.key === 'bet365');
-  assert.equal(b365.title, 'Bet365');
-  assert.equal(b365.m.h2h.home.back, 2.62);
-  assert.equal(b365.m.h2h.home.link, 'https://www.bet365.es/#/AC/B1/C1/D8/E123/');
-  assert.equal(b365.m['tot:2.5'].over.back, 2.04);
-  assert.ok(!b365.m['tot:9.5'], 'los córners no son goles');
+  const b365 = books.filter((b) => b.key === 'bet365');
+  assert.equal(b365.length, 1, 'Bet365 internacional no se suma a Bet365 ES');
+  assert.equal(b365[0].title, 'Bet365');
+  assert.equal(b365[0].m.h2h.home.back, 2.62, 'manda la versión española');
+  assert.equal(b365[0].m.h2h.home.link, 'https://www.bet365.es/dl/sportsbookredirect?bs=123-1', 'enlace directo a la apuesta');
+  assert.equal(b365[0].m.h2h.draw.link, 'https://www.bet365.es/#/AC/B1/C1/D8/E123/', 'si no, enlace al partido');
+  assert.equal(b365[0].m['tot:2.5'].over.back, 2.04);
+  assert.equal(b365[0].m['tot:3.5'].under.back, 1.3, 'línea en max');
+  assert.ok(!b365[0].m['tot:1.5'], 'los goles de la primera parte no son del partido');
+  assert.ok(!b365[0].m['tot:22.5'] && !b365[0].m['tot:9.5'], 'ni tiros ni córners');
   const reta = books.find((b) => b.key === 'retabet');
   assert.equal(reta.title, 'Retabet');
-  assert.equal(books.find((b) => b.key === 'daznbet').m.btts.yes.back, 1.75);
+  assert.equal(reta.m['tot:2.5'].over.back, 2, 'Goals Over/Under cuando no hay Totals');
+  assert.equal(reta.m.btts.yes.back, 1.75);
+  assert.ok(books.some((b) => b.key === 'winamax_fr' && b.title === 'Winamax FR'), 'Winamax FR no es Winamax España');
+  assert.ok(!books.some((b) => b.key === 'daznbet'), 'DAZN Bet IT no es DAZN Bet España');
+  const bf = books.find((b) => b.exchange);
+  assert.equal(bf.key, 'betfair_ex_eu');
+  assert.deepEqual(bf.m.h2h.home, { back: 2.58, lay: 2.62, size: 1850, link: 'https://www.betfair.com/exchange/plus/football/market/1.234' });
+  assert.equal(bf.m['tot:2.5'].under.lay, 1.96);
   const model = toModel(normEvent(ioEvent), ioOdds);
   assert.deepEqual(model.markets.h2h, ['home', 'draw', 'away']);
   assert.deepEqual(Object.keys(model.markets).sort(), ['btts', 'h2h', 'tot:2.5', 'tot:3.5']);
 });
 
-test('odds-api.io: con Betfair.es, el oddsmatcher encuentra cuotas de Bet365 y Retabet con enlace al partido', () => {
+test('odds-api.io: con Betfair Exchange de la misma fuente ya hay oddsmatcher', () => {
+  const ev = toModel(normEvent(ioEvent), ioOdds);
+  const rows = findMatches([ev], { commissions: { betfair_ex_eu: 2 } });
+  const r = rows.find((x) => x.bookKey === 'bet365' && x.mk === 'h2h' && x.ok === 'home');
+  assert.equal(r.lay, 2.62);
+  assert.equal(r.laySize, 1850);
+  assert.equal(r.exKey, 'betfair_ex_eu');
+  assert.ok(rows.some((x) => x.bookKey === 'retabet' && x.mk === 'tot:2.5'));
+});
+
+test('odds-api.io: con Betfair.es, manda Betfair.es y el oddsmatcher enlaza el partido', () => {
   const ev = toModel(normEvent(ioEvent), ioOdds);
   const { events } = mergeExchange([ev], mapBetfair(catalogue, books), { keepExchanges: new Set(['betfair_es']) });
+  assert.ok(!events[0].books.some((b) => b.key === 'betfair_ex_eu'), 'fuera Betfair internacional');
   const rows = findMatches(events, { commissions: { betfair_es: 2 } });
   const b365 = rows.find((r) => r.bookKey === 'bet365' && r.mk === 'h2h' && r.ok === 'home');
   assert.equal(b365.lay, 2.6);
-  assert.equal(b365.backLink, 'https://www.bet365.es/#/AC/B1/C1/D8/E123/');
+  assert.equal(b365.exKey, 'betfair_es');
+  assert.equal(b365.backLink, 'https://www.bet365.es/dl/sportsbookredirect?bs=123-1');
   assert.ok(rows.some((r) => r.bookKey === 'retabet'));
-  assert.ok(rows.some((r) => r.mk === 'tot:2.5' && r.bookKey === 'bet365'));
+  // Si odds-api.io también trae Betfair.es, no se duplica.
+  const dup = { ...ev, books: [...ev.books, { key: 'betfair_es', title: 'Betfair.es', exchange: true, m: { h2h: { home: { lay: 9 } } } }] };
+  const merged = mergeExchange([dup], mapBetfair(catalogue, books), { keepExchanges: new Set(['betfair_es']) }).events[0];
+  assert.equal(merged.books.filter((b) => b.key === 'betfair_es').length, 1);
+  assert.equal(merged.books.find((b) => b.key === 'betfair_es').m.h2h.home.lay, 2.6);
 });
 
-test('odds-api.io: cliente con eventos, cuotas en grupo y vuelta a una a una', async () => {
+test('odds-api.io: cliente con selección de casas, mercados, ligas y vuelta a una a una', async () => {
   const calls = [];
   let multiAvailable = false;
-  const fakeFetch = async (url) => {
-    calls.push(url);
+  let selected = ['Bet365 ES'];
+  const fakeFetch = async (url, opts) => {
+    calls.push(`${opts?.method || 'GET'} ${url}`);
     const json = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
-    if (url.includes('/events?')) return json(200, [ioEvent, { id: 9, home: 'Old', away: 'Match', date: '2020-01-01T00:00:00Z' }]);
-    if (url.includes('/odds/multi?')) return multiAvailable ? json(200, [ioOdds]) : json(404, { error: 'Not found' });
-    if (url.includes('/odds?')) return json(200, ioOdds);
+    if (url.includes('/bookmakers/selected/select?')) {
+      selected = [...selected, ...new URL(url).searchParams.get('bookmakers').split(',')];
+      return json(200, { ok: true });
+    }
+    if (url.includes('/bookmakers/selected?')) return json(200, selected.map((name) => ({ name })));
+    if (url.includes('/events?') && url.includes('league=nope')) return json(404, { error: 'League not found' });
+    if (url.includes('/events?')) return json(200, [ioEvent, { id: 9, home: 'Old', away: 'Match', date: '2020-01-01T00:00:00Z' }, { id: 10, home: 'Live', away: 'Now', date: new Date(Date.now() + 3600000).toISOString() }]);
+    if (url.includes('/odds/multi?')) return multiAvailable ? json(200, [ioOdds, { ...ioOdds, id: 10, home: 'Live', away: 'Now', status: 'live' }]) : json(404, { error: 'Not found' });
+    if (url.includes('/odds?')) return json(200, url.includes('eventId=10') ? { ...ioOdds, id: 10, home: 'Live', away: 'Now', status: 'live' } : ioOdds);
     return json(404, {});
   };
-  const client = createOddsApiIo({ key: 'K', base: 'https://api.test/v3', bookmakers: ['Bet365', 'Retabet ES'], leagues: ['spain-laliga'], fetchImpl: fakeFetch });
+  const client = createOddsApiIo({ key: 'K', base: 'https://api.test/v3', bookmakers: ['Bet365 ES', 'Retabet ES'], leagues: ['spain-laliga', 'nope'], fetchImpl: fakeFetch });
   let res = await client.fetchEvents();
-  assert.equal(res.events.length, 1, 'solo el partido futuro');
-  assert.ok(calls.some((u) => u.includes('/odds?') && u.includes('eventId=123') && u.includes('bookmakers=Bet365%2CRetabet+ES') && u.includes('apiKey=K')));
+  assert.ok(calls.some((u) => u.startsWith('PUT') && u.includes('/bookmakers/selected/select?') && u.includes('bookmakers=Retabet+ES')), 'selecciona la casa que falta');
+  assert.ok(!calls.some((u) => u.startsWith('PUT') && u.includes('Bet365')), 'no vuelve a seleccionar las que ya están');
+  assert.equal(res.events.length, 1, 'solo el partido futuro con cuotas');
+  assert.ok(calls.some((u) => u.includes('/odds?') && u.includes('eventId=123') && u.includes('bookmakers=Bet365+ES%2CRetabet+ES') && u.includes('markets=ML%2CTotals%2CGoals+Over%2FUnder%2CBoth+Teams+To+Score')));
+  assert.ok(res.errors.some((e) => /nope.*ODDSAPIIO_LEAGUES/.test(e)), 'avisa de la liga que no existe');
   multiAvailable = true;
   calls.length = 0;
   res = await client.fetchEvents();
-  assert.equal(res.events.length, 1);
+  assert.ok(!calls.some((u) => u.includes('/bookmakers/selected')), 'la selección se hace una vez');
   assert.ok(calls.some((u) => u.includes('/odds/multi?')));
-  const denied = createOddsApiIo({ key: 'bad', base: 'https://api.test/v3', leagues: ['a', 'b'], fetchImpl: async () => ({ ok: false, status: 401, text: async () => '{"error":"Invalid API key"}' }) });
+  assert.equal(res.events.length, 1, 'fuera los partidos en directo');
+  const denied = createOddsApiIo({ key: 'bad', base: 'https://api.test/v3', bookmakers: ['Bet365 ES'], leagues: ['a', 'b'], fetchImpl: async () => ({ ok: false, status: 401, text: async () => '{"error":"Invalid API key"}' }) });
   res = await denied.fetchEvents();
   assert.equal(res.events.length, 0);
   assert.match(res.errors[0], /401/);

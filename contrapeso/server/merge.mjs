@@ -139,7 +139,8 @@ export function mergeExchange(bookEvents, exchangeEvents, { windowMinutes = 20, 
       used.add(best.xe.id);
       matched += 1;
       const extra = best.xe.books.map((b) => ({ ...b, m: best.swap ? swapH2h(b.m) : b.m }));
-      books = [...books, ...extra];
+      // El exchange de su propia API manda sobre el mismo exchange de una fuente de casas.
+      books = [...books.filter((b) => !extra.some((x) => x.key === b.key)), ...extra];
       // Mercados que solo tiene el exchange no sirven sin cuota a favor: no se añaden.
     }
     return { ...ev, markets, books };

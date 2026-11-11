@@ -56,7 +56,7 @@ function sourceSection() {
       api: 'Descarga las cuotas desde tu navegador con tu propia clave.',
       server: 'Las cuotas las descarga el servidor para todos los usuarios.',
     }[s.provider] || ''}</p>
-    ${serverOdds ? '' : `<div class="banner">${icon('info', 16)}<span>The Odds API no trae cuotas de Bet365, DAZN Bet, Sportium ni Retabet en España (de Winamax, solo la versión francesa). Con el servidor y una clave de odds-api.io (<code>ODDSAPIIO_KEY</code>) salen tus 5 casas. Mientras tanto, en cada partido del oddsmatcher puedes escribir la cuota real de tu casa en «Comprobar cuota real» y se recalcula todo.</span></div>`}
+    ${serverOdds ? '' : `<div class="banner">${icon('info', 16)}<span>The Odds API no trae cuotas de Bet365, DAZN Bet, Sportium ni Retabet en España (de Winamax, solo la versión francesa). Con el servidor y una clave de odds-api.io (<code>ODDSAPIIO_KEY</code>) salen Bet365, Winamax y Retabet de España. DAZN Bet y Sportium no los da ningún proveedor de cuotas revisado. Para esas casas, abre el partido en el oddsmatcher y escribe la cuota real en «Comprobar cuota real»: se recalcula todo.</span></div>`}
     ${s.provider === 'api' || (s.provider === 'auto' && !serverOdds) ? `<div class="form-grid">
       <label class="field" for="f-settings-apiKey"><span class="field-label">Clave de The Odds API</span><span class="field-input"><input id="f-settings-apiKey" data-k="settings.apiKey" type="password" value="${esc(s.apiKey)}" autocomplete="off" spellcheck="false"></span>
         <span class="field-hint">Se guarda solo en este navegador. Tiene plan gratuito de 500 créditos al mes en the-odds-api.com.</span></label>

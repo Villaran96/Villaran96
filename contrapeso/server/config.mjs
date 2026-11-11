@@ -30,7 +30,8 @@ export function loadConfig(env = process.env) {
     oddsApiIo: {
       key: env.ODDSAPIIO_KEY || '',
       base: env.ODDSAPIIO_BASE || 'https://api.odds-api.io/v3',
-      bookmakers: list(env.ODDSAPIIO_BOOKMAKERS, ['Bet365', 'Winamax ES', 'DAZN Bet', 'Sportium', 'Retabet ES']),
+      // Nombres exactos de GET /v3/bookmakers. DAZN Bet y Sportium no tienen versión española.
+      bookmakers: list(env.ODDSAPIIO_BOOKMAKERS, ['Bet365 ES', 'Winamax ES', 'Retabet ES', 'Betfair Exchange']),
       leagues: list(env.ODDSAPIIO_LEAGUES, ['spain-laliga', 'spain-laliga-2', 'england-premier-league', 'italy-serie-a', 'germany-bundesliga', 'france-ligue-1', 'international-clubs-uefa-champions-league', 'international-clubs-uefa-europa-league']),
       sport: env.ODDSAPIIO_SPORT || 'football',
       maxEvents: Number(env.ODDSAPIIO_MAX_EVENTS || 80),

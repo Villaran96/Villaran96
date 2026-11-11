@@ -1,10 +1,12 @@
-// Conector de odds-api.io: cuotas de casas españolas (Bet365, Winamax ES, DAZN Bet,
-// Sportium, Retabet ES…) que The Odds API no cubre.
+// Conector de odds-api.io: cuotas de casas españolas que The Odds API no cubre y,
+// si se pide, las cuotas en contra de Betfair Exchange con su liquidez.
 //
-// SIN PROBAR CON UNA CLAVE REAL: está escrito a partir de la documentación pública
-// resumida (GET /v3/events y GET /v3/odds con bookmakers por nombre; mercados «ML» y
-// «Totals» con campos home/draw/away y hdp/over/under). Por eso lee varios nombres
-// de campo posibles y deja en el panel de administración cualquier error que reciba.
+// Revisado con la documentación oficial (docs.odds-api.io, especificación OpenAPI) y la
+// lista pública de casas (GET /v3/bookmakers, noviembre de 2026). Sin probar todavía con
+// una clave real: los errores que devuelva la API salen en Administración → Resumen.
+//
+// Casas españolas disponibles: «Bet365 ES», «Winamax ES» y «Retabet ES». DAZN Bet y
+// Sportium solo están en su versión italiana, que no sirve para España.
 
 import { findBookie } from '../js/data.js';
 
@@ -50,57 +52,95 @@ export function normEvent(e) {
   };
 }
 
-const DISPLAY = { 'Winamax ES': 'Winamax', 'Retabet ES': 'Retabet', 'Bet365 ES': 'Bet365' };
+// Mercados de odds-api.io que usa el oddsmatcher (nombres exactos de GET /v3/markets?sport=football).
+export const IO_MARKETS = ['ML', 'Totals', 'Goals Over/Under', 'Both Teams To Score'];
+const isMl = (n) => /^ml$/i.test(n);
+const isTotals = (n) => /^(totals|goals over\/under)$/i.test(n);
+const isBtts = (n) => /^both teams to score$/i.test(n);
 
-function bookKey(name) {
-  const cat = findBookie(String(name).replace(/\s+es$/i, ''));
-  return cat ? cat[0] : String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_');
+const LAY_FIELDS = ['layHome', 'layDraw', 'layAway', 'layOver', 'layUnder', 'layYes', 'layNo'];
+
+/**
+ * Clave y nombre de una casa de odds-api.io. Las versiones españolas («Bet365 ES»,
+ * «Winamax ES», «Retabet ES») van a la casa del catálogo; las de otros países
+ * («Winamax FR», «DAZN Bet IT») quedan aparte porque sus cuotas son otras.
+ */
+export function bookInfo(name, exchange = false) {
+  const raw = String(name || '').trim();
+  const base = raw.replace(/\s*\(no latency\)\s*$/i, '');
+  const country = (base.match(/\s([A-Z]{2})$/) || [])[1] || '';
+  const plain = country ? base.slice(0, -3).trim() : base;
+  if (/betfair/i.test(base) && exchange) {
+    return country === 'ES' ? { key: 'betfair_es', title: 'Betfair.es' } : { key: 'betfair_ex_eu', title: 'Betfair (internacional)' };
+  }
+  if (!country || country === 'ES') {
+    const cat = findBookie(plain);
+    if (cat) return { key: cat[0], title: cat[1] };
+  }
+  return { key: base.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), title: base };
 }
 
-/** Libros de cada casa a partir de la respuesta de /odds (objeto por casa o lista de casas). */
+/** Prioridad cuando dos nombres van a la misma casa: versión española y sin retraso primero. */
+const rank = (name) => (/\sES(\s|$)/.test(name) ? 2 : 0) + (/no latency/i.test(name) ? 1 : 0);
+
+/**
+ * Libros de cada casa a partir de la respuesta de /odds o /odds/multi:
+ * { urls: { casa: enlace }, bookmakers: { casa: [ { name, updatedAt, odds: [ … ] } ] } }.
+ * En los exchange (filas con layHome, layOver…) guarda la cuota en contra y la liquidez.
+ */
 export function parseBooks(resp) {
-  const bms = pick(resp, 'bookmakers', 'odds', 'data.bookmakers');
+  const bms = pick(resp, 'bookmakers', 'data.bookmakers');
   let entries = [];
   if (Array.isArray(bms)) entries = bms.map((b) => [pick(b, 'name', 'bookmaker', 'title'), asArray(pick(b, 'markets', 'odds')), pick(b, 'url', 'link')]);
-  else if (bms && typeof bms === 'object') entries = Object.entries(bms).map(([name, v]) => [name, Array.isArray(v) ? v : asArray(v?.markets), pick(resp, `urls.${name}`) || v?.url]);
-  const books = [];
+  else if (bms && typeof bms === 'object') entries = Object.entries(bms).map(([name, v]) => [name, Array.isArray(v) ? v : asArray(v?.markets), resp?.urls?.[name] || v?.url]);
+  const byKey = new Map();
   for (const [name, markets, url] of entries) {
     if (!name) continue;
+    const rows = (markets || []).flatMap((mk) => (Array.isArray(mk?.odds) ? mk.odds : mk?.odds ? [mk.odds] : []));
+    const exchange = rows.some((o) => o && LAY_FIELDS.some((f) => toNum(o[f]) > 1));
     const m = {};
     let updated = null;
+    const put = (mk, ok, back, lay, size, link) => {
+      if (exchange ? !(lay > 1) : !(back > 1)) return;
+      const slot = { link: link || url || null };
+      if (back > 1) slot.back = back;
+      if (exchange) { slot.lay = lay; if (size > 0) slot.size = size; }
+      (m[mk] ||= {})[ok] = slot;
+    };
+    let tSource = null;
     for (const mk of markets || []) {
-      const mname = String(pick(mk, 'name', 'market', 'key') || '');
+      const mname = String(pick(mk, 'name', 'market', 'key') || '').trim();
       const list = Array.isArray(mk.odds) ? mk.odds : mk.odds ? [mk.odds] : [];
-      updated = updated || toIso(pick(mk, 'updatedAt', 'updated_at', 'lastUpdate'));
-      if (/^(ml|1x2|moneyline|match winner|full ?time result|h2h|match result)$/i.test(mname)) {
+      const t = toIso(pick(mk, 'updatedAt', 'updated_at', 'lastUpdate'));
+      if (t && (!updated || t > updated)) updated = t;
+      if (isMl(mname)) {
         const o = list[0] || {};
-        const prices = { home: toNum(pick(o, 'home', '1')), draw: toNum(pick(o, 'draw', 'x', 'X')), away: toNum(pick(o, 'away', '2')) };
-        for (const [ok, price] of Object.entries(prices)) if (price > 1) (m.h2h ||= {})[ok] = { back: price, link: url || null };
-      } else if (/total|over.?under|goals/i.test(mname) && !/team|corner|card|half/i.test(mname)) {
+        put('h2h', 'home', toNum(o.home), toNum(o.layHome), toNum(o.depthLayHome), o.homeLink);
+        put('h2h', 'draw', toNum(o.draw), toNum(o.layDraw), toNum(o.depthLayDraw), o.drawLink);
+        put('h2h', 'away', toNum(o.away), toNum(o.layAway), toNum(o.depthLayAway), o.awayLink);
+      } else if (isTotals(mname)) {
+        // «Totals» manda; «Goals Over/Under» solo si la casa no da «Totals».
+        if (tSource && tSource !== mname.toLowerCase()) continue;
+        tSource = mname.toLowerCase();
         for (const o of list) {
-          const line = toNum(pick(o, 'hdp', 'line', 'points', 'handicap', 'total'));
-          if (!Number.isFinite(line)) continue;
-          const over = toNum(pick(o, 'over'));
-          const under = toNum(pick(o, 'under'));
-          const key = `tot:${line}`;
-          if (over > 1) (m[key] ||= {}).over = { back: over, link: url || null };
-          if (under > 1) (m[key] ||= {}).under = { back: under, link: url || null };
+          const line = toNum(pick(o, 'hdp', 'max', 'line'));
+          if (!Number.isFinite(line) || line <= 0 || line > 10) continue;
+          put(`tot:${line}`, 'over', toNum(o.over), toNum(o.layOver), toNum(o.depthLayOver), o.overLink);
+          put(`tot:${line}`, 'under', toNum(o.under), toNum(o.layUnder), toNum(o.depthLayUnder), o.underLink);
         }
-      } else if (/both teams|btts/i.test(mname)) {
+      } else if (isBtts(mname)) {
         const o = list[0] || {};
-        const yes = toNum(pick(o, 'yes'));
-        const no = toNum(pick(o, 'no'));
-        if (yes > 1) (m.btts ||= {}).yes = { back: yes, link: url || null };
-        if (no > 1) (m.btts ||= {}).no = { back: no, link: url || null };
+        put('btts', 'yes', toNum(o.yes), toNum(o.layYes), toNum(o.depthLayYes), o.yesLink);
+        put('btts', 'no', toNum(o.no), toNum(o.layNo), toNum(o.depthLayNo), o.noLink);
       }
     }
-    if (Object.keys(m).length) {
-      books.push({
-        key: bookKey(name), title: DISPLAY[name] || String(name), exchange: false, updated, link: url || null, m,
-      });
-    }
+    if (!Object.keys(m).length) continue;
+    const info = bookInfo(name, exchange);
+    const book = { key: info.key, title: info.title, exchange, updated, link: url || null, m, source: String(name) };
+    const prev = byKey.get(info.key);
+    if (!prev || rank(String(name)) > rank(prev.source)) byKey.set(info.key, book);
   }
-  return books;
+  return [...byKey.values()].map(({ source, ...b }) => b);
 }
 
 const ORDER = ['home', 'draw', 'away', 'over', 'under', 'yes', 'no'];
@@ -125,46 +165,73 @@ export function toModel(ev, resp) {
 export function createOddsApiIo({
   key, base = 'https://api.odds-api.io/v3', bookmakers = [], leagues = [], sport = 'football', maxEvents = 80, fetchImpl = fetch,
 }) {
-  async function get(path, params) {
+  async function call(method, path, params) {
     const url = `${base}${path}?${new URLSearchParams({ apiKey: key, ...params })}`;
-    const res = await fetchImpl(url);
+    const res = await fetchImpl(url, method === 'GET' ? undefined : { method });
     const text = await res.text();
     let body = null;
     try { body = JSON.parse(text); } catch { /* no es JSON */ }
     if (!res.ok) {
-      const err = new Error(`odds-api.io ${path}: ${res.status} ${body?.message || body?.error || text.slice(0, 120)}`);
+      const err = new Error(`odds-api.io ${path}: ${res.status} ${body?.message || body?.error || text.slice(0, 160)}`);
       err.status = res.status;
       throw err;
     }
     return body;
   }
+  const get = (path, params) => call('GET', path, params);
+
+  // Las cuotas solo llegan de las casas seleccionadas en la cuenta de odds-api.io
+  // (cuántas depende del plan). Se seleccionan solas la primera vez.
+  let selected = false;
+  async function ensureSelected(errors) {
+    if (selected || !bookmakers.length) return;
+    try {
+      const r = await get('/bookmakers/selected', {});
+      const list = (Array.isArray(r) ? r : asArray(r?.bookmakers ?? r)).map((x) => String(typeof x === 'string' ? x : x?.name || '').toLowerCase());
+      const missing = bookmakers.filter((b) => !list.includes(b.toLowerCase()));
+      if (missing.length) await call('PUT', '/bookmakers/selected/select', { bookmakers: missing.join(',') });
+      selected = true;
+    } catch (e) {
+      errors.push(`${e.message} · Selecciona a mano ${bookmakers.join(', ')} en tu cuenta de odds-api.io (tu plan limita cuántas casas).`);
+      if (e.status === 401) throw e;
+    }
+  }
 
   async function fetchEvents({ now = Date.now(), hours = 120 } = {}) {
     const errors = [];
+    try {
+      await ensureSelected(errors);
+    } catch {
+      return { events: [], errors };
+    }
     const found = new Map();
-    for (const league of leagues) {
+    const window = { from: new Date(now).toISOString().replace(/\.\d+Z$/, 'Z'), to: new Date(now + hours * 3600000).toISOString().replace(/\.\d+Z$/, 'Z') };
+    // Sin ligas configuradas: todos los partidos que tenga la primera casa.
+    const queries = leagues.length ? leagues.map((league) => ({ league })) : [{ bookmaker: bookmakers[0] || '' }];
+    for (const q of queries) {
       try {
-        const list = asArray(await get('/events', { sport, league, status: 'pending' }));
+        const list = asArray(await get('/events', { sport, status: 'pending', ...window, ...q }));
         for (const raw of list) {
           const ev = normEvent(raw);
           const t = ev ? Date.parse(ev.start) : NaN;
           if (ev && t > now && t < now + hours * 3600000) found.set(ev.id, ev);
         }
       } catch (e) {
-        errors.push(e.message);
+        errors.push(q.league && (e.status === 400 || e.status === 404) ? `odds-api.io: la liga «${q.league}» no existe (revisa ODDSAPIIO_LEAGUES)` : e.message);
         if (e.status === 401 || e.status === 403) return { events: [], errors };
       }
     }
     const chosen = [...found.values()].sort((a, b) => Date.parse(a.start) - Date.parse(b.start)).slice(0, maxEvents);
     const events = [];
+    const books = bookmakers.join(',');
+    const markets = IO_MARKETS.join(',');
     let multi = true;
     for (let i = 0; i < chosen.length; i += 10) {
       const chunk = chosen.slice(i, i + 10);
       let results = null;
       if (multi) {
         try {
-          const r = await get('/odds/multi', { eventIds: chunk.map((e) => e.id).join(','), bookmakers: bookmakers.join(',') });
-          results = asArray(r);
+          results = asArray(await get('/odds/multi', { eventIds: chunk.map((e) => e.id).join(','), bookmakers: books, markets }));
         } catch (e) {
           if (e.status === 404 || e.status === 400) multi = false; else errors.push(e.message);
         }
@@ -172,10 +239,11 @@ export function createOddsApiIo({
       if (!results) {
         results = [];
         for (const ev of chunk) {
-          try { results.push(await get('/odds', { eventId: ev.id, bookmakers: bookmakers.join(',') })); } catch (e) { errors.push(e.message); }
+          try { results.push(await get('/odds', { eventId: ev.id, bookmakers: books, markets })); } catch (e) { errors.push(e.message); }
         }
       }
       for (const r of results) {
+        if (r && /^(live|settled|cancelled)$/i.test(r.status || '')) continue; // solo cuotas antes del partido
         const id = String(pick(r, 'id', 'eventId', 'event_id') ?? '');
         const ev = chunk.find((e) => e.id === id) || normEvent(r);
         const model = toModel(ev, r);

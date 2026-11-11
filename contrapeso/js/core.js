@@ -467,7 +467,7 @@ export function runStep(offer, idx) {
     if (a.om.stake > 0) state.om.stake = a.om.stake;
     if (a.om.refund > 0) state.om.refund = a.om.refund;
     if (a.om.mode === 'refund') state.om.sort = 'rating';
-    if (a.om.bookie && !keys.length) toast(`No hay cuotas de ${a.om.bookie} en la fuente actual: se muestran todas las casas.`, 'warn');
+    if (a.om.bookie && !keys.length) toast(`No hay cuotas de ${a.om.bookie} en la fuente actual. Abre un partido y escribe la cuota real de ${a.om.bookie} en «Comprobar cuota real»: el cálculo es el mismo.`, 'warn');
     save();
     go('oddsmatcher');
   } else if (a.kind === 'bl') {

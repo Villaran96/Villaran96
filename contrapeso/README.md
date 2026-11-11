@@ -87,8 +87,9 @@ Abre `http://localhost:8080`, crea una cuenta con ese correo y tendrás el panel
 | `STRIPE_PRICE_BIENVENIDA`, `STRIPE_PRICE_RECURRENTES`, `STRIPE_PRICE_METODO` y los mismos con `_ANUAL` | Opcional: precios (`price_…`) que ya tengas en Stripe. Si no, los crea el panel. |
 | `STRIPE_METODO_MODE` | `payment` si el Método se cobra en un pago único (por defecto, suscripción). |
 | `RESEND_API_KEY`, `MAIL_FROM` | Correo con Resend: bienvenida, plan activo, cambio de plan, cancelación, reactivación, fin de la prueba, cobro fallido, contraseña y contrato. Sin clave, los correos salen en la consola del servidor. |
-| `ODDSAPIIO_KEY` | Clave de odds-api.io: cuotas de **Bet365, Winamax, DAZN Bet, Sportium y Retabet**. |
-| `ODDSAPIIO_BOOKMAKERS`, `ODDSAPIIO_LEAGUES`, `ODDSAPIIO_MAX_EVENTS` | Casas tal como las nombra odds-api.io (por defecto `Bet365,Winamax ES,DAZN Bet,Sportium,Retabet ES`), ligas y número de partidos. |
+| `ODDSAPIIO_KEY` | Clave de odds-api.io: cuotas de **Bet365, Winamax y Retabet** de España y, si quieres, Betfair Exchange. |
+| `ODDSAPIIO_BOOKMAKERS` | Casas con su nombre exacto en odds-api.io. Por defecto `Bet365 ES,Winamax ES,Retabet ES,Betfair Exchange`. |
+| `ODDSAPIIO_LEAGUES`, `ODDSAPIIO_MAX_EVENTS` | Ligas (por ejemplo `spain-laliga,england-premier-league`; vacío = todos los partidos de la primera casa) y número máximo de partidos (80). |
 | `ODDS_API_KEY` | Clave de The Odds API: más casas europeas y Betfair internacional. |
 | `SPORTS`, `REGIONS`, `MARKETS`, `REFRESH_MINUTES` | Ligas, regiones (`eu`), mercados (`h2h,totals`) y frecuencia de descarga (10 min) de The Odds API. |
 | `BETFAIR_APP_KEY`, `BETFAIR_USERNAME`, `BETFAIR_PASSWORD` | Cuotas en contra reales de **Betfair.es** con su liquidez y enlace directo al mercado. |
@@ -105,7 +106,11 @@ La web usa la versión `2024-06-20` de la API de Stripe, fijada en cada llamada.
 
 ### Cuotas
 
-- **odds-api.io** (`ODDSAPIIO_KEY`) es la fuente para tus 5 casas, que The Odds API no cubre en España. ⚠️ **El conector está sin probar con una clave real**: se escribió a partir de la documentación pública resumida, porque desde el entorno de desarrollo no se podía abrir su web. Lee varios nombres de campo posibles y deja cualquier error en Administración → Resumen → Cuotas. Pruébalo con tu clave antes de vender.
+- **odds-api.io** (`ODDSAPIIO_KEY`) es la fuente para tus casas españolas. Según su lista pública de casas (noviembre de 2026), da **Bet365 ES, Winamax ES y Retabet ES**. **DAZN Bet y Sportium solo están en su versión italiana**, que no sirve. Para esas dos casas, en el oddsmatcher se escribe la cuota real en «Comprobar cuota real».
+  - Las cuotas solo llegan de las casas **seleccionadas en tu cuenta** de odds-api.io. El servidor las selecciona solo la primera vez. Tu plan limita cuántas: Starter (5) basta para las tres casas y Betfair Exchange.
+  - Cada cuota trae su enlace directo a la apuesta en la casa cuando odds-api.io lo da; si no, el enlace al partido.
+  - **Betfair Exchange** (el internacional) trae cuota en contra y liquidez, así que el oddsmatcher funciona solo con odds-api.io. Si además conectas Betfair.es, manda Betfair.es, que es el que se usa en España. Si tu plan lo permite, prueba a añadir `Betfair ES`: si trae cuotas en contra, el servidor la usa como Betfair.es.
+  - El conector sigue la documentación oficial y la especificación OpenAPI y tiene pruebas con respuestas de ese formato, pero **no se ha probado con una clave real**. Cualquier error de la API sale en Administración → Resumen → Cuotas.
 - **The Odds API** (`ODDS_API_KEY`) añade más casas europeas y Betfair internacional, con enlaces al partido cuando la casa los da. El servidor une las dos fuentes partido a partido aunque los nombres de los equipos no coincidan.
 - **Betfair.es** (`BETFAIR_*`) da las cuotas en contra del exchange español, que tiene su propio mercado y su propia liquidez. Necesitas una cuenta de Betfair.es, una clave de aplicación (App Key) y que la cuenta permita iniciar sesión por API.
 - **Enlace a Betfair**: abre cualquier mercado en betfair.es, copia la dirección y ponla en Administración → Empresa cambiando el número de mercado (`1.xxxxxxxx`) por `{marketId}`.
@@ -141,7 +146,7 @@ Esto no es asesoramiento legal. Antes de cobrar, revisa con un abogado:
 | `server/server.mjs` | Servidor: web, API, cuentas, pagos, contrato, administración y cuotas. |
 | `server/oddsapiio.mjs`, `server/betfair.mjs`, `server/merge.mjs`, `server/oddsfeed.mjs` | odds-api.io, Betfair.es, emparejado de partidos entre fuentes y descarga centralizada. |
 | `server/auth.mjs`, `server/billing.mjs`, `server/db.mjs`, `server/mail.mjs` | Contraseñas y sesiones, Stripe (alta automática, cambio de plan, cancelación y cupones), base de datos y correo. |
-| `tests/` | 57 pruebas: fórmulas, cuotas, emparejado de fuentes, odds-api.io, Betfair, contrato, permisos y el servidor de extremo a extremo con Stripe simulado (`npm test`). |
+| `tests/` | 58 pruebas: fórmulas, cuotas, emparejado de fuentes, odds-api.io, Betfair, contrato, permisos y el servidor de extremo a extremo con Stripe simulado (`npm test`). |
 
 ## Fórmulas
 
