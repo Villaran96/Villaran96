@@ -1,32 +1,32 @@
-// Servidor de Contrapeso: sirve la web y descarga las cuotas de forma centralizada.
-//
-// Con el servidor, la clave de The Odds API no sale nunca al navegador y todos los
-// usuarios comparten una sola descarga cada X minutos (lo que ahorra cuota).
+// Servidor de Contrapeso: web, cuentas, suscripciones con Stripe, contrato del
+// Método, panel de administración y cuotas centralizadas.
 //
 // Uso (Node 18 o superior, sin dependencias):
-//   ODDS_API_KEY=tu_clave node server/server.mjs
-//
-// Variables de entorno:
-//   ODDS_API_KEY      clave de https://the-odds-api.com (obligatoria para cuotas reales)
-//   SPORTS            ligas separadas por comas (por defecto, las de DEFAULT_SPORTS)
-//   REGIONS           regiones de casas: eu, uk, us, au... (por defecto eu)
-//   REFRESH_MINUTES   cada cuánto se descargan cuotas (por defecto 10)
-//   PORT              puerto (por defecto 8080)
-//   ALLOW_ORIGIN      dominio que puede leer /api/odds desde otra web (por defecto, ninguno)
+//   node server/server.mjs
+// Las variables de entorno están explicadas en el README.
 
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { fetchTheOddsApi, DEFAULT_SPORTS } from '../js/odds.js';
-
-const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const PORT = Number(process.env.PORT || 8080);
-const KEY = process.env.ODDS_API_KEY || '';
-const SPORTS = (process.env.SPORTS || DEFAULT_SPORTS.join(',')).split(',').map((s) => s.trim()).filter(Boolean);
-const REGIONS = process.env.REGIONS || 'eu';
-const REFRESH_MS = Math.max(1, Number(process.env.REFRESH_MINUTES || 10)) * 60000;
-const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN || '';
+import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
+import { loadConfig, ROOT } from './config.mjs';
+import { openDb } from './db.mjs';
+import {
+  hashPassword, verifyPassword, newToken, sha256, parseCookies, cookie, validEmail, passwordProblem, rateLimiter,
+} from './auth.mjs';
+import { createCheckout, createPortal, verifyStripeSignature, applyStripeEvent } from './billing.mjs';
+import { sendMail } from './mail.mjs';
+import { createOddsFeed } from './oddsfeed.mjs';
+import {
+  mergePlans, effectivePlan, canUse, FREE_ODDS_ROWS, PLAN_ORDER,
+} from '../js/plans.js';
+import {
+  contractData, contractText, sha256Hex, validDni, CONTRACT_VERSION,
+} from '../js/contract.js';
+import {
+  DEFAULT_SITE, DEFAULT_GUIDES, DEFAULT_PROMOS, DEFAULT_LESSONS,
+} from '../js/content.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -39,73 +39,679 @@ const TYPES = {
   '.jpg': 'image/jpeg',
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
-  '.webmanifest': 'application/manifest+json',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
-let cache = { updated: null, events: [], remaining: null, used: null, errors: [], source: 'the-odds-api' };
-let refreshing = null;
+const SESSION_DAYS = 30;
+const OFFER_KINDS = ['bet_get', 'refund', 'freebet', 'rollover', 'boost', 'other'];
 
-async function refresh() {
-  if (!KEY) return;
-  if (refreshing) return refreshing;
-  refreshing = (async () => {
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const str = (v, max = 200) => String(v ?? '').trim().slice(0, max);
+const httpUrl = (v) => (/^https?:\/\/[^\s]+$/i.test(String(v || '').trim()) ? String(v).trim().slice(0, 500) : '');
+
+export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = console.log } = {}) {
+  const db = await openDb(cfg.dataDir);
+  if (!db.data.content) {
+    db.data.content = { guides: DEFAULT_GUIDES, promos: DEFAULT_PROMOS, lessons: DEFAULT_LESSONS };
+    db.save();
+  }
+  const feed = createOddsFeed(cfg, { fetchImpl, log });
+  const limitAuth = rateLimiter({ max: 20, windowMs: 10 * 60000 });
+  const timers = [];
+
+  const site = () => ({ ...DEFAULT_SITE, ...(db.data.settings.site || {}) });
+  const plans = () => mergePlans(db.data.settings.plans || {});
+
+  function seats() {
+    const total = Number(plans().metodo.seats) || 0;
+    const taken = db.data.users.filter((u) => u.role !== 'admin' && effectivePlan(u) === 'metodo').length;
+    return { total, taken, left: total ? Math.max(0, total - taken) : null };
+  }
+
+  const applicationOf = (userId) => db.data.applications.filter((a) => a.userId === userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
+  const contractOf = (user) => (user?.contractId ? db.data.contracts.find((c) => c.id === user.contractId) : null);
+  const metodoAccess = (user) => !!user && (user.role === 'admin' || (effectivePlan(user) === 'metodo' && !!contractOf(user)));
+
+  function publicUser(u) {
+    if (!u) return null;
+    const c = contractOf(u);
+    const a = applicationOf(u.id);
+    return {
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      plan: effectivePlan(u),
+      subscribedPlan: u.plan || 'free',
+      planStatus: u.planStatus || null,
+      currentPeriodEnd: u.currentPeriodEnd || null,
+      cancelAtPeriodEnd: !!u.cancelAtPeriodEnd,
+      trialUsed: !!u.trialUsed,
+      hasBilling: !!u.stripeCustomerId,
+      createdAt: u.createdAt,
+      contract: c ? { id: c.id, signedAt: c.signedAt, hash: c.hash, version: c.version } : null,
+      application: a ? { id: a.id, status: a.status, createdAt: a.createdAt } : null,
+    };
+  }
+
+  /* ------------------------------------------------------------ utilidades HTTP */
+
+  function send(res, status, body, headers = {}) {
+    res.writeHead(status, headers);
+    res.end(body);
+  }
+  const json = (res, status, body, headers = {}) => send(res, status, JSON.stringify(body), { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-store', ...headers });
+
+  function readBody(req, limit) {
+    return new Promise((resolveBody, reject) => {
+      let size = 0;
+      const chunks = [];
+      req.on('data', (c) => {
+        size += c.length;
+        if (size > limit) {
+          reject(new HttpError(413, 'Demasiados datos.'));
+          req.destroy();
+          return;
+        }
+        chunks.push(c);
+      });
+      req.on('end', () => resolveBody(Buffer.concat(chunks).toString('utf8')));
+      req.on('error', reject);
+    });
+  }
+
+  async function readJson(ctx, limit = 64 * 1024) {
+    const ct = String(ctx.req.headers['content-type'] || '');
+    if (!ct.includes('application/json')) throw new HttpError(415, 'Se esperaba JSON.');
+    const raw = await readBody(ctx.req, limit);
     try {
-      const res = await fetchTheOddsApi({ apiKey: KEY, sports: SPORTS, regions: REGIONS });
-      cache = { ...res, source: 'the-odds-api' };
-      console.log(`[cuotas] ${res.events.length} eventos · cuota restante ${res.remaining ?? '¿?'}${res.errors.length ? ` · avisos: ${res.errors.join('; ')}` : ''}`);
+      const body = raw ? JSON.parse(raw) : {};
+      if (!body || typeof body !== 'object') throw new Error('no es un objeto');
+      return body;
+    } catch {
+      throw new HttpError(400, 'El cuerpo de la petición no es JSON válido.');
+    }
+  }
+
+  const ipOf = (req) => String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+
+  function sessionUser(req) {
+    const token = parseCookies(req.headers.cookie).cp_session;
+    if (!token) return { user: null, session: null };
+    const h = sha256(token);
+    const session = db.data.sessions.find((s) => s.hash === h && Date.parse(s.expires) > Date.now());
+    const user = session ? db.data.users.find((u) => u.id === session.userId) : null;
+    return { user: user || null, session: user ? session : null };
+  }
+
+  function startSession(res, user, req) {
+    const { token, hash } = newToken();
+    db.data.sessions.push({
+      hash, userId: user.id, created: new Date().toISOString(), expires: new Date(Date.now() + SESSION_DAYS * 86400000).toISOString(), ip: ipOf(req), ua: str(req.headers['user-agent'], 300),
+    });
+    db.save();
+    res.setHeader('Set-Cookie', cookie('cp_session', token, { maxAge: SESSION_DAYS * 86400, secure: cfg.cookieSecure }));
+  }
+
+  const requireUser = (ctx) => {
+    if (!ctx.user) throw new HttpError(401, 'Inicia sesión para continuar.');
+    return ctx.user;
+  };
+  const requireAdmin = (ctx) => {
+    const u = requireUser(ctx);
+    if (u.role !== 'admin') throw new HttpError(403, 'Solo para administradores.');
+    return u;
+  };
+
+  /* ------------------------------------------------------------ rutas */
+
+  const routes = [];
+  const route = (method, path, fn) => routes.push({ method, parts: path.split('/'), fn });
+
+  route('GET', '/api/health', () => ({
+    ok: true, odds: feed.configured(), updated: feed.get().updated, events: feed.get().events.length, payments: !!cfg.stripe.secretKey,
+  }));
+
+  route('GET', '/api/config', (ctx) => ({
+    backend: true,
+    plans: plans(),
+    seats: seats(),
+    site: site(),
+    payments: !!cfg.stripe.secretKey,
+    odds: { configured: feed.configured(), betfair: feed.hasBetfair },
+    user: publicUser(ctx.user),
+  }));
+
+  /* ------ cuentas */
+
+  route('POST', '/api/auth/register', async (ctx) => {
+    if (!limitAuth(`reg:${ipOf(ctx.req)}`)) throw new HttpError(429, 'Demasiados intentos. Espera unos minutos.');
+    const b = await readJson(ctx);
+    const email = str(b.email).toLowerCase();
+    if (!validEmail(email)) throw new HttpError(400, 'Escribe un correo electrónico válido.');
+    const problem = passwordProblem(b.password);
+    if (problem) throw new HttpError(400, problem);
+    if (b.adult !== true) throw new HttpError(400, 'Tienes que confirmar que eres mayor de 18 años.');
+    if (b.terms !== true) throw new HttpError(400, 'Tienes que aceptar las condiciones y la política de privacidad.');
+    if (db.data.users.some((u) => u.email === email)) throw new HttpError(409, 'Ya hay una cuenta con ese correo. Inicia sesión.');
+    const now = new Date().toISOString();
+    const user = {
+      id: randomUUID(),
+      email,
+      name: str(b.name, 80) || email.split('@')[0],
+      passwordHash: await hashPassword(b.password),
+      role: cfg.adminEmails.includes(email) ? 'admin' : 'user',
+      plan: 'free',
+      planStatus: null,
+      createdAt: now,
+      adultConfirmedAt: now,
+      termsAcceptedAt: now,
+    };
+    db.data.users.push(user);
+    startSession(ctx.res, user, ctx.req);
+    sendMail(cfg, { to: email, subject: `Bienvenida a ${site().brand}`, text: `Tu cuenta de ${site().brand} está lista. Entra en ${cfg.siteUrl} para empezar con la guía paso a paso.` }, fetchImpl).catch(() => {});
+    return { user: publicUser(user) };
+  });
+
+  route('POST', '/api/auth/login', async (ctx) => {
+    if (!limitAuth(`login:${ipOf(ctx.req)}`)) throw new HttpError(429, 'Demasiados intentos. Espera unos minutos.');
+    const b = await readJson(ctx);
+    const email = str(b.email).toLowerCase();
+    const user = db.data.users.find((u) => u.email === email);
+    const ok = user && await verifyPassword(String(b.password || ''), user.passwordHash);
+    if (!ok) throw new HttpError(401, 'Correo o contraseña incorrectos.');
+    if (cfg.adminEmails.includes(email) && user.role !== 'admin') user.role = 'admin';
+    startSession(ctx.res, user, ctx.req);
+    return { user: publicUser(user) };
+  });
+
+  route('POST', '/api/auth/logout', (ctx) => {
+    if (ctx.session) {
+      db.data.sessions = db.data.sessions.filter((s) => s !== ctx.session);
+      db.save();
+    }
+    ctx.res.setHeader('Set-Cookie', cookie('cp_session', '', { maxAge: 0, secure: cfg.cookieSecure }));
+    return { ok: true };
+  });
+
+  route('GET', '/api/auth/me', (ctx) => ({ user: publicUser(ctx.user) }));
+
+  route('POST', '/api/auth/forgot', async (ctx) => {
+    if (!limitAuth(`forgot:${ipOf(ctx.req)}`)) throw new HttpError(429, 'Demasiados intentos. Espera unos minutos.');
+    const b = await readJson(ctx);
+    const user = db.data.users.find((u) => u.email === str(b.email).toLowerCase());
+    if (user) {
+      const { token, hash } = newToken();
+      db.data.resets = db.data.resets.filter((r) => r.userId !== user.id && Date.parse(r.expires) > Date.now());
+      db.data.resets.push({ hash, userId: user.id, expires: new Date(Date.now() + 3600000).toISOString() });
+      db.save();
+      const link = `${cfg.siteUrl}/?token=${token}#restablecer`;
+      await sendMail(cfg, { to: user.email, subject: 'Cambia tu contraseña', text: `Para elegir una contraseña nueva, abre este enlace en la próxima hora:\n${link}\n\nSi no lo has pedido tú, ignora este correo.` }, fetchImpl);
+    }
+    return { ok: true };
+  });
+
+  route('POST', '/api/auth/reset', async (ctx) => {
+    const b = await readJson(ctx);
+    const problem = passwordProblem(b.password);
+    if (problem) throw new HttpError(400, problem);
+    const h = sha256(String(b.token || ''));
+    const reset = db.data.resets.find((r) => r.hash === h && Date.parse(r.expires) > Date.now());
+    if (!reset) throw new HttpError(400, 'El enlace ha caducado o ya se ha usado. Pide otro.');
+    const user = db.data.users.find((u) => u.id === reset.userId);
+    if (!user) throw new HttpError(400, 'El enlace no es válido.');
+    user.passwordHash = await hashPassword(b.password);
+    db.data.resets = db.data.resets.filter((r) => r.userId !== user.id);
+    db.data.sessions = db.data.sessions.filter((s) => s.userId !== user.id);
+    startSession(ctx.res, user, ctx.req);
+    return { user: publicUser(user) };
+  });
+
+  route('PATCH', '/api/me', async (ctx) => {
+    const user = requireUser(ctx);
+    const b = await readJson(ctx);
+    if (b.name != null) user.name = str(b.name, 80) || user.name;
+    db.save();
+    return { user: publicUser(user) };
+  });
+
+  route('POST', '/api/me/password', async (ctx) => {
+    const user = requireUser(ctx);
+    const b = await readJson(ctx);
+    if (!await verifyPassword(String(b.current || ''), user.passwordHash)) throw new HttpError(400, 'La contraseña actual no es correcta.');
+    const problem = passwordProblem(b.next);
+    if (problem) throw new HttpError(400, problem);
+    user.passwordHash = await hashPassword(b.next);
+    db.data.sessions = db.data.sessions.filter((s) => s.userId !== user.id || s === ctx.session);
+    db.save();
+    return { ok: true };
+  });
+
+  route('DELETE', '/api/me', async (ctx) => {
+    const user = requireUser(ctx);
+    const b = await readJson(ctx);
+    if (!await verifyPassword(String(b.password || ''), user.passwordHash)) throw new HttpError(400, 'La contraseña no es correcta.');
+    if (user.stripeSubscriptionId && ['active', 'trialing', 'past_due'].includes(user.planStatus)) {
+      throw new HttpError(409, 'Cancela primero tu suscripción desde «Gestionar pago».');
+    }
+    db.data.users = db.data.users.filter((u) => u.id !== user.id);
+    db.data.sessions = db.data.sessions.filter((s) => s.userId !== user.id);
+    delete db.data.userData[user.id];
+    // Los contratos firmados se conservan como prueba durante los plazos legales.
+    db.save();
+    ctx.res.setHeader('Set-Cookie', cookie('cp_session', '', { maxAge: 0, secure: cfg.cookieSecure }));
+    return { ok: true };
+  });
+
+  route('GET', '/api/me/data', (ctx) => ({ data: db.data.userData[requireUser(ctx).id] || null }));
+
+  route('PUT', '/api/me/data', async (ctx) => {
+    const user = requireUser(ctx);
+    const b = await readJson(ctx, 2 * 1024 * 1024);
+    const data = {
+      bets: Array.isArray(b.bets) ? b.bets.slice(0, 20000) : [],
+      offers: Array.isArray(b.offers) ? b.offers.slice(0, 2000) : [],
+      settings: b.settings && typeof b.settings === 'object' ? b.settings : {},
+      guide: b.guide && typeof b.guide === 'object' ? b.guide : {},
+      updatedAt: new Date().toISOString(),
+    };
+    db.data.userData[user.id] = data;
+    db.save();
+    return { ok: true, updatedAt: data.updatedAt };
+  });
+
+  /* ------ cuotas y contenido */
+
+  route('GET', '/api/odds', async (ctx) => {
+    if (!feed.configured()) throw new HttpError(503, 'El servidor no tiene ninguna fuente de cuotas configurada.');
+    if (!feed.get().updated) await feed.refresh();
+    const plan = effectivePlan(ctx.user);
+    return { ...feed.forPlan(canUse(plan, 'odds.full'), FREE_ODDS_ROWS), plan, betfairTemplate: site().betfairTemplate || cfg.betfair.linkTemplate };
+  });
+
+  route('GET', '/api/content', (ctx) => {
+    const plan = effectivePlan(ctx.user);
+    const { guides, promos, lessons } = db.data.content;
+    const active = (list) => list.filter((x) => x.active !== false);
+    const teaser = (x) => ({ id: x.id, bookie: x.bookie, kind: x.kind, locked: true });
+    const guidesOk = canUse(plan, 'guides.welcome');
+    const promosOk = canUse(plan, 'promos.recurring');
+    const metodoOk = metodoAccess(ctx.user);
+    return {
+      guides: active(guides).map((g) => (guidesOk ? g : teaser(g))),
+      promos: active(promos).map((p) => (promosOk ? p : teaser(p))),
+      lessons: lessons.map((l) => (metodoOk ? l : { id: l.id, title: l.title, minutes: l.minutes, locked: true })),
+      access: { guides: guidesOk, promos: promosOk, metodo: metodoOk },
+    };
+  });
+
+  /* ------ pagos */
+
+  route('POST', '/api/billing/checkout', async (ctx) => {
+    const user = requireUser(ctx);
+    const b = await readJson(ctx);
+    const planId = str(b.plan);
+    if (!['bienvenida', 'recurrentes', 'metodo'].includes(planId)) throw new HttpError(400, 'Plan desconocido.');
+    if (planId === 'metodo') {
+      const p = plans().metodo;
+      const app = applicationOf(user.id);
+      if (p.requiresApproval && app?.status !== 'approved') throw new HttpError(409, 'Tu solicitud del Método aún no está aprobada.');
+      if (!contractOf(user)) throw new HttpError(409, 'Firma el contrato antes de pagar.');
+      if (effectivePlan(user) !== 'metodo' && seats().left === 0) throw new HttpError(409, 'No quedan plazas del Método. Te avisaremos cuando se libere una.');
+    }
+    if (user.stripeSubscriptionId && ['active', 'trialing', 'past_due'].includes(user.planStatus) && planId !== 'metodo') {
+      return { url: await createPortal({ cfg, user, fetchImpl }) };
+    }
+    return { url: await createCheckout({ cfg, user, planId, plans: plans(), fetchImpl }) };
+  });
+
+  route('POST', '/api/billing/portal', async (ctx) => ({ url: await createPortal({ cfg, user: requireUser(ctx), fetchImpl }) }));
+
+  route('POST', '/api/stripe/webhook', async (ctx) => {
+    const raw = await readBody(ctx.req, 1024 * 1024);
+    let event;
+    try {
+      event = verifyStripeSignature(raw, ctx.req.headers['stripe-signature'], cfg.stripe.webhookSecret);
     } catch (e) {
-      cache = { ...cache, errors: [e.message] };
-      console.error('[cuotas] error:', e.message);
-    } finally {
-      refreshing = null;
+      throw new HttpError(400, e.message);
     }
-  })();
-  return refreshing;
+    const user = applyStripeEvent(db, cfg, event);
+    if (user) log(`[stripe] ${event.type} · ${user.email} · plan ${user.plan} (${user.planStatus})`);
+    return { received: true };
+  });
+
+  /* ------ Método */
+
+  route('GET', '/api/metodo', (ctx) => {
+    const user = ctx.user;
+    return {
+      seats: seats(),
+      plan: plans().metodo,
+      application: user ? applicationOf(user.id) : null,
+      contract: user && contractOf(user) ? { id: user.contractId, signedAt: contractOf(user).signedAt, hash: contractOf(user).hash } : null,
+      access: metodoAccess(user),
+    };
+  });
+
+  route('POST', '/api/metodo/apply', async (ctx) => {
+    const user = requireUser(ctx);
+    const b = await readJson(ctx);
+    const prev = applicationOf(user.id);
+    if (prev && prev.status !== 'rejected') return { application: prev };
+    const p = plans().metodo;
+    const status = seats().left === 0 ? 'waitlist' : p.requiresApproval ? 'pending' : 'approved';
+    const app = {
+      id: randomUUID(),
+      userId: user.id,
+      email: user.email,
+      status,
+      phone: str(b.phone, 30),
+      experience: str(b.experience, 2000),
+      motivation: str(b.motivation, 2000),
+      createdAt: new Date().toISOString(),
+    };
+    db.data.applications.push(app);
+    db.save();
+    if (site().email) {
+      sendMail(cfg, { to: site().email, subject: `Nueva solicitud del Método: ${user.email}`, text: `Estado: ${status}\nExperiencia: ${app.experience}\nMotivo: ${app.motivation}\nTeléfono: ${app.phone}` }, fetchImpl).catch(() => {});
+    }
+    return { application: app };
+  });
+
+  route('POST', '/api/metodo/sign', async (ctx) => {
+    const user = requireUser(ctx);
+    const b = await readJson(ctx, 600 * 1024);
+    const p = plans().metodo;
+    let app = applicationOf(user.id);
+    if (!app && !p.requiresApproval) {
+      app = { id: randomUUID(), userId: user.id, email: user.email, status: seats().left === 0 ? 'waitlist' : 'approved', createdAt: new Date().toISOString() };
+      db.data.applications.push(app);
+    }
+    if (!app || app.status !== 'approved') throw new HttpError(409, 'Tu plaza del Método aún no está aprobada.');
+    const name = str(b.name, 120);
+    const dni = str(b.dni, 12).toUpperCase().replace(/[\s-]/g, '');
+    const address = str(b.address, 200);
+    if (name.split(/\s+/).length < 2) throw new HttpError(400, 'Escribe tu nombre y apellidos.');
+    if (!validDni(dni)) throw new HttpError(400, 'El DNI o NIE no es válido. Revisa los números y la letra.');
+    if (address.length < 8) throw new HttpError(400, 'Escribe tu domicilio completo.');
+    const acc = b.accept || {};
+    if (!(acc.contract && acc.adult && acc.waiver && acc.info)) throw new HttpError(400, 'Tienes que marcar todas las casillas para firmar.');
+    const signature = String(b.signature || '');
+    if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(signature) || signature.length > 500 * 1024) throw new HttpError(400, 'Firma en el recuadro antes de enviar.');
+    const date = new Date(b.date || Date.now());
+    if (!Number.isFinite(date.getTime()) || Math.abs(Date.now() - date.getTime()) > 86400000) throw new HttpError(400, 'La fecha del contrato no es válida. Recarga la página.');
+    const text = contractText(contractData({ site: site(), signer: { name, dni, address, email: user.email }, plan: p, date }));
+    const hash = await sha256Hex(text);
+    if (hash !== b.hash) throw new HttpError(409, 'El texto del contrato ha cambiado mientras lo leías. Recarga la página y vuelve a firmar.');
+    const record = {
+      id: randomUUID(),
+      userId: user.id,
+      version: CONTRACT_VERSION,
+      text,
+      hash,
+      signer: { name, dni, address, email: user.email },
+      accepted: { contract: true, adult: true, waiver: true, info: true },
+      signature,
+      ip: ipOf(ctx.req),
+      userAgent: str(ctx.req.headers['user-agent'], 300),
+      signedAt: new Date().toISOString(),
+    };
+    db.data.contracts.push(record);
+    user.contractId = record.id;
+    db.save();
+    try {
+      await sendMail(cfg, { to: user.email, subject: 'Copia de tu contrato del Método', text: `${text}\n\nFirmado electrónicamente el ${record.signedAt}.\nHuella SHA-256: ${hash}` }, fetchImpl);
+    } catch (e) {
+      log(`[correo] no se pudo enviar la copia del contrato: ${e.message}`);
+    }
+    return { contract: { id: record.id, signedAt: record.signedAt, hash, version: record.version }, user: publicUser(user) };
+  });
+
+  route('GET', '/api/contracts/:id', (ctx) => {
+    const user = requireUser(ctx);
+    const c = db.data.contracts.find((x) => x.id === ctx.params.id);
+    if (!c || (c.userId !== user.id && user.role !== 'admin')) throw new HttpError(404, 'Contrato no encontrado.');
+    return { contract: c };
+  });
+
+  /* ------ administración */
+
+  route('GET', '/api/admin/overview', (ctx) => {
+    requireAdmin(ctx);
+    const odds = feed.get();
+    return {
+      users: db.data.users.map((u) => ({ ...publicUser(u), stripeCustomerId: u.stripeCustomerId || null })),
+      applications: db.data.applications,
+      contracts: db.data.contracts.map((c) => ({
+        id: c.id, userId: c.userId, signer: { ...c.signer, dni: `${c.signer.dni.slice(0, 3)}•••${c.signer.dni.slice(-2)}` }, signedAt: c.signedAt, hash: c.hash, version: c.version, ip: c.ip,
+      })),
+      content: db.data.content,
+      settings: { plans: plans(), site: site() },
+      seats: seats(),
+      odds: {
+        configured: feed.configured(), betfair: feed.hasBetfair, updated: odds.updated, events: odds.events.length, remaining: odds.remaining, sources: odds.sources, errors: odds.errors,
+      },
+      payments: { configured: !!cfg.stripe.secretKey, webhook: !!cfg.stripe.webhookSecret, prices: Object.fromEntries(Object.entries(cfg.stripe.prices).map(([k, v]) => [k, !!v])) },
+    };
+  });
+
+  const cleanParams = (p) => Object.fromEntries(Object.entries(p && typeof p === 'object' ? p : {}).slice(0, 20).map(([k, v]) => [str(k, 30), typeof v === 'number' ? v : str(v, 40)]));
+
+  route('PUT', '/api/admin/content/:kind', async (ctx) => {
+    requireAdmin(ctx);
+    const kind = ctx.params.kind;
+    if (!['guides', 'promos', 'lessons'].includes(kind)) throw new HttpError(404, 'Tipo de contenido desconocido.');
+    const b = await readJson(ctx, 1024 * 1024);
+    if (!Array.isArray(b.items)) throw new HttpError(400, 'Faltan los elementos.');
+    const items = b.items.slice(0, 300).map((x) => {
+      const id = str(x.id, 60) || randomUUID();
+      if (kind === 'lessons') return { id, title: str(x.title, 140), minutes: Math.max(1, Math.min(120, Number(x.minutes) || 5)), body: str(x.body, 60000) };
+      return {
+        id,
+        bookie: str(x.bookie, 60),
+        kind: OFFER_KINDS.includes(x.kind) ? x.kind : 'other',
+        params: cleanParams(x.params),
+        conditions: str(x.conditions, 3000),
+        url: httpUrl(x.url),
+        schedule: kind === 'promos' ? str(x.schedule, 80) : undefined,
+        days: kind === 'promos' && Array.isArray(x.days) ? [...new Set(x.days.map(Number).filter((d) => d >= 0 && d <= 6))] : undefined,
+        validUntil: kind === 'promos' && /^\d{4}-\d{2}-\d{2}$/.test(x.validUntil || '') ? x.validUntil : undefined,
+        active: x.active !== false,
+        example: !!x.example,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    db.data.content[kind] = items;
+    db.save();
+    return { items };
+  });
+
+  route('PUT', '/api/admin/settings', async (ctx) => {
+    requireAdmin(ctx);
+    const b = await readJson(ctx, 256 * 1024);
+    if (b.plans && typeof b.plans === 'object') {
+      const out = {};
+      for (const id of PLAN_ORDER) {
+        const p = b.plans[id];
+        if (!p) continue;
+        out[id] = {
+          name: str(p.name, 40),
+          price: Math.max(0, Number(p.price) || 0),
+          interval: ['month', 'year', 'once'].includes(p.interval) ? p.interval : 'month',
+          trialDays: Math.max(0, Math.min(60, Number(p.trialDays) || 0)),
+          seats: Math.max(0, Math.min(100000, Number(p.seats) || 0)),
+          tagline: str(p.tagline, 160),
+          features: Array.isArray(p.features) ? p.features.map((f) => str(f, 160)).filter(Boolean).slice(0, 12) : undefined,
+          highlight: !!p.highlight,
+          requiresApproval: !!p.requiresApproval,
+          requiresContract: id === 'metodo',
+        };
+      }
+      db.data.settings.plans = out;
+    }
+    if (b.site && typeof b.site === 'object') {
+      const s = b.site;
+      db.data.settings.site = {
+        brand: str(s.brand, 60) || DEFAULT_SITE.brand,
+        legalName: str(s.legalName, 160),
+        nif: str(s.nif, 20),
+        address: str(s.address, 200),
+        email: str(s.email, 120),
+        supportUrl: httpUrl(s.supportUrl),
+        betfairTemplate: /^https:\/\/[^\s]*\{marketId\}/.test(String(s.betfairTemplate || '')) ? str(s.betfairTemplate, 300) : DEFAULT_SITE.betfairTemplate,
+        contractReviewed: !!s.contractReviewed,
+      };
+    }
+    db.save();
+    return { settings: { plans: plans(), site: site() } };
+  });
+
+  route('PATCH', '/api/admin/users/:id', async (ctx) => {
+    const admin = requireAdmin(ctx);
+    const b = await readJson(ctx);
+    const user = db.data.users.find((u) => u.id === ctx.params.id);
+    if (!user) throw new HttpError(404, 'Usuario no encontrado.');
+    if (b.plan != null) {
+      if (!PLAN_ORDER.includes(b.plan)) throw new HttpError(400, 'Plan desconocido.');
+      user.plan = b.plan;
+      user.planStatus = b.plan === 'free' ? null : (b.planStatus || 'active');
+      user.manualPlanBy = admin.email;
+    }
+    if (b.role != null && ['user', 'admin'].includes(b.role) && user.id !== admin.id) user.role = b.role;
+    db.save();
+    return { user: publicUser(user) };
+  });
+
+  route('PATCH', '/api/admin/applications/:id', async (ctx) => {
+    requireAdmin(ctx);
+    const b = await readJson(ctx);
+    const app = db.data.applications.find((a) => a.id === ctx.params.id);
+    if (!app) throw new HttpError(404, 'Solicitud no encontrada.');
+    if (!['pending', 'approved', 'rejected', 'waitlist'].includes(b.status)) throw new HttpError(400, 'Estado desconocido.');
+    app.status = b.status;
+    app.reviewedAt = new Date().toISOString();
+    db.save();
+    if (b.status === 'approved') {
+      sendMail(cfg, { to: app.email, subject: 'Tu plaza del Método está aprobada', text: `Ya puedes firmar el contrato y activar el Método en ${cfg.siteUrl}/#metodo` }, fetchImpl).catch(() => {});
+    }
+    return { application: app };
+  });
+
+  /* ------------------------------------------------------------ despacho */
+
+  async function api(req, res, url) {
+    const parts = url.pathname.split('/');
+    const match = routes.find((r) => r.method === req.method && r.parts.length === parts.length && r.parts.every((p, i) => p.startsWith(':') || p === parts[i]));
+    if (!match) {
+      const exists = routes.some((r) => r.parts.length === parts.length && r.parts.every((p, i) => p.startsWith(':') || p === parts[i]));
+      throw new HttpError(exists ? 405 : 404, exists ? 'Método no permitido.' : 'Ruta no encontrada.');
+    }
+    // Las peticiones que cambian datos solo se aceptan desde la propia web.
+    if (req.method !== 'GET' && url.pathname !== '/api/stripe/webhook') {
+      const origin = req.headers.origin;
+      if (origin && origin !== cfg.siteUrl && new URL(origin).host !== req.headers.host && origin !== cfg.allowOrigin) {
+        throw new HttpError(403, 'Origen no permitido.');
+      }
+    }
+    const params = {};
+    match.parts.forEach((p, i) => { if (p.startsWith(':')) params[p.slice(1)] = decodeURIComponent(parts[i]); });
+    const { user, session } = sessionUser(req);
+    const ctx = { req, res, url, params, user, session };
+    const result = await match.fn(ctx);
+    const headers = cfg.allowOrigin ? { 'Access-Control-Allow-Origin': cfg.allowOrigin, Vary: 'Origin' } : {};
+    json(res, 200, result, headers);
+  }
+
+  async function serveStatic(req, res, url) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Método no permitido');
+    let path;
+    try { path = decodeURIComponent(url.pathname); } catch { return send(res, 400, 'Ruta no válida'); }
+    if (path === '/') path = '/index.html';
+    // Solo se sirve la web: index.html, estilos, scripts del navegador y recursos.
+    if (!/^\/(index\.html|css\/[\w.-]+\.css|js\/[\w./-]+\.js|assets\/[\w./-]+)$/.test(path) || path.includes('..')) {
+      return send(res, 404, 'No encontrado');
+    }
+    const file = normalize(join(ROOT, path));
+    if (!file.startsWith(ROOT) || resolve(file).startsWith(resolve(cfg.dataDir))) return send(res, 404, 'No encontrado');
+    try {
+      const info = await stat(file);
+      if (!info.isFile()) throw new Error('no es un archivo');
+      const body = await readFile(file);
+      const type = TYPES[extname(file)] || 'application/octet-stream';
+      const headers = { 'Content-Type': type, 'Cache-Control': 'no-cache' };
+      if (type.startsWith('text/html')) {
+        headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.the-odds-api.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+      }
+      return send(res, 200, req.method === 'HEAD' ? '' : body, headers);
+    } catch {
+      return send(res, 404, 'No encontrado');
+    }
+  }
+
+  async function handler(req, res) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (cfg.cookieSecure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+      return await serveStatic(req, res, url);
+    } catch (e) {
+      const status = e instanceof HttpError ? e.status : 500;
+      if (status === 500) log(`[error] ${req.method} ${req.url}: ${e.stack || e.message}`);
+      if (!res.headersSent) json(res, status, { error: status === 500 ? 'Ha fallado algo en el servidor. Inténtalo de nuevo.' : e.message });
+      else res.end();
+    }
+  }
+
+  const server = createServer(handler);
+
+  function cleanup() {
+    const now = Date.now();
+    db.data.sessions = db.data.sessions.filter((s) => Date.parse(s.expires) > now);
+    db.data.resets = db.data.resets.filter((r) => Date.parse(r.expires) > now);
+    db.save();
+  }
+
+  return {
+    server,
+    db,
+    feed,
+    cfg,
+    listen(port = cfg.port) {
+      return new Promise((ok) => server.listen(port, () => {
+        if (feed.configured()) {
+          feed.refresh();
+          timers.push(setInterval(() => feed.refresh(), cfg.odds.refreshMinutes * 60000));
+        }
+        timers.push(setInterval(cleanup, 6 * 3600000));
+        timers.forEach((t) => t.unref?.());
+        ok(server.address().port);
+      }));
+    },
+    async close() {
+      timers.forEach(clearInterval);
+      await new Promise((ok) => server.close(ok));
+      await db.flush();
+    },
+  };
 }
 
-function send(res, status, body, headers = {}) {
-  res.writeHead(status, { 'X-Content-Type-Options': 'nosniff', ...headers });
-  res.end(body);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const cfg = loadConfig();
+  const app = await createApp(cfg);
+  const port = await app.listen();
+  console.log(`Contrapeso en http://localhost:${port} (${cfg.siteUrl})`);
+  console.log(`Cuotas: ${app.feed.configured() ? `${cfg.odds.key ? 'The Odds API' : ''}${app.feed.hasBetfair ? ' + Betfair.es' : ''}` : 'sin fuente (la web usa la demostración)'}`);
+  console.log(`Pagos: ${cfg.stripe.secretKey ? 'Stripe activado' : 'sin configurar (STRIPE_SECRET_KEY)'}`);
+  if (!cfg.adminEmails.length) console.log('Aviso: define ADMIN_EMAILS con tu correo para entrar en el panel de administración.');
 }
-
-const server = createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://localhost');
-  const cors = ALLOW_ORIGIN ? { 'Access-Control-Allow-Origin': ALLOW_ORIGIN, Vary: 'Origin' } : {};
-
-  if (url.pathname === '/api/odds') {
-    if (!KEY) {
-      return send(res, 503, JSON.stringify({ error: 'Falta ODDS_API_KEY en el servidor.' }), { 'Content-Type': TYPES['.json'], ...cors });
-    }
-    if (!cache.updated) await refresh();
-    return send(res, 200, JSON.stringify(cache), { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-store', ...cors });
-  }
-  if (url.pathname === '/api/health') {
-    return send(res, 200, JSON.stringify({ ok: true, key: !!KEY, updated: cache.updated, events: cache.events.length, remaining: cache.remaining }), { 'Content-Type': TYPES['.json'] });
-  }
-
-  // Archivos estáticos (solo dentro de la carpeta del proyecto, sin server/ ni tests/).
-  let path = decodeURIComponent(url.pathname);
-  if (path.endsWith('/')) path += 'index.html';
-  const file = normalize(join(ROOT, path));
-  if (!file.startsWith(ROOT) || /[\\/](server|tests|node_modules|\.git)[\\/]/.test(file.slice(ROOT.length))) {
-    return send(res, 404, 'No encontrado');
-  }
-  try {
-    const info = await stat(file);
-    if (!info.isFile()) throw new Error('no es un archivo');
-    const body = await readFile(file);
-    return send(res, 200, body, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
-  } catch {
-    return send(res, 404, 'No encontrado');
-  }
-});
-
-server.listen(PORT, () => {
-  console.log(`Contrapeso en http://localhost:${PORT}`);
-  if (!KEY) console.log('Sin ODDS_API_KEY: la web funciona con datos de demostración o con tu clave en Ajustes.');
-  else {
-    console.log(`Ligas: ${SPORTS.join(', ')} · regiones: ${REGIONS} · cada ${REFRESH_MS / 60000} min`);
-    refresh();
-    setInterval(refresh, REFRESH_MS).unref();
-  }
-});

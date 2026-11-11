@@ -1,6 +1,6 @@
 <title>Contrapeso</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Oddsmatcher, calculadoras de matched betting, guía de bonos y registro de beneficios.">
+<meta name="description" content="Oddsmatcher con enlaces directos, calculadoras de matched betting, guía de bonos paso a paso y registro de beneficios.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap">
@@ -8,33 +8,36 @@
 
 <div class="app">
   <aside class="side" aria-label="Menú principal">
-    <a class="brand" href="#inicio"><span data-logo></span><span class="brand-name">Contrapeso</span></a>
+    <a class="brand" href="#inicio"><span data-logo></span><span class="brand-name" data-brand>Contrapeso</span></a>
     <nav class="side-nav">
       <a href="#inicio" data-nav="inicio" data-icon="home"><span>Resumen</span></a>
       <a href="#oddsmatcher" data-nav="oddsmatcher" data-icon="match"><span>Oddsmatcher</span></a>
       <a href="#calculadora" data-nav="calculadora" data-icon="calc"><span>Calculadoras</span></a>
       <a href="#bonos" data-nav="bonos" data-icon="gift"><span>Bonos</span></a>
       <a href="#beneficios" data-nav="beneficios" data-icon="chart"><span>Beneficios</span></a>
+      <a href="#guia" data-nav="guia" data-icon="book"><span>Guía</span></a>
+      <a href="#metodo" data-nav="metodo" data-icon="shield"><span>Método</span></a>
       <span class="side-sep" role="separator"></span>
-      <a href="#aprende" data-nav="aprende" data-icon="book"><span>Aprende</span></a>
+      <a href="#planes" data-nav="planes" data-icon="star"><span>Planes</span></a>
       <a href="#ajustes" data-nav="ajustes" data-icon="gear"><span>Ajustes</span></a>
+      <a href="#admin" data-nav="admin" data-icon="pen" data-admin-only hidden><span>Administración</span></a>
     </nav>
     <div class="side-foot">
+      <div data-account></div>
       <div class="side-status" data-status="compact"></div>
-      <p class="legal">Solo mayores de 18. Juega con cabeza: <a href="https://www.jugarbien.es" target="_blank" rel="noopener">jugarbien.es</a></p>
     </div>
   </aside>
 
   <header class="topbar">
-    <a class="brand" href="#inicio"><span data-logo="sm"></span><span class="brand-name">Contrapeso</span></a>
+    <a class="brand" href="#inicio"><span data-logo="sm"></span><span class="brand-name" data-brand>Contrapeso</span></a>
     <span class="topbar-status" data-status="compact"></span>
-    <a class="top-icon" href="#aprende" data-nav="aprende" data-icon="book" aria-label="Aprende"></a>
-    <a class="top-icon" href="#ajustes" data-nav="ajustes" data-icon="gear" aria-label="Ajustes"></a>
+    <a class="top-icon" href="#guia" data-nav="guia" data-icon="book" aria-label="Guía"></a>
+    <a class="top-icon" href="#cuenta" data-nav="cuenta" data-icon="user" aria-label="Cuenta"></a>
   </header>
 
   <main id="main" class="main" tabindex="-1">
-    <p class="boot">Cargando Contrapeso…</p>
-    <noscript><p class="boot">Contrapeso necesita JavaScript para funcionar.</p></noscript>
+    <p class="boot">Cargando…</p>
+    <noscript><p class="boot">Esta web necesita JavaScript para funcionar.</p></noscript>
   </main>
 
   <nav class="tabbar" aria-label="Menú">
@@ -42,7 +45,7 @@
     <a href="#oddsmatcher" data-nav="oddsmatcher" data-icon="match"><span>Odds</span></a>
     <a href="#calculadora" data-nav="calculadora" data-icon="calc"><span>Calcular</span></a>
     <a href="#bonos" data-nav="bonos" data-icon="gift"><span>Bonos</span></a>
-    <a href="#beneficios" data-nav="beneficios" data-icon="chart"><span>Beneficios</span></a>
+    <a href="#menu" data-nav="menu" data-icon="menu"><span>Más</span></a>
   </nav>
 </div>
 
