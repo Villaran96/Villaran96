@@ -1386,3 +1386,17 @@ table.kv td { color: var(--fg); }
 .coupon-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); font-size: 13.5px; }
 .coupon-list li .code { font-family: var(--font-mono); }
 .coupon-list li span:last-child { margin-left: auto; }
+
+/* Enlaces: al partido, buscar o portada */
+.link-kind { font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; margin-left: 2px; }
+.link-kind.is-event { background: var(--pos-bg); color: var(--pos); }
+.link-kind.is-search { background: var(--back-bg); color: var(--back-ink); }
+.ext-icon.link-event { color: var(--pos); }
+.ext-icon.link-search { color: var(--back-ink); }
+.link-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.link-row { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); min-width: 0; }
+.link-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.link-row-form { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.link-row-form .field { flex: 1 1 320px; min-width: 0; }
+.link-row-form .actions { margin: 0; }
+.link-tpl, .mono { font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; color: var(--fg-2); margin: 0; }

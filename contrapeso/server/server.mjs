@@ -30,6 +30,7 @@ import {
 import {
   DEFAULT_SITE, DEFAULT_GUIDES, DEFAULT_PROMOS, DEFAULT_LESSONS,
 } from '../js/content.js';
+import { cleanSearchLinks, validBetfairTemplate } from '../js/links.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -637,7 +638,8 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
         address: str(s.address, 200),
         email: str(s.email, 120),
         supportUrl: httpUrl(s.supportUrl),
-        betfairTemplate: /^https:\/\/[^\s]*\{marketId\}/.test(String(s.betfairTemplate || '')) ? str(s.betfairTemplate, 300) : DEFAULT_SITE.betfairTemplate,
+        betfairTemplate: validBetfairTemplate(String(s.betfairTemplate || '')) ? str(s.betfairTemplate, 400) : DEFAULT_SITE.betfairTemplate,
+        searchLinks: cleanSearchLinks(s.searchLinks),
         contractReviewed: !!s.contractReviewed,
       };
     }

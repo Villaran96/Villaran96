@@ -4,6 +4,7 @@
 import * as C from './calc.js';
 import * as O from './odds.js';
 import * as api from './api.js';
+import { searchTerm, fillSearch, fillBetfair } from './links.js';
 import {
   fmt, esc, uid, sign, storage, toast, icon, isoDay, copyQuiet,
 } from './util.js';
@@ -383,30 +384,68 @@ export function paintStatus() {
 /* Enlaces directos                                                          */
 /* ======================================================================== */
 
+/** Direcciones de búsqueda aprendidas de cada casa (Administración → Enlaces). */
+const searchLinks = () => ({ ...(site().searchLinks || {}) });
+
+/** Clave de búsqueda de una casa: la del catálogo («bet365») o «betfair» para Betfair. */
+const linkKey = (keyOrName) => (/betfair/i.test(String(keyOrName)) ? 'betfair' : (findBookie(keyOrName) || [String(keyOrName || '').toLowerCase()])[0]);
+
+/** Enlace de búsqueda del equipo de casa en una casa, si se ha configurado. */
+export function searchLinkFor(keyOrName, team) {
+  const tpl = searchLinks()[linkKey(keyOrName)];
+  if (!tpl || !team) return null;
+  const term = searchTerm(team);
+  return { href: fillSearch(tpl, term), exact: false, kind: 'search', term };
+}
+
+/**
+ * Enlace a la apuesta a favor: la dirección exacta que da la fuente de cuotas, si no la
+ * búsqueda del partido en la casa y, si tampoco, la portada.
+ */
 export function backLinkOf(row) {
-  if (row.backLink) return { href: row.backLink, exact: true };
-  return { href: bookieHome(row.bookKey) || bookieHome(row.bookTitle), exact: false };
+  if (row.backLink) return { href: row.backLink, exact: true, kind: 'event' };
+  return searchLinkFor(row.bookKey || row.bookTitle, row.event?.home)
+    || { href: bookieHome(row.bookKey) || bookieHome(row.bookTitle), exact: false, kind: 'home' };
 }
 
 export function layLinkOf(row) {
   const tpl = odds.betfairTemplate || state.settings.betfairTemplate || site().betfairTemplate;
-  if (row.layMarketId && tpl) return { href: tpl.replace('{marketId}', encodeURIComponent(row.layMarketId)).replace('{eventId}', ''), exact: true };
-  if (row.layLink) return { href: row.layLink, exact: true };
-  if (row.exKey === 'matchbook') return { href: 'https://www.matchbook.com', exact: false };
-  return { href: EXCHANGE_HOME, exact: false };
+  if (row.exKey === 'betfair_es' && tpl) {
+    const href = fillBetfair(tpl, { marketId: row.layMarketId, eventId: row.layEventId });
+    if (href) return { href, exact: true, kind: 'event' };
+  }
+  // Betfair internacional (betfair.com) no se puede usar desde España: se busca en Betfair.es.
+  if (row.layLink && row.exKey !== 'betfair_ex_eu') return { href: row.layLink, exact: true, kind: 'event' };
+  if (row.exKey === 'matchbook') return { href: 'https://www.matchbook.com', exact: false, kind: 'home' };
+  return searchLinkFor('betfair', row.event?.home) || { href: EXCHANGE_HOME, exact: false, kind: 'home' };
+}
+
+const linkTitle = (link, label, copy) => (link.kind === 'event' || link.exact
+  ? `Ir al partido en ${label}`
+  : link.kind === 'search' ? `Buscar «${link.term}» en ${label} (copiamos «${copy}»)` : `Abrir ${label} y copiar «${copy}» para buscarlo`);
+
+/** Atributos comunes de los enlaces a la casa o al exchange. */
+export function extAttrs(link, label, copy) {
+  return `href="${esc(link.href)}" target="_blank" rel="noopener" data-act="ext" data-exact="${link.exact ? 1 : 0}" data-kind="${esc(link.kind || (link.exact ? 'event' : 'home'))}" data-term="${esc(link.term || '')}" data-copy="${esc(copy)}" data-site="${esc(label)}" title="${esc(linkTitle(link, label, copy))}"`;
 }
 
 /** Botón que abre la casa o el exchange; si no hay enlace al partido, copia el partido. */
 export function extLink(link, label, copy, cls = '') {
   if (!link || !link.href) return `<span class="btn btn-sm btn-ext is-disabled ${cls}" title="Sin enlace">${esc(label)}</span>`;
-  const title = link.exact ? `Abrir el partido en ${label}` : `Abrir ${label} y copiar «${copy}» para buscarlo`;
-  return `<a class="btn btn-sm btn-ext ${cls}" href="${esc(link.href)}" target="_blank" rel="noopener" data-act="ext" data-exact="${link.exact ? 1 : 0}" data-copy="${esc(copy)}" data-site="${esc(label)}" title="${esc(title)}">${esc(label)}${icon('external', 13)}</a>`;
+  const kind = link.kind || (link.exact ? 'event' : 'home');
+  const tag = kind === 'event' ? '<span class="link-kind is-event">al partido</span>' : kind === 'search' ? '<span class="link-kind is-search">buscar</span>' : '';
+  return `<a class="btn btn-sm btn-ext link-${kind} ${cls}" ${extAttrs(link, label, copy)}>${esc(label)}${tag}${icon(kind === 'search' ? 'search' : 'external', 13)}</a>`;
 }
 
 export async function onExtLink(el) {
   if (el.dataset.exact === '1') return;
   const ok = await copyQuiet(el.dataset.copy);
-  toast(ok ? `Hemos copiado «${el.dataset.copy}». Pégalo en el buscador de ${el.dataset.site}.` : `Busca «${el.dataset.copy}» en ${el.dataset.site}.`);
+  if (el.dataset.kind === 'search') {
+    toast(`Buscando «${el.dataset.term}» en ${el.dataset.site}. ${ok ? `También hemos copiado «${el.dataset.copy}».` : ''}`);
+    return;
+  }
+  const tip = isAdmin() ? ' Para que abra la búsqueda del partido, configura la casa en Administración → Enlaces.' : '';
+  toast(`${ok ? `Hemos copiado «${el.dataset.copy}». Pégalo en el buscador de ${el.dataset.site}.` : `Busca «${el.dataset.copy}» en ${el.dataset.site}.`}${tip}`);
 }
 
 /* ======================================================================== */
@@ -688,7 +727,7 @@ export function contextBanner(ctx, clearAct) {
   return `<div class="ctx">
     <div><span class="muted small">${esc(ctx.league || '')}${ctx.start ? ` · ${esc(fmt.date(ctx.start))} ${esc(fmt.time(ctx.start))}` : ''}${ctx.market ? ` · ${esc(ctx.market)}` : ''}</span>
     <b>${esc(ctx.event)}</b>${ctx.sel ? `<span>${esc(ctx.sel)}${ctx.bookie ? ` · ${esc(ctx.bookie)}` : ''}${ctx.exchange ? ` → ${esc(ctx.exchange)}` : ''}</span>` : ''}
-    ${ctx.backHref || ctx.layHref ? `<span class="ctx-links">${ctx.backHref ? extLink({ href: ctx.backHref, exact: !!ctx.backExact }, ctx.bookie || 'Casa', ctx.event) : ''}${ctx.layHref ? extLink({ href: ctx.layHref, exact: !!ctx.layExact }, ctx.exchange || 'Exchange', ctx.event) : ''}</span>` : ''}</div>
+    ${ctx.backHref || ctx.layHref ? `<span class="ctx-links">${ctx.backHref ? extLink(ctx.backLink || { href: ctx.backHref, exact: !!ctx.backExact }, ctx.bookie || 'Casa', ctx.event) : ''}${ctx.layHref ? extLink(ctx.layLink || { href: ctx.layHref, exact: !!ctx.layExact }, ctx.exchange || 'Exchange', ctx.event) : ''}</span>` : ''}</div>
     <button class="btn btn-ghost btn-icon" data-act="${clearAct}" aria-label="Quitar el partido">${icon('x', 16)}</button>
   </div>`;
 }

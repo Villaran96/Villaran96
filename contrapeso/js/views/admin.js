@@ -3,7 +3,7 @@
 
 import {
   state, session, C, nz, save, render, go, route, registerActions, pageHead, kpi, field, select, plans, site, isAdmin,
-  assumptions, refreshSession, paintAccount, api, brand,
+  assumptions, refreshSession, paintAccount, api, brand, odds,
 } from '../core.js';
 import {
   fmt, esc, icon, toast, uid,
@@ -16,6 +16,9 @@ import {
   DEFAULT_GUIDES, DEFAULT_PROMOS, DEFAULT_LESSONS, DEFAULT_SITE,
 } from '../content.js';
 import { markdown } from '../markdown.js';
+import {
+  LINK_BOOKS, SAMPLE_TEAM, learnSearch, learnBetfair, fillSearch, fillBetfair, validBetfairTemplate,
+} from '../links.js';
 
 let overview = null;
 let loading = false;
@@ -47,7 +50,7 @@ function data() {
 
 const TABS = [
   ['resumen', 'Resumen'], ['guides', 'Bienvenida'], ['promos', 'Recurrentes'], ['lessons', 'Lecciones del Método'],
-  ['planes', 'Planes y precios'], ['pagos', 'Pagos'], ['empresa', 'Empresa'], ['usuarios', 'Usuarios'], ['solicitudes', 'Solicitudes'], ['contratos', 'Contratos'],
+  ['planes', 'Planes y precios'], ['pagos', 'Pagos'], ['enlaces', 'Enlaces'], ['empresa', 'Empresa'], ['usuarios', 'Usuarios'], ['solicitudes', 'Solicitudes'], ['contratos', 'Contratos'],
 ];
 
 /** Suscripciones de pago en marcha (sin administradores ni planes regalados sin Stripe). */
@@ -214,7 +217,7 @@ function empresaTab(d) {
       ${field('ui.adminSite.email', 'Correo de contacto', { mode: 'email' })}
       ${field('ui.adminSite.supportUrl', 'Enlace de soporte (Telegram, WhatsApp…)', { mode: 'url' })}
     </div>
-    ${field('ui.adminSite.betfairTemplate', 'Enlace a un mercado de Betfair.es', { mode: 'url', hint: 'Abre cualquier partido en betfair.es, copia la dirección y cambia el número de mercado (1.xxxxxxxx) por {marketId}.' })}
+    <p class="muted small">Los enlaces directos a Betfair.es y a cada casa se configuran en la pestaña <button class="link" data-act="admin-tab" data-tab="enlaces">Enlaces</button>.</p>
     <label class="check"><input type="checkbox" data-k="ui.adminSite.contractReviewed" ${state.ui.adminSite.contractReviewed ? 'checked' : ''}><span>Un abogado ha revisado el contrato del Método y los textos legales</span></label>
     <div class="actions"><button class="btn btn-primary" data-act="admin-save-site">${icon('check', 15)} Guardar</button></div>
   </section>`;
@@ -345,6 +348,61 @@ function pagosTab(d) {
   </section>`;
 }
 
+/* ------------------------------------------------------------ enlaces directos */
+
+/** Una fila de cuotas de Betfair.es con número de mercado, para probar el enlace. */
+function sampleBetfairRow() {
+  for (const ev of odds.events || []) {
+    const ex = (ev.books || []).find((b) => b.key === 'betfair_es' && b.ids && Object.keys(b.ids).length);
+    if (ex) return { marketId: ex.ids.h2h || Object.values(ex.ids)[0], eventId: ex.eventId, name: `${ev.home} – ${ev.away}` };
+  }
+  return null;
+}
+
+function linksTab(d) {
+  const s = d.settings.site;
+  if (!state.ui.adminLinks) state.ui.adminLinks = { betfairTemplate: s.betfairTemplate || '', betfairUrl: '', search: { ...(s.searchLinks || {}) }, raw: {} };
+  const L = state.ui.adminLinks;
+  const sample = sampleBetfairRow();
+  const bfTest = sample && L.betfairTemplate ? fillBetfair(L.betfairTemplate, sample) : null;
+  const row = ([key, name]) => {
+    const tpl = L.search[key];
+    const test = tpl ? fillSearch(tpl, 'Real Madrid') : '';
+    return `<li class="link-row">
+      <div class="link-row-head"><b>${esc(name)}</b>${tpl ? '<span class="pill pill-done">Búsqueda configurada</span>' : '<span class="pill pill-todo">Abre la portada</span>'}</div>
+      ${tpl ? `<p class="mono small link-tpl">${esc(tpl)}</p>` : ''}
+      <div class="link-row-form">
+        <label class="field"><span class="field-label">Dirección tras buscar «${SAMPLE_TEAM}»</span><span class="field-input"><input data-k="ui.adminLinks.raw.${key}" value="${esc(L.raw[key] || '')}" inputmode="url" placeholder="https://…${SAMPLE_TEAM}…" autocomplete="off" spellcheck="false"></span></label>
+        <div class="actions"><button class="btn btn-sm" data-act="admin-learn-search" data-key="${key}">Aprender</button>${tpl ? `<a class="btn btn-sm btn-ghost" href="${esc(test)}" target="_blank" rel="noopener">${icon('search', 14)} Probar con «Real Madrid»</a><button class="btn btn-sm btn-ghost" data-act="admin-forget-search" data-key="${key}">Quitar</button>` : ''}</div>
+      </div>
+    </li>`;
+  };
+  return `<section class="panel">
+    <div class="panel-head"><h2>Cómo funcionan los enlaces</h2></div>
+    <ol class="setup-steps">
+      <li><b>Al partido</b>: cuando la fuente de cuotas da la dirección exacta. odds-api.io la da para Bet365, Winamax y Retabet, y la API de Betfair.es da el número de mercado.</li>
+      <li><b>Buscar</b>: si no hay dirección exacta, se abre el buscador de la casa con el equipo ya escrito. Es lo que configuras aquí. Funciona también en la vista previa y para DAZN Bet y Sportium.</li>
+      <li><b>Portada</b>: si no hay nada configurado, se abre la casa y se copia el partido para pegarlo en su buscador.</li>
+    </ol>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Betfair.es: enlace al mercado</h2>${validBetfairTemplate(L.betfairTemplate) ? '<span class="pill pill-done">Configurado</span>' : '<span class="pill pill-todo">Sin configurar</span>'}</div>
+    <p>Abre en <b>betfair.es</b> cualquier partido de fútbol, entra en el mercado «Cuotas de partido», copia la dirección del navegador y pégala aquí. La web cambia el número de ese mercado por el de cada partido.</p>
+    <div class="link-row-form">
+      <label class="field"><span class="field-label">Dirección de un mercado de betfair.es</span><span class="field-input"><input data-k="ui.adminLinks.betfairUrl" value="${esc(L.betfairUrl || '')}" inputmode="url" placeholder="https://www.betfair.es/exchange/plus/…" autocomplete="off" spellcheck="false"></span></label>
+      <div class="actions"><button class="btn btn-sm" data-act="admin-learn-betfair">Aprender</button>${bfTest ? `<a class="btn btn-sm btn-ghost" href="${esc(bfTest)}" target="_blank" rel="noopener">${icon('external', 14)} Probar con ${esc(sample.name)}</a>` : ''}</div>
+    </div>
+    <p class="muted small">Ahora: <span class="mono">${esc(L.betfairTemplate || '—')}</span>${L.betfairTemplate === DEFAULT_SITE.betfairTemplate ? ' (el formato por defecto, sin comprobar)' : ''}.</p>
+    ${sample ? '' : '<p class="muted small">El botón «Probar» sale cuando el servidor tiene cuotas de la API de Betfair.es (BETFAIR_APP_KEY).</p>'}
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Buscar el partido en cada casa</h2></div>
+    <p>En la web de cada casa, busca <b>${SAMPLE_TEAM}</b> con su buscador. En la página de resultados, copia la dirección y pégala aquí. Si la dirección no cambia al buscar, esa casa no deja enlazar la búsqueda y el botón seguirá abriendo la portada.</p>
+    <ul class="link-rows">${LINK_BOOKS.map(row).join('')}</ul>
+  </section>
+  <div class="actions"><button class="btn btn-primary" data-act="admin-save-links">${icon('check', 15)} Guardar enlaces</button></div>`;
+}
+
 /* ------------------------------------------------------------ vista */
 
 function renderAdmin() {
@@ -357,7 +415,7 @@ function renderAdmin() {
   const tab = state.ui.adminTab || 'resumen';
   const body = {
     resumen: () => summary(d), guides: () => listTab('guides', d), promos: () => listTab('promos', d), lessons: () => lessonsTab(d),
-    planes: () => plansTab(d), pagos: () => pagosTab(d), empresa: () => empresaTab(d), usuarios: () => usersTab(d), solicitudes: () => applicationsTab(d), contratos: () => contractsTab(d),
+    planes: () => plansTab(d), pagos: () => pagosTab(d), enlaces: () => linksTab(d), empresa: () => empresaTab(d), usuarios: () => usersTab(d), solicitudes: () => applicationsTab(d), contratos: () => contractsTab(d),
   }[tab]();
   return `${pageHead('Administración', `Gestiona el contenido y los clientes de ${esc(brand())}.`, session.backend ? `<button class="btn btn-sm" data-act="admin-reload">${icon('refresh', 15)} Recargar</button>` : '')}
   ${!d.settings.site.contractReviewed ? `<div class="banner banner-warn">${icon('info', 16)}<span>El contrato y los textos legales son plantillas. Revísalos con un abogado antes de vender, y marca la casilla en Empresa.</span></div>` : ''}
@@ -415,7 +473,7 @@ const withToast = (fn) => async (b) => {
 };
 
 registerActions({
-  'admin-tab': (b) => { state.ui.adminTab = b.dataset.tab; state.ui.adminEdit = null; state.ui.adminPlans = null; state.ui.adminSite = null; save(); render(); },
+  'admin-tab': (b) => { state.ui.adminTab = b.dataset.tab; state.ui.adminEdit = null; state.ui.adminPlans = null; state.ui.adminSite = null; state.ui.adminLinks = null; save(); render(); },
   'admin-reload': () => { overview = null; loadOverview(); },
   'admin-new': (b) => {
     const kind = b.dataset.kind;
@@ -505,7 +563,6 @@ registerActions({
   }),
   'admin-save-site': withToast(async () => {
     const s = state.ui.adminSite;
-    if (s.betfairTemplate && !/^https:\/\/.*\{marketId\}/.test(s.betfairTemplate)) { toast('El enlace de Betfair tiene que empezar por https:// y llevar {marketId}.', 'warn'); return; }
     await saveSettings({ site: { ...s } });
     state.ui.adminSite = null;
     toast('Datos guardados', 'good');
@@ -537,6 +594,33 @@ registerActions({
     } finally {
       if (btn) btn.disabled = false;
     }
+  }),
+  'admin-learn-betfair': () => {
+    const L = state.ui.adminLinks;
+    const r = learnBetfair(L.betfairUrl);
+    if (!r) { toast('Pega la dirección completa de un mercado de betfair.es (empieza por https://www.betfair.es/).', 'warn'); return; }
+    L.betfairTemplate = r.template;
+    toast(r.kind === 'market' ? 'Hecho: los enlaces irán al mercado de cada partido. Pulsa «Guardar enlaces».' : 'Hecho: los enlaces irán a la página de cada partido. Pulsa «Guardar enlaces».', 'good');
+    render();
+  },
+  'admin-learn-search': (b) => {
+    const L = state.ui.adminLinks;
+    const key = b.dataset.key;
+    const tpl = learnSearch(L.raw[key]);
+    if (!tpl) { toast(`No encuentro «${SAMPLE_TEAM}» en esa dirección. Busca exactamente ${SAMPLE_TEAM} y copia la dirección de la página de resultados.`, 'warn'); return; }
+    L.search[key] = tpl;
+    L.raw[key] = '';
+    toast('Aprendido. Pruébalo y pulsa «Guardar enlaces».', 'good');
+    render();
+  },
+  'admin-forget-search': (b) => { delete state.ui.adminLinks.search[b.dataset.key]; render(); },
+  'admin-save-links': withToast(async () => {
+    const L = state.ui.adminLinks;
+    if (L.betfairTemplate && !validBetfairTemplate(L.betfairTemplate)) { toast('El enlace de Betfair.es no es válido.', 'warn'); return; }
+    await saveSettings({ site: { ...data().settings.site, betfairTemplate: L.betfairTemplate, searchLinks: { ...L.search } } });
+    state.ui.adminLinks = null;
+    toast('Enlaces guardados', 'good');
+    render();
   }),
   'admin-app': withToast(async (b) => {
     await api.admin.patchApplication(b.dataset.id, b.dataset.status);

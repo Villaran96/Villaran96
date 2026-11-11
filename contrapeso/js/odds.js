@@ -258,6 +258,7 @@ export function findMatches(events, opts = {}) {
             lay: best.L,
             laySize: Number.isFinite(best.p.size) ? best.p.size : null,
             layMarketId: best.ex.ids?.[mk] || null,
+            layEventId: best.ex.eventId || null,
             layLink: best.p.link || best.ex.link || null,
             layUpdated: best.ex.updated || null,
             commission: best.c,

@@ -3,7 +3,7 @@
 
 import {
   state, odds, C, O, n, nz, get, set, save, can, plans, available, filterSet, commissionsNum, bookieKeysFor,
-  statusHTML, onStatusPaint, loadOdds, scheduleRefresh, backLinkOf, layLinkOf, extLink, flowBar,
+  statusHTML, onStatusPaint, loadOdds, scheduleRefresh, backLinkOf, layLinkOf, extLink, extAttrs, flowBar,
   pageHead, seg, field, select, oddChip, money, route, registerActions, go, render, logBet, DAY,
 } from '../core.js';
 import {
@@ -119,7 +119,7 @@ function presetOn(id) {
 function omStatusHTML() {
   const warn = odds.error ? `<div class="banner banner-warn">${icon('info', 16)}<span>${esc(odds.error)}${odds.fallback ? ' Mientras tanto ves cuotas de demostración.' : ''}</span>${/clave/i.test(odds.error) ? '<a class="btn btn-ghost btn-sm" href="#ajustes">Ajustes</a>' : ''}</div>` : '';
   const demo = odds.source === 'demo' && !odds.error
-    ? `<div class="banner banner-demo">${icon('info', 16)}<span>Cuotas simuladas de tus 5 casas para que pruebes la herramienta. Con el servidor publicado verás las cuotas reales y las de Betfair.es.</span><a class="btn btn-ghost btn-sm" href="#ajustes">Fuente de cuotas</a></div>` : '';
+    ? `<div class="banner banner-demo">${icon('info', 16)}<span>Cuotas simuladas de tus 5 casas para que pruebes la herramienta. Como los partidos son simulados, los botones abren la búsqueda en la casa (Administración → Enlaces) o su portada. Con el servidor y cuotas reales van directos al partido.</span><a class="btn btn-ghost btn-sm" href="#ajustes">Fuente de cuotas</a></div>` : '';
   const missing = odds.source !== 'demo' ? missingBookies() : [];
   const miss = missing.length
     ? `<div class="banner banner-warn">${icon('info', 16)}<span>Tu fuente de cuotas no trae ${esc(missing.join(', '))}. Para verlas aquí hace falta un proveedor que las cubra (Ajustes → Fuente de cuotas). Mientras, abre cualquier partido y escribe la cuota real de la casa: el cálculo se hace igual.</span></div>` : '';
@@ -184,7 +184,8 @@ function sortBtn(key, label) {
 
 function extIcon(link, label, copy) {
   if (!link || !link.href) return '';
-  return `<a class="ext-icon" href="${esc(link.href)}" target="_blank" rel="noopener" data-act="ext" data-exact="${link.exact ? 1 : 0}" data-copy="${esc(copy)}" data-site="${esc(label)}" aria-label="Abrir ${esc(label)}${link.exact ? ' en este partido' : ''}" title="${link.exact ? `Abrir el partido en ${esc(label)}` : `Abrir ${esc(label)} y copiar el partido`}">${icon('external', 14)}</a>`;
+  const kind = link.kind || (link.exact ? 'event' : 'home');
+  return `<a class="ext-icon link-${kind}" ${extAttrs(link, label, copy)} aria-label="${kind === 'event' ? `Ir al partido en ${esc(label)}` : kind === 'search' ? `Buscar el partido en ${esc(label)}` : `Abrir ${esc(label)}`}">${icon(kind === 'search' ? 'search' : 'external', 14)}</a>`;
 }
 
 function ratingClassFor(r, mode) {
@@ -361,7 +362,7 @@ function calcFromRow(r, mode) {
     adjust: 0,
     context: {
       event: `${r.event.home} – ${r.event.away}`, league: r.event.league, start: r.start, market: r.marketLabel, sel: r.label.text, bookie: r.bookTitle, exchange: r.exTitle,
-      backHref: bl.href, backExact: bl.exact, layHref: ll.href, layExact: ll.exact, laySize: r.laySize,
+      backHref: bl.href, backExact: bl.exact, layHref: ll.href, layExact: ll.exact, laySize: r.laySize, backLink: bl, layLink: ll,
     },
   };
   save();

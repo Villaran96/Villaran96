@@ -10,6 +10,8 @@ export const DEFAULT_SITE = {
   email: '',
   supportUrl: '',
   betfairTemplate: 'https://www.betfair.es/exchange/plus/football/market/{marketId}',
+  // Búsqueda de cada casa con {query}; se aprende en Administración → Enlaces.
+  searchLinks: {},
   contractReviewed: false,
 };
 

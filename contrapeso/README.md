@@ -113,8 +113,21 @@ La web usa la versión `2024-06-20` de la API de Stripe, fijada en cada llamada.
   - El conector sigue la documentación oficial y la especificación OpenAPI y tiene pruebas con respuestas de ese formato, pero **no se ha probado con una clave real**. Cualquier error de la API sale en Administración → Resumen → Cuotas.
 - **The Odds API** (`ODDS_API_KEY`) añade más casas europeas y Betfair internacional, con enlaces al partido cuando la casa los da. El servidor une las dos fuentes partido a partido aunque los nombres de los equipos no coincidan.
 - **Betfair.es** (`BETFAIR_*`) da las cuotas en contra del exchange español, que tiene su propio mercado y su propia liquidez. Necesitas una cuenta de Betfair.es, una clave de aplicación (App Key) y que la cuenta permita iniciar sesión por API.
-- **Enlace a Betfair**: abre cualquier mercado en betfair.es, copia la dirección y ponla en Administración → Empresa cambiando el número de mercado (`1.xxxxxxxx`) por `{marketId}`.
-- Cuando no hay enlace directo al partido, el botón abre la casa y copia el nombre del partido para pegarlo en su buscador.
+
+### Enlaces directos al partido
+
+Cada botón de casa o de Betfair usa el mejor enlace que haya:
+
+1. **Al partido** (etiqueta verde): la fuente de cuotas da la dirección exacta. odds-api.io la da para Bet365, Winamax y Retabet (a veces directa a la apuesta). La API de Betfair.es da el número de mercado.
+2. **Buscar** (etiqueta azul): se abre el buscador de la casa con el equipo escrito y se copia el partido. Sirve para DAZN Bet y Sportium, para la vista previa y cuando falta el enlace exacto.
+3. **Portada**: se abre la casa y se copia el partido para pegarlo en su buscador.
+
+Se configura en **Administración → Enlaces** pegando direcciones reales, sin escribir plantillas:
+
+- **Betfair.es**: abre cualquier partido en betfair.es, entra en «Cuotas de partido» y pega la dirección. La web cambia el número de mercado (`1.xxxxxxxxx`) por el de cada partido.
+- **Cada casa**: busca «Sevilla» en su web y pega la dirección de la página de resultados. Si la dirección no cambia al buscar, esa casa no permite enlazar la búsqueda.
+
+Desde fuera de España no se pueden abrir betfair.es ni la mayoría de casas (bloquean el acceso), así que estos formatos hay que tomarlos desde España. El de Betfair.es que viene por defecto está sin comprobar.
 - Sin fuente de una casa, en cada partido del oddsmatcher se puede escribir la cuota real y el cálculo es el mismo.
 
 ### Desplegar
@@ -140,13 +153,14 @@ Esto no es asesoramiento legal. Antes de cobrar, revisa con un abogado:
 | `css/app.css` | Estilos, tema claro y oscuro. |
 | `js/calc.js` | Fórmulas: favor-contra, combinadas, rollover y valor de bonos (con freebets en combinadas). |
 | `js/odds.js` | Modelo de cuotas con varios mercados, oddsmatcher (calificante, freebet y reembolso), cliente de The Odds API y demostración con las 5 casas. |
+| `js/links.js` | Enlaces directos: aprende la dirección de Betfair.es y la búsqueda de cada casa. |
 | `js/data.js`, `js/content.js` | Casas, tipos de bono con sus pasos y las guías de las 5 casas. |
 | `js/plans.js`, `js/contract.js` | Planes (mensual y anual) y permisos, y contrato del Método. Los usan la web y el servidor. |
 | `js/core.js`, `js/app.js`, `js/views/` | La interfaz. |
 | `server/server.mjs` | Servidor: web, API, cuentas, pagos, contrato, administración y cuotas. |
 | `server/oddsapiio.mjs`, `server/betfair.mjs`, `server/merge.mjs`, `server/oddsfeed.mjs` | odds-api.io, Betfair.es, emparejado de partidos entre fuentes y descarga centralizada. |
 | `server/auth.mjs`, `server/billing.mjs`, `server/db.mjs`, `server/mail.mjs` | Contraseñas y sesiones, Stripe (alta automática, cambio de plan, cancelación y cupones), base de datos y correo. |
-| `tests/` | 58 pruebas: fórmulas, cuotas, emparejado de fuentes, odds-api.io, Betfair, contrato, permisos y el servidor de extremo a extremo con Stripe simulado (`npm test`). |
+| `tests/` | 61 pruebas: fórmulas, cuotas, emparejado de fuentes, odds-api.io, Betfair, contrato, permisos y el servidor de extremo a extremo con Stripe simulado (`npm test`). |
 
 ## Fórmulas
 
