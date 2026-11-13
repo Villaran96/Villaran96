@@ -38,7 +38,7 @@ function renderBackLay() {
   const c = state.calc.bl;
   return `${flowBar()}${pageHead('Calculadoras', 'Cuánto apostar en contra para cubrir cualquier apuesta, con el resultado en cada caso.')}
   ${calcTabs('calculadora')}
-  <p class="calc-use">${icon('info', 15)} La de todos los días: calificantes y freebets de Bet365, DAZN Bet y Retabet, y el reembolso de Winamax.</p>
+  <p class="calc-use">${icon('info', 15)} La de todos los días: calificantes y freebets de Bet365, DAZN Bet, Sportium y Retabet, y el reembolso de Winamax.</p>
   <div class="calc-grid">
     <section class="panel">
       ${contextBanner(c.context, 'bl-clear')}
@@ -189,7 +189,7 @@ function accaResult() {
 function renderRollover() {
   return `${flowBar()}${pageHead('Calculadoras', 'Comprueba si un bono con rollover te sale a cuenta antes de empezarlo.')}
   ${calcTabs('rollover')}
-  <p class="calc-use">${icon('info', 15)} La usas con el bono de <b>Sportium</b> (200 € con rollover x8): dice cuánto hay que apostar, lo que cuesta y lo que te queda.</p>
+  <p class="calc-use">${icon('info', 15)} Para bonos que te dan saldo y hay que apostarlo varias veces antes de retirar. Entre tus 5 casas solo te hará falta si <b>Sportium</b> te ofrece su versión con rollover x8: dice cuánto hay que apostar, lo que cuesta y lo que te queda.</p>
   <div class="calc-grid">
     <section class="panel">
       <div class="form-grid pair">

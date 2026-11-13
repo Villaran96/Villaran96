@@ -73,13 +73,29 @@ const swapH2h = (m) => {
   return out;
 };
 
-/** El evento de `candidates` que corresponde a `ev` (mismo inicio y equipos parecidos), o null. */
-function bestMatch(ev, candidates, used, { windowMinutes = 20, threshold = 0.62 } = {}) {
-  const t = Date.parse(ev.start);
-  let best = null;
+/** Agrupa los candidatos por hora de inicio para no comparar cada partido con todos los demás. */
+function indexByTime(candidates, windowMinutes = 20) {
+  const size = windowMinutes * 60000;
+  const buckets = new Map();
   for (const xe of candidates) {
+    const t = Date.parse(xe.start);
+    if (!Number.isFinite(t)) continue;
+    const b = Math.floor(t / size);
+    if (!buckets.has(b)) buckets.set(b, []);
+    buckets.get(b).push({ xe, t, home: teamKey(xe.home), away: teamKey(xe.away) });
+  }
+  return { size, buckets };
+}
+
+/** El evento de `candidates` que corresponde a `ev` (mismo inicio y equipos parecidos), o null. */
+function bestMatch(ev, index, used, { windowMinutes = 20, threshold = 0.62 } = {}) {
+  const t = Date.parse(ev.start);
+  if (!Number.isFinite(t)) return null;
+  const b = Math.floor(t / index.size);
+  let best = null;
+  for (const { xe, t: xt } of [...(index.buckets.get(b - 1) || []), ...(index.buckets.get(b) || []), ...(index.buckets.get(b + 1) || [])]) {
     if (used.has(xe.id)) continue;
-    if (Math.abs(Date.parse(xe.start) - t) > windowMinutes * 60000) continue;
+    if (Math.abs(xt - t) > windowMinutes * 60000) continue;
     const direct = [teamSimilarity(ev.home, xe.home), teamSimilarity(ev.away, xe.away)];
     const swapped = [teamSimilarity(ev.home, xe.away), teamSimilarity(ev.away, xe.home)];
     for (const [pair, swap] of [[direct, false], [swapped, true]]) {
@@ -98,8 +114,9 @@ function bestMatch(ev, candidates, used, { windowMinutes = 20, threshold = 0.62 
  */
 export function mergeBookmakers(base, extra, opts = {}) {
   const used = new Set();
+  const index = indexByTime(extra, opts.windowMinutes);
   const out = base.map((ev) => {
-    const m = bestMatch(ev, extra, used, opts);
+    const m = bestMatch(ev, index, used, opts);
     if (!m) return ev;
     used.add(m.xe.id);
     const have = new Set(ev.books.map((b) => b.key));
@@ -131,8 +148,9 @@ const ORDER = ['home', 'draw', 'away', 'over', 'under', 'yes', 'no'];
 export function mergeExchange(bookEvents, exchangeEvents, { windowMinutes = 20, threshold = 0.62, keepExchanges = null } = {}) {
   const used = new Set();
   let matched = 0;
+  const index = indexByTime(exchangeEvents, windowMinutes);
   const out = bookEvents.map((ev) => {
-    const best = bestMatch(ev, exchangeEvents, used, { windowMinutes, threshold });
+    const best = bestMatch(ev, index, used, { windowMinutes, threshold });
     let books = keepExchanges ? ev.books.filter((b) => !b.exchange || keepExchanges.has(b.key)) : ev.books;
     const markets = { ...ev.markets };
     if (best) {

@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 # Base de datos del servidor: contiene datos personales, no se sube al repositorio.
 data/
+
+# Instantánea de cuotas generada con scripts/snapshot.mjs.
+assets/cuotas.json

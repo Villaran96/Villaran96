@@ -3,7 +3,6 @@
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_SPORTS } from '../js/odds.js';
-import { DEFAULT_COMPETITIONS } from './betfair.mjs';
 
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -31,17 +30,21 @@ export function loadConfig(env = process.env) {
       key: env.ODDSAPIIO_KEY || '',
       base: env.ODDSAPIIO_BASE || 'https://api.odds-api.io/v3',
       // Nombres exactos de GET /v3/bookmakers. DAZN Bet y Sportium no tienen versión española.
-      bookmakers: list(env.ODDSAPIIO_BOOKMAKERS, ['Bet365 ES', 'Winamax ES', 'Retabet ES', 'Betfair Exchange']),
-      leagues: list(env.ODDSAPIIO_LEAGUES, ['spain-laliga', 'spain-laliga-2', 'england-premier-league', 'italy-serie-a', 'germany-bundesliga', 'france-ligue-1', 'international-clubs-uefa-champions-league', 'international-clubs-uefa-europa-league']),
-      sport: env.ODDSAPIIO_SPORT || 'football',
-      maxEvents: Number(env.ODDSAPIIO_MAX_EVENTS || 80),
+      // «Betfair ES» se usa como Betfair.es si trae cuotas en contra; si no, como casa.
+      bookmakers: list(env.ODDSAPIIO_BOOKMAKERS, ['Bet365 ES', 'Winamax ES', 'Retabet ES', 'Betfair ES', 'Betfair Exchange']),
+      // Sin ligas = todos los partidos con cuota en esas casas. Con ligas, solo esas (fútbol).
+      leagues: list(env.ODDSAPIIO_LEAGUES, []),
+      sports: list(env.ODDSAPIIO_SPORTS || env.ODDSAPIIO_SPORT, ['football', 'tennis', 'basketball']),
+      hours: Number(env.ODDSAPIIO_HOURS || 168),
+      maxEvents: Number(env.ODDSAPIIO_MAX_EVENTS || 2500),
     },
     betfair: {
       appKey: env.BETFAIR_APP_KEY || '',
       username: env.BETFAIR_USERNAME || '',
       password: env.BETFAIR_PASSWORD || '',
-      competitions: list(env.BETFAIR_COMPETITIONS, DEFAULT_COMPETITIONS),
-      hours: Number(env.BETFAIR_HOURS || 96),
+      // «all» = todas las competiciones. Para limitar: nombres en inglés separados por comas.
+      competitions: list(env.BETFAIR_COMPETITIONS, ['all']),
+      hours: Number(env.BETFAIR_HOURS || 168),
       identityUrl: env.BETFAIR_IDENTITY_URL || 'https://identitysso.betfair.es/api',
       apiUrl: env.BETFAIR_API_URL || 'https://api.betfair.com/exchange/betting/rest/v1.0',
       linkTemplate: env.BETFAIR_LINK_TEMPLATE || '',

@@ -3,7 +3,7 @@
 
 import {
   state, C, O, nz, save, render, go, route, registerActions, money, pageHead, brand, plans, priceLabel, content,
-  assumptions, runStep, offerFromSource, offerSteps, lockCard,
+  assumptions, runStep, offerFromSource, offerSteps, lockCard, rangeText,
 } from '../core.js';
 import {
   fmt, esc, icon, toast, reviewedLabel,
@@ -58,7 +58,7 @@ function lessons() {
   const snr = C.backLay({ stake: 10, back: 5, lay: 5.2, commission: c, type: 'snr' });
   const sr = C.backLay({ stake: 10, back: 5, lay: 5.2, commission: c, type: 'sr' });
   const fb25 = C.backLay({ stake: 25, back: 6, lay: 6.2, commission: c, type: 'snr' });
-  const ref = C.backLay({ stake: 50, back: 4, lay: 4.1, commission: c, type: 'refund', refund: 50, retention: 72 });
+  const ref = C.backLay({ stake: 50, back: 4, lay: 4.1, commission: c, type: 'refund', refund: 50, retention: 65 });
   const roll = C.rollover({ bonus: 100, multiplier: 6, avgRating: 97 });
   const p = plans();
 
@@ -161,7 +161,7 @@ function lessons() {
           <thead><tr><th>Cuota a favor</th><th>En contra</th><th>Retención</th><th>Responsabilidad</th></tr></thead>
           <tbody>${ladder.map((x) => `<tr class="${x.b >= 4 && x.b <= 8 ? 'is-sweet' : ''}"><th scope="row">${fmt.odds(x.b)}</th><td>${fmt.odds(x.l)}</td><td><b>${fmt.pct(x.ret)}</b></td><td>${fmt.eur(x.liab)}</td></tr>`).join('')}</tbody>
         </table></div>
-        <p>Entre 4 y 8 (resaltado) está el equilibrio: retienes un 75–85 % sin necesitar demasiado saldo en el exchange. Con una SR, en cambio, la retención apenas cambia con la cuota: busca la menor diferencia entre favor y contra.</p>
+        <p>Entre 4 y 8 (resaltado) retienes un 70–80 % si la diferencia entre cuotas es pequeña, pero hace falta bastante saldo en el exchange. Para empezar, entre 3 y 4 retienes un 63–70 % con mucho menos saldo: por eso valoramos los bonos con esa cifra prudente. Con una SR, en cambio, la retención apenas cambia con la cuota: busca la menor diferencia entre favor y contra.</p>
         <h3>Cómo saber cuál es la tuya</h3>
         <ul>
           <li>Es <b>SNR</b> si las condiciones dicen cosas como «el importe de la apuesta gratuita no se incluye en las ganancias», «solo recibirás las ganancias netas» o «créditos de apuesta». En España es la gran mayoría.</li>
@@ -201,10 +201,10 @@ function lessons() {
       title: 'Reembolsos: la «apuesta sin riesgo»',
       minutes: 4,
       html: () => `
-        <p>En un reembolso la casa te devuelve el importe si tu apuesta pierde, casi siempre como <b>freebet SNR</b>. Como esa freebet luego la conviertes en un 70–80 % de dinero, el reembolso vale aproximadamente <b>importe × retención</b>.</p>
+        <p>En un reembolso la casa te devuelve el importe si tu apuesta pierde, casi siempre como <b>freebet SNR</b>. Como esa freebet luego la conviertes en un 60–75 % de dinero, el reembolso vale aproximadamente <b>importe × retención</b>.</p>
         <h3>Cómo se cubre</h3>
         <p>Se cubre contando con ese valor: cuanto más alta la cuota, más probable es que la apuesta a favor pierda y más vale el reembolso. Busca cuotas entre 3 y 6.</p>
-        <p>Ejemplo: 50 € a ${fmt.odds(4)}, en contra a ${fmt.odds(4.1)}, reembolso de 50 € con retención del 72 %:</p>
+        <p>Ejemplo: 50 € a ${fmt.odds(4)}, en contra a ${fmt.odds(4.1)}, reembolso de 50 € que vale un 65 % al convertirlo:</p>
         ${outcomeTable(ref, { stake: 50, back: 4, type: 'refund', sel: 'Tu apuesta' })}
         <p>Si pierde la apuesta a favor, a esos ${fmt.signedEur(ref.ifLayWins)} se llega al convertir el reembolso. Pase lo que pase acabas con unos ${fmt.eur(ref.profit)}.</p>
         <div class="lesson-actions">${tryBtn('guide-calc', 'refund', 'Probar este reembolso en la calculadora', true)}</div>`,
@@ -281,11 +281,14 @@ const e0 = (x) => fmt.eur0(C.num(x));
 
 function summaryRows(g) {
   const p = g.params || {};
-  const rows = [['Lo que vale', `<b class="pos">${fmt.signedEur(C.offerValue(g, assumptions()))}</b> estimados`]];
+  const range = rangeText(g);
+  const rows = [['Lo que vale', `<b class="pos">${fmt.signedEur(C.offerValue(g, assumptions()))}</b> estimados${range ? ` <span class="muted small">(${range}, según las cuotas que encuentres)</span>` : ''}`]];
   if (g.kind === 'bet_get') {
     rows.push(['Apuesta calificante', `${e0(p.qualStake)} a cuota ${fmt.odds(C.num(p.minOdds))} o más`]);
     const parts = [`${e0(p.freebet)} en freebets ${p.freebetType === 'sr' ? 'SR' : 'SNR'}`];
+    if (C.num(p.parts) > 1) parts.push(`en ${C.num(p.parts)} depósitos`);
     if (C.num(p.chunk) > 0) parts.push(`de hasta ${e0(p.chunk)} cada una`);
+    if (C.num(p.fbMaxOdds) > 1) parts.push(`a cuota ${fmt.odds(C.num(p.fbMaxOdds))} como máximo`);
     if (C.num(p.accaShare) > 0) parts.push(`el ${C.num(p.accaShare)} % para combinadas`);
     if (C.num(p.extra) > 0) parts.push(`y ${e0(p.extra)} extra`);
     rows.push(['Recibes', parts.join(', ')]);
@@ -313,6 +316,10 @@ function casaLesson(g) {
   const home = g.url || bookieHome(g.bookie);
   return `<p class="casa-title"><b>${esc(g.title || '')}</b></p>
     <div class="table-wrap"><table class="kv">${summaryRows(g).map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${v}</td></tr>`).join('')}</table></div>
+    <details class="steps-preview"><summary>De dónde sale ese valor</summary>
+      <ul class="outcome-list">${C.offerBreakdown(g, assumptions()).map((x) => `<li><span>${esc(x.label)}</span>${money(x.value)}</li>`).join('')}</ul>
+      <p class="muted small">Es una estimación prudente: cuenta con cuotas moderadas (freebets a cuota ${fmt.odds(assumptions().snrOdds)}) para no necesitar mucho saldo en Betfair. Con cuotas más altas se saca algo más. Los supuestos se cambian en <a href="#ajustes">Ajustes</a>.</p>
+    </details>
     ${g.conditions ? `<details class="steps-preview"><summary>Condiciones publicadas${g.reviewed ? ` (revisadas en ${esc(reviewedLabel(g.reviewed))})` : ''}</summary><p class="cond">${esc(g.conditions)}</p><p class="muted small">Las casas cambian sus ofertas a menudo: comprueba las condiciones en su web antes de depositar.</p></details>` : ''}
     ${g.howto ? markdown(g.howto) : ''}
     <h3>Hazlo aquí, paso a paso</h3>
@@ -381,7 +388,7 @@ route('guia', { render: renderGuia, nav: 'guia' });
 const CALC_PRESETS = {
   snr10: () => ({ type: 'snr', stake: 10, back: 5, lay: 5.2, commission: commission() }),
   qual: () => ({ type: 'normal', stake: 10, back: 3, lay: 3.1, commission: commission() }),
-  refund: () => ({ type: 'refund', stake: 50, back: 4, lay: 4.1, commission: commission(), refund: 50, retention: 72 }),
+  refund: () => ({ type: 'refund', stake: 50, back: 4, lay: 4.1, commission: commission(), refund: 50, retention: 65 }),
 };
 const OM_PRESETS = {
   calif: () => ({ mode: 'normal', minOdds: 1.5, maxOdds: 12, minRatings: { ...state.om.minRatings, normal: 95 }, stake: 10 }),

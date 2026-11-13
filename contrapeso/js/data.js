@@ -81,10 +81,14 @@ function freebetSteps(total, p, bk, intro) {
   const per = num(p.chunk) > 0 ? Math.min(num(p.chunk), total) : total;
   const many = per < total;
   const expiry = num(p.expiryDays) > 0 ? ` Caducan a los ${num(p.expiryDays)} días.` : '';
+  const max = num(p.fbMaxOdds) > 1 ? num(p.fbMaxOdds) : 0;
+  const range = max
+    ? `Busca cuotas entre 3 y ${odds(max)}: ${bk} no admite más con la apuesta gratis.`
+    : 'Busca cuotas de 3 o más: cuanto más alta, más conviertes en dinero, pero más saldo necesitas en Betfair.';
   return [
     {
-      text: `${intro}${many ? ` Llegan en freebets de hasta ${e0(per)}.` : ''}${expiry} Busca cuotas entre 4 y 8.`,
-      action: { kind: 'om', label: 'Buscar cuota', om: { mode: fbMode(p), minOdds: 4, maxOdds: 8, stake: per, bookie: bk } },
+      text: `${intro}${many ? ` Llegan en freebets de hasta ${e0(per)}.` : ''}${expiry} ${range}`,
+      action: { kind: 'om', label: 'Buscar cuota', om: { mode: fbMode(p), minOdds: 3, maxOdds: max || 8, stake: per, bookie: bk } },
     },
     { text: many ? 'Juega cada freebet a favor y cúbrela en contra, de una en una.' : 'Juega la freebet a favor y cúbrela en contra.', action: { kind: 'bl', label: 'Calcular', bl: { type: fbMode(p), stake: per } } },
   ];
@@ -104,6 +108,8 @@ export const DETAIL_FIELDS = {
   chunk: { key: 'chunk', label: 'Máximo por freebet', unit: '€' },
   accaShare: { key: 'accaShare', label: 'Freebets en combinadas', unit: '%' },
   extra: { key: 'extra', label: 'Freebet extra', unit: '€' },
+  parts: { key: 'parts', label: 'Depósitos en los que se reparte' },
+  fbMaxOdds: { key: 'fbMaxOdds', label: 'Cuota máxima con la freebet' },
   days: { key: 'days', label: 'Plazo para completarlo', unit: 'días' },
 };
 
@@ -117,9 +123,24 @@ export const OFFER_KINDS = {
       { key: 'freebet', label: 'Apuestas gratis que recibes', unit: '€', def: 25 },
       { key: 'freebetType', label: 'Tipo de apuesta gratis', type: 'select', options: [['snr', 'Sin devolución (SNR)'], ['sr', 'Con devolución (SR)']], def: 'snr' },
     ],
-    details: ['code', 'minDeposit', 'claimDays', 'expiryDays', 'chunk', 'accaShare', 'extra'],
+    details: ['code', 'minDeposit', 'claimDays', 'expiryDays', 'chunk', 'accaShare', 'extra', 'parts', 'fbMaxOdds'],
     title: (p) => `Apuesta ${e0(p.qualStake)} y recibe ${e0(p.freebet)} en apuestas gratis`,
     steps: (p, bk) => {
+      const parts = Math.min(6, Math.max(1, Math.round(num(p.parts)) || 1));
+      if (parts > 1) {
+        // Bono repartido en varios depósitos: cada parte tiene su calificante y su apuesta gratis.
+        const q = num(p.qualStake) / parts;
+        const f = num(p.freebet) / parts;
+        return [
+          registerStep(p, bk),
+          { text: `El bono va en ${parts} depósitos. Haz el primero: ${depositText(q, p).replace(/^Deposita/, 'deposita')}` },
+          { text: `Busca una cuota de ${odds(p.minOdds)} o más con buen rating para la apuesta calificante de ${e0(q)}.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'normal', minOdds: num(p.minOdds), stake: q, bookie: bk } } },
+          { text: `Apuesta ${e0(q)} a favor en ${bk} y cúbrela en contra en Betfair.`, action: { kind: 'bl', label: 'Calcular', bl: { type: 'normal', stake: q } } },
+          ...freebetSteps(f, p, bk, `Recibirás ${e0(f)} en apuestas gratis.`),
+          { text: `Repite con ${parts === 2 ? 'el segundo depósito' : `los otros ${parts - 1} depósitos`}: otra calificante de ${e0(q)} y otra apuesta gratis de ${e0(f)}.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'normal', minOdds: num(p.minOdds), stake: q, bookie: bk } } },
+          { text: `Retira el saldo de ${bk} y de Betfair, y marca el bono como completado.` },
+        ];
+      }
       const list = [
         registerStep(p, bk),
         { text: depositText(p.qualStake, p) },
@@ -154,7 +175,7 @@ export const OFFER_KINDS = {
     steps: (p, bk) => [
       registerStep(p, bk),
       { text: depositText(p.stake, p) },
-      { text: `Busca una cuota alta (entre 3 y 8) en modo Reembolso: el oddsmatcher calcula cuánto vale cada partido contando con los ${e0(p.refund)} de reembolso.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'refund', minOdds: Math.max(3, num(p.minOdds) || 0), maxOdds: 8, stake: num(p.stake), refund: num(p.refund), bookie: bk } } },
+      { text: `Busca una cuota entre 3 y 6 en modo Reembolso: el oddsmatcher calcula cuánto vale cada partido contando con los ${e0(p.refund)} de reembolso.`, action: { kind: 'om', label: 'Buscar cuota', om: { mode: 'refund', minOdds: Math.max(3, num(p.minOdds) || 0), maxOdds: 6, stake: num(p.stake), refund: num(p.refund), bookie: bk } } },
       { text: `Apuesta ${e0(p.stake)} a favor y cubre en contra contando con el reembolso.${num(p.days) > 0 ? ` Tiene que ser en los ${num(p.days)} días siguientes al depósito.` : ''}`, action: { kind: 'bl', label: 'Calcular', bl: { type: 'refund', stake: num(p.stake), refund: num(p.refund) } } },
       ...freebetSteps(num(p.refund), p, bk, `Si gana la apuesta a favor, el bono acaba aquí con el beneficio asegurado. Si pierde, recibirás ${e0(p.refund)} en apuestas gratis.`),
       { text: 'Retira y marca el bono como completado.' },
@@ -257,7 +278,7 @@ export const GLOSSARY = [
   ['Freebet SNR', 'Apuesta gratis sin devolución del importe: si aciertas cobras solo la ganancia, no el importe. Es la más habitual en España.'],
   ['Freebet SR', 'Apuesta gratis con devolución del importe: si aciertas cobras la ganancia más el importe. Vale más que una SNR.'],
   ['Créditos de apuesta', 'El nombre que da Bet365 a sus apuestas gratis. Funcionan como freebets SNR y se pueden repartir en varias apuestas.'],
-  ['Retención', 'El porcentaje del valor de una apuesta gratis que conviertes en dinero al cubrirla. Con una SNR bien elegida, entre el 75 y el 85 %.'],
+  ['Retención', 'El porcentaje del valor de una apuesta gratis que conviertes en dinero al cubrirla. Con una SNR, entre el 60 y el 78 % según la cuota: más alta, más retención.'],
   ['Reembolso', 'Si pierde tu apuesta, la casa te devuelve el importe (Winamax, el 150 %), casi siempre como apuestas gratis.'],
   ['Rollover', 'Las veces que tienes que apostar un bono antes de poder retirarlo. Un x8 sobre 200 € son 1.600 € en apuestas.'],
   ['Underlay y overlay', 'Poner en contra menos (underlay) o más (overlay) de lo que iguala el resultado, para que gane más uno de los dos casos.'],

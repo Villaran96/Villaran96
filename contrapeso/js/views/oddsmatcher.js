@@ -2,7 +2,7 @@
 // exchange, con filtros, enlaces directos y el cálculo de cada fila explicado.
 
 import {
-  state, odds, C, O, n, nz, get, set, save, can, plans, available, filterSet, commissionsNum, bookieKeysFor,
+  state, session, odds, C, O, n, nz, get, set, save, can, plans, available, filterSet, commissionsNum, bookieKeysFor,
   statusHTML, onStatusPaint, loadOdds, scheduleRefresh, backLinkOf, layLinkOf, extLink, extAttrs, flowBar,
   pageHead, seg, field, select, oddChip, money, route, registerActions, go, render, logBet, DAY,
 } from '../core.js';
@@ -58,6 +58,7 @@ export function omRows() {
     exchanges: filterSet(o.exchanges, av.exchanges),
     leagues: filterSet(o.leagues, av.leagues),
     families: filterSet(o.families, av.families),
+    sports: filterSet(o.sports, av.sports),
     minOdds: nz(o.minOdds, 1.01) || 1.01,
     maxOdds: nz(o.maxOdds, 1000) || 1000,
     minRating: Number.isFinite(minR) ? minR : -Infinity,
@@ -91,6 +92,7 @@ function multiPicker(k, label, items, { allLabel = 'Todas' } = {}) {
     <summary><span class="field-label">${label}</span><span class="multi-value" data-multi-label="${k}">${summary}</span></summary>
     <div class="multi-body">
       <div class="multi-actions"><button type="button" class="btn btn-ghost btn-xs" data-act="multi-all" data-k="${k}">Todas</button><button type="button" class="btn btn-ghost btn-xs" data-act="multi-none" data-k="${k}">Ninguna</button></div>
+      ${items.length > 12 ? `<input class="multi-search" type="search" data-complete="1" data-multi-search="${k}" placeholder="Buscar entre ${items.length}…" aria-label="Buscar en ${label}" autocomplete="off">` : ''}
       <div class="multi-grid">${items.map(([key, title]) => `<label class="check"><input type="checkbox" data-multi-item="${k}" value="${esc(key)}" ${all || selected.has(key) ? 'checked' : ''}><span>${esc(title)}</span></label>`).join('')}</div>
     </div>
   </details>`;
@@ -117,14 +119,16 @@ function presetOn(id) {
 }
 
 function omStatusHTML() {
-  const warn = odds.error ? `<div class="banner banner-warn">${icon('info', 16)}<span>${esc(odds.error)}${odds.fallback ? ' Mientras tanto ves cuotas de demostración.' : ''}</span>${/clave/i.test(odds.error) ? '<a class="btn btn-ghost btn-sm" href="#ajustes">Ajustes</a>' : ''}</div>` : '';
-  const demo = odds.source === 'demo' && !odds.error
-    ? `<div class="banner banner-demo">${icon('info', 16)}<span>Cuotas simuladas de tus 5 casas para que pruebes la herramienta. Como los partidos son simulados, los botones abren la búsqueda en la casa (Administración → Enlaces) o su portada. Con el servidor y cuotas reales van directos al partido.</span><a class="btn btn-ghost btn-sm" href="#ajustes">Fuente de cuotas</a></div>` : '';
-  const missing = odds.source !== 'demo' ? missingBookies() : [];
+  const warn = odds.error ? `<div class="banner banner-warn">${icon('info', 16)}<span>${esc(odds.error)}</span>${/clave/i.test(odds.error) ? '<a class="btn btn-ghost btn-sm" href="#ajustes">Ajustes</a>' : ''}</div>` : '';
+  const demo = odds.source === 'demo'
+    ? `<div class="banner banner-sim" role="alert">${icon('info', 18)}<span><b>Simulación: estos partidos y cuotas son inventados.</b> No existen en las casas ni en Betfair, no los busques. Sirven solo para ver cómo funciona la herramienta.</span><button class="btn btn-sm" data-act="om-sim-off">Quitar la simulación</button></div>` : '';
+  const snap = odds.source === 'snapshot'
+    ? `<div class="banner">${icon('clock', 16)}<span>Cuotas reales guardadas ${odds.updated ? fmt.ago(odds.updated) : ''}. No se actualizan solas: comprueba siempre la cuota en la casa y en Betfair antes de apostar.</span></div>` : '';
+  const missing = odds.source !== 'demo' && odds.source !== 'none' ? missingBookies() : [];
   const miss = missing.length
     ? `<div class="banner banner-warn">${icon('info', 16)}<span>Tu fuente de cuotas no trae ${esc(missing.join(', '))}. Para verlas aquí hace falta un proveedor que las cubra (Ajustes → Fuente de cuotas). Mientras, abre cualquier partido y escribe la cuota real de la casa: el cálculo se hace igual.</span></div>` : '';
   const warnings = odds.warnings && odds.warnings.length ? `<details class="warn-list"><summary>${odds.warnings.length} avisos de la fuente de cuotas</summary><ul>${odds.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></details>` : '';
-  return `${warn}${demo}${miss}${warnings}`;
+  return `${warn}${demo}${snap}${miss}${warnings}`;
 }
 
 const MODE_HINT = {
@@ -135,7 +139,7 @@ const MODE_HINT = {
 
 function renderOddsmatcher() {
   const o = state.om;
-  const { bookies, exchanges, leagues, families } = available().data;
+  const { bookies, exchanges, leagues, families, sports } = available().data;
   const filtersOpen = window.matchMedia('(min-width: 900px)').matches;
   return `${flowBar()}${pageHead('Oddsmatcher', 'La cuota a favor de cada casa junto a la mejor cuota en contra de Betfair, con el cálculo hecho y el enlace directo a los dos sitios.')}
     <div class="om-bar">
@@ -166,6 +170,7 @@ function renderOddsmatcher() {
         <div class="filter-grid">
           <label class="field" for="f-om-q"><span class="field-label">Buscar</span><span class="field-input with-icon">${icon('search', 16)}<input id="f-om-q" data-k="om.q" type="search" value="${esc(o.q)}" placeholder="Equipo o liga" autocomplete="off"></span></label>
           ${select('om.window', 'Cuándo', [['today', 'Hoy'], ['24h', 'Próximas 24 h'], ['48h', 'Próximas 48 h'], ['7d', 'Próximos 7 días'], ['all', 'Todo']])}
+          ${sports.length > 1 ? multiPicker('om.sports', 'Deportes', sports, { allLabel: 'Todos' }) : ''}
           ${multiPicker('om.families', 'Mercados', families, { allLabel: 'Todos' })}
           ${multiPicker('om.bookies', 'Casas', bookies)}
           ${exchanges.length > 1 ? multiPicker('om.exchanges', 'Exchanges', exchanges, { allLabel: 'Todos' }) : ''}
@@ -208,7 +213,7 @@ function rowHTML(r, mode) {
   return `<div class="om-item ${open ? 'is-open' : ''}">
     <div class="om-row" role="row">
       <div class="c-when"><span>${esc(fmt.date(r.start))}</span><b>${esc(fmt.time(r.start))}</b></div>
-      <div class="c-event"><button class="ev-btn" data-act="om-toggle" data-id="${esc(r.id)}" aria-expanded="${open}"><b>${esc(evName)}</b><span>${esc(r.event.league)} · ${esc(r.marketLabel)} · ${esc(fmt.until(r.start))}</span></button></div>
+      <div class="c-event"><button class="ev-btn" data-act="om-toggle" data-id="${esc(r.id)}" aria-expanded="${open}"><b>${esc(evName)}${odds.source === 'demo' ? ' <span class="tag tag-sim">Simulado</span>' : ''}</b><span>${esc(r.event.league)} · ${esc(r.marketLabel)} · ${esc(fmt.until(r.start))}</span></button></div>
       <div class="c-sel"><span class="code">${esc(r.label.code)}</span><span>${esc(r.label.text)}</span></div>
       <div class="c-back"><span class="book">${esc(r.bookTitle)}</span>${oddChip(r.back, 'back')}${extIcon(backLinkOf(r), r.bookTitle, evName)}</div>
       <div class="c-lay">${oddChip(r.lay, 'lay')}<span class="ex"><span class="book">${esc(r.exTitle)}</span>${r.laySize != null ? `<span class="liq">${fmt.eur0(r.laySize)} disponibles</span>` : ''}</span>${extIcon(layLinkOf(r), r.exTitle, evName)}</div>
@@ -292,7 +297,27 @@ export function rowDetail(r, mode) {
   </div>`;
 }
 
+/** Qué hace falta para ver partidos reales: se enseña cuando no hay ninguna fuente de cuotas. */
+function noSourcePanel() {
+  const server = session.backend;
+  return `<section class="panel om-nosource">
+    <div class="panel-head"><h2>${icon('info', 18)} Todavía no hay cuotas reales conectadas</h2></div>
+    <p>El oddsmatcher enseña <b>partidos reales</b> cuando la web recibe las cuotas de un proveedor de datos. ${server ? 'El servidor no tiene ninguno configurado.' : 'En esta vista previa no hay ninguno conectado.'} Por eso no ves partidos: <b>no inventamos ninguno</b>.</p>
+    <div class="table-wrap"><table class="kv">
+      <tr><th scope="row">Bet365, Winamax y Retabet</th><td>Cuotas reales con odds-api.io (clave de pago, <code>ODDSAPIIO_KEY</code>). Trae también el enlace directo a cada partido.</td></tr>
+      <tr><th scope="row">Betfair.es</th><td>Cuota en contra, liquidez y enlace directo al mercado con la API de Betfair.es (<code>BETFAIR_APP_KEY</code>, con tu cuenta).</td></tr>
+      <tr><th scope="row">DAZN Bet y Sportium</th><td>Ningún proveedor da sus cuotas. Se calculan igual escribiendo su cuota en «Comprobar cuota real» de cada partido.</td></tr>
+    </table></div>
+    <p class="muted small">Las claves se ponen en el servidor (README → Cuotas). En cuanto haya una, aquí salen todos los partidos de cada casa, con sus filtros.</p>
+    <div class="actions">
+      <button class="btn" data-act="om-sim-on">${icon('eye', 15)} Ver cómo funciona con partidos simulados</button>
+      <a class="btn btn-ghost" href="#calculadora">${icon('calc', 15)} Calcular con mis propias cuotas</a>
+    </div>
+  </section>`;
+}
+
 function omResults() {
+  if (odds.source === 'none' && !odds.events.length) return odds.loading ? '<div class="empty panel"><p>Cargando cuotas…</p></div>' : noSourcePanel();
   const o = state.om;
   const rows = omRows();
   const full = can('odds.full');
@@ -406,6 +431,8 @@ registerActions({
     save();
     render();
   },
+  'om-sim-on': () => { state.settings.provider = 'demo'; save(); loadOdds({ force: true }).then(render); },
+  'om-sim-off': () => { state.settings.provider = 'auto'; save(); loadOdds({ force: true }).then(render); },
   'multi-all': (b) => { set(b.dataset.k, []); render(); },
   'multi-none': (b) => { set(b.dataset.k, ['__none__']); render(); },
   'om-calc': (b) => {

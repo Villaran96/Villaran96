@@ -1,1 +1,1 @@
-{"name":"contrapeso","private":true,"type":"module","scripts":{"test":"node --test --test-concurrency=1 tests/*.test.mjs","start":"node server/server.mjs","build":"node scripts/build.mjs"}}
+{"name":"contrapeso","private":true,"type":"module","scripts":{"test":"node --test --test-concurrency=1 tests/*.test.mjs","start":"node server/server.mjs","build":"node scripts/build.mjs","snapshot":"node scripts/snapshot.mjs","check:cuotas":"node scripts/snapshot.mjs --check"}}

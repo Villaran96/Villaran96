@@ -2,13 +2,15 @@
 // preferencias y copias de seguridad.
 
 import {
-  state, session, odds, O, nz, save, render, go, route, registerActions, field, select, seg, pageHead, statusHTML,
-  loadOdds, ODDS_CACHE_KEY, plans, applyTheme, paintAccount, defaults, api,
+  state, session, odds, O, C, nz, save, render, go, route, registerActions, field, select, seg, pageHead, statusHTML,
+  loadOdds, ODDS_CACHE_KEY, plans, applyTheme, paintAccount, defaults, api, assumptions,
 } from '../core.js';
 import {
-  esc, icon, toast, download, copyText, storage, isoDay,
+  esc, icon, toast, download, copyText, storage, isoDay, fmt,
 } from '../util.js';
-import { BOOKIES } from '../data.js';
+import { BOOKIES, MAIN_BOOKIES } from '../data.js';
+
+const bookCheck = (mine) => ([, name]) => `<label class="check"><input type="checkbox" data-act-change="mybook-toggle" value="${esc(name)}" ${mine.has(name) ? 'checked' : ''}><span>${esc(name)}</span></label>`;
 
 const SPORT_NAMES = {
   soccer_spain_la_liga: 'LaLiga',
@@ -45,14 +47,14 @@ function sourceSection() {
   const s = state.settings;
   const sports = [...O.DEFAULT_SPORTS, ...O.EXTRA_SPORTS];
   const serverOdds = session.backend && session.config?.odds?.configured;
-  const providers = [['auto', 'Automática'], ['demo', 'Demostración'], ['api', 'The Odds API']];
+  const providers = [['auto', 'Cuotas reales'], ['demo', 'Simulación'], ['api', 'The Odds API']];
   if (session.backend || s.provider === 'server') providers.push(['server', 'Servidor']);
   return `<section class="panel">
     <div class="panel-head"><h2>Fuente de cuotas</h2><span class="status-inline" data-status="full">${statusHTML()}</span></div>
     ${seg('settings.provider', providers)}
     <p class="field-hint">${{
-      auto: serverOdds ? 'Usa las cuotas reales que descarga el servidor (casas y Betfair.es).' : 'Usa tu clave de The Odds API si la tienes; si no, la demostración.',
-      demo: 'Cuotas simuladas que se mueven cada minuto. Sirven para aprender a usar la herramienta.',
+      auto: serverOdds ? 'Usa las cuotas reales que descarga el servidor (casas y Betfair.es).' : 'Usa las cuotas reales del servidor o de tu clave de The Odds API. Si no hay ninguna, el oddsmatcher no enseña partidos: no se inventan.',
+      demo: 'Partidos y cuotas inventados para ver cómo funciona la herramienta. No existen en las casas ni en Betfair.',
       api: 'Descarga las cuotas desde tu navegador con tu propia clave.',
       server: 'Las cuotas las descarga el servidor para todos los usuarios.',
     }[s.provider] || ''}</p>
@@ -73,6 +75,16 @@ function sourceSection() {
   </section>`;
 }
 
+/** Qué significan los supuestos: rating de una calificante y retención de una freebet. */
+function assumptionsPreview() {
+  const a = assumptions();
+  const lay = (b) => b * (1 + a.spread / 100);
+  const q = C.backLay({ stake: 100, back: a.qualOdds, lay: lay(a.qualOdds), commission: a.commission });
+  const f = C.backLay({ stake: 100, back: a.snrOdds, lay: lay(a.snrOdds), commission: a.commission, type: 'snr' });
+  if (!q.valid || !f.valid) return 'Revisa los números: alguno no es válido.';
+  return `Con estos números, una calificante de 100 € te cuesta <b>${fmt.eur(Math.abs(q.profit))}</b> y una freebet de 100 € te deja <b>${fmt.eur(f.profit)}</b> (retención del ${fmt.pct(f.retention)}).`;
+}
+
 function renderAjustes() {
   const s = state.settings;
   const mine = new Set(s.myBookies);
@@ -80,7 +92,10 @@ function renderAjustes() {
   <section class="panel" id="casas">
     <div class="panel-head"><h2>${icon('star', 16)} Mis casas</h2><span class="muted small">${mine.size} marcadas</span></div>
     <p class="muted small">Marca las casas en las que tienes cuenta. El oddsmatcher podrá enseñarte solo sus cuotas con el filtro «Solo mis casas».</p>
-    <div class="checks">${BOOKIES.map(([key, name]) => `<label class="check"><input type="checkbox" data-act-change="mybook-toggle" value="${esc(name)}" ${mine.has(name) ? 'checked' : ''}><span>${esc(name)}</span></label>`).join('')}</div>
+    <div class="checks">${BOOKIES.filter(([, name]) => MAIN_BOOKIES.includes(name)).map(bookCheck(mine)).join('')}</div>
+    <details class="steps-preview" ${[...mine].some((n) => !MAIN_BOOKIES.includes(n)) ? 'open' : ''}><summary>Otras casas con licencia en España</summary>
+      <div class="checks">${BOOKIES.filter(([, name]) => !MAIN_BOOKIES.includes(name)).map(bookCheck(mine)).join('')}</div>
+    </details>
   </section>
   ${sourceSection()}
   <section class="panel">
@@ -92,14 +107,17 @@ function renderAjustes() {
     <p class="field-hint">Pon la comisión que te cobra tu cuenta. Cambia el rating del oddsmatcher y todos los cálculos.</p>
   </section>
   <section class="panel">
-    <div class="panel-head"><h2>Cómo valorar los bonos</h2></div>
+    <div class="panel-head"><h2>Cómo valorar los bonos</h2><button class="btn btn-ghost btn-sm" data-act="assumptions-reset">Volver a los valores prudentes</button></div>
+    <p class="muted small">Con estos números se calcula el «valor estimado» de cada bono. Vienen prudentes, pensados para quien empieza y usa cuotas moderadas: un bono de 200 € en freebets queda en unos 110–130 €. Con cuotas más altas y más saldo en Betfair se saca algo más.</p>
     <div class="form-grid">
       ${field('settings.assumptions.qualOdds', 'Cuota típica en calificantes')}
       ${field('settings.assumptions.snrOdds', 'Cuota típica con freebet SNR')}
       ${field('settings.assumptions.srOdds', 'Cuota típica con freebet SR')}
+      ${field('settings.assumptions.refundOdds', 'Cuota típica en reembolsos')}
       ${field('settings.assumptions.spread', 'Diferencia favor-contra', { unit: '%' })}
-      ${field('settings.assumptions.refundRetention', 'Retención de reembolsos', { unit: '%' })}
+      ${field('settings.assumptions.refundRetention', 'Lo que vale un reembolso en freebets', { unit: '%' })}
     </div>
+    <p class="field-hint" id="assumptions-preview">${assumptionsPreview()}</p>
   </section>
   <section class="panel">
     <div class="panel-head"><h2>Preferencias</h2></div>
@@ -127,7 +145,11 @@ function renderAjustes() {
   </section>`;
 }
 
-route('ajustes', { render: renderAjustes, nav: 'ajustes' });
+route('ajustes', {
+  render: renderAjustes,
+  nav: 'ajustes',
+  refresh: () => { const el = document.getElementById('assumptions-preview'); if (el) el.innerHTML = assumptionsPreview(); },
+});
 
 /* ------------------------------------------------------------ copias */
 
@@ -160,6 +182,12 @@ export function importData(text) {
 }
 
 registerActions({
+  'assumptions-reset': () => {
+    state.settings.assumptions = { ...defaults().settings.assumptions };
+    save();
+    toast('Valores prudentes restaurados', 'good');
+    render();
+  },
   'apply-source': () => {
     storage.remove(ODDS_CACHE_KEY);
     odds.events = [];

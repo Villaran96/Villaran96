@@ -16,10 +16,11 @@ function homeTop() {
     mode: 'normal', stake: nz(state.om.stake, 10), commissions: commissionsNum(), defaultCommission: nz(state.settings.defaultCommission), minOdds: 1.5, maxOdds: 10, to: Date.now() + 7 * DAY,
   }).sort((a, b) => b.rating - a.rating).slice(0, 6);
   rememberRows(rows);
+  if (odds.source === 'none') return '<div class="empty"><p>Todavía no hay cuotas reales conectadas, y no inventamos partidos.</p><a class="btn btn-sm" href="#oddsmatcher">Qué hace falta</a></div>';
   if (!rows.length) return '<p class="muted">No hay cuotas cargadas todavía.</p>';
   return `<div class="top-list">${rows.map((r) => `
     <button class="top-item" data-act="om-calc" data-id="${esc(r.id)}" data-mode="normal">
-      <span class="top-when">${esc(fmt.date(r.start))} · ${esc(fmt.time(r.start))}</span>
+      <span class="top-when">${esc(fmt.date(r.start))} · ${esc(fmt.time(r.start))}${odds.source === 'demo' ? ' · <span class="tag tag-sim">Simulado</span>' : ''}</span>
       <span class="top-event">${esc(r.event.home)} – ${esc(r.event.away)}</span>
       <span class="top-sel"><span class="code">${esc(r.label.code)}</span>${esc(r.label.text)} <span class="muted small">${esc(r.marketLabel)}</span></span>
       <span class="top-odds">${esc(r.bookTitle)} ${oddChip(r.back, 'back')} ${oddChip(r.lay, 'lay')}</span>
@@ -58,7 +59,7 @@ function casasStrip() {
     <div class="panel-head"><h2>${icon('star', 16)} Tus ${list.length} casas</h2><span class="muted small">${doneN} de ${list.length} hechas</span><a class="link" href="#bonos" data-act="home-bonos">Bonos ${icon('arrow', 14)}</a></div>
     <ul class="casas-list">${list.map(({ g, st }) => `<li class="casa casa-${st[0]}">
       <div class="casa-top"><b>${esc(g.bookie)}</b><span class="pill pill-${st[0]}">${st[1]}</span></div>
-      <span class="casa-value">${g.locked ? `${icon('lock', 13)} Plan ${esc(plans().bienvenida.name)}` : `${fmt.signedEur(C.offerValue(g, assumptions()))} <span class="muted small">estimados</span>`}</span>
+      <span class="casa-value">${g.locked ? `${icon('lock', 13)} ${g.est?.mid ? `unos ${fmt.eur0(g.est.mid)}` : `Plan ${esc(plans().bienvenida.name)}`}` : `${fmt.signedEur(C.offerValue(g, assumptions()))} <span class="muted small">estimados</span>`}</span>
       <div class="casa-actions">
         <a class="btn btn-ghost btn-xs" href="#guia" data-act="guide-open" data-lesson="casa-${esc(g.id)}">${icon('book', 13)} Cómo se hace</a>
         ${g.locked || st[0] === 'done' ? '' : `<button class="btn btn-xs ${st[0] === 'active' ? '' : 'btn-primary'}" data-act="guide-begin" data-guide="${esc(g.id)}">${st[0] === 'active' ? 'Seguir' : 'Empezar'}</button>`}

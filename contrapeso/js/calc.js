@@ -207,13 +207,26 @@ export function rollover({ deposit = 0, bonus, multiplier, base = 'bonus', avgRa
 }
 
 /**
- * Valor esperado de una promoción, con supuestos editables en Ajustes.
- * Sirve para ordenar bonos por lo que valen y para el resumen de pendientes.
+ * Supuestos prudentes para valorar un bono: los de quien empieza, con cuotas moderadas
+ * para no necesitar mucho saldo en el exchange. Dan cifras parecidas a las que publican
+ * las herramientas de matched betting en España (un bono de 200 € en freebets queda en
+ * unos 110–130 €). Se cambian en Ajustes.
  */
-export function offerValue(offer, assumptions) {
-  const a = {
-    qualOdds: 2.5, snrOdds: 5, srOdds: 3, refundOdds: 4, spread: 2, commission: 2, refundRetention: 72, ...assumptions,
-  };
+export const DEFAULT_ASSUMPTIONS = {
+  qualOdds: 2.5, snrOdds: 3.25, srOdds: 3, refundOdds: 3, spread: 3.5, commission: 2, refundRetention: 65,
+};
+
+/** Las freebets troceadas (25 € o menos cada una) rinden algo menos: más apuestas, más cuotas que se mueven. */
+const CHUNK_FACTOR = 0.95;
+/** La parte que se juega en combinadas se cubre selección a selección y retiene algo menos. */
+const ACCA_FACTOR = 0.92;
+
+/**
+ * De dónde sale el valor de una promoción: lista de { label, value } (lo que cuesta la
+ * calificante, lo que dejan las freebets…). La suma es el valor estimado.
+ */
+export function offerBreakdown(offer, assumptions) {
+  const a = { ...DEFAULT_ASSUMPTIONS, ...assumptions };
   const layFor = (b) => b * (1 + a.spread / 100);
   const q = (stake, odds) => backLay({ stake, back: odds, lay: layFor(odds), commission: a.commission, type: 'normal' }).profit || 0;
   const fb = (amount, kind) => {
@@ -222,13 +235,21 @@ export function offerValue(offer, assumptions) {
     return backLay({ stake: amount, back: odds, lay: layFor(odds), commission: a.commission, type: kind === 'sr' ? 'sr' : 'snr' }).profit || 0;
   };
   const p = offer.params || {};
+  const chunked = num(p.chunk) > 0 && num(p.chunk) <= 50 ? CHUNK_FACTOR : 1;
   switch (offer.kind) {
     case 'bet_get': {
       const odds = Math.max(num(p.minOdds) || 0, a.qualOdds);
-      // La parte que se juega en combinadas se cubre selección a selección y retiene algo menos.
       const share = Math.min(100, Math.max(0, num(p.accaShare) || 0)) / 100;
-      const free = fb(num(p.freebet), p.freebetType);
-      return q(num(p.qualStake), odds) + free * (1 - share) + free * share * 0.92 + fb(num(p.extra), 'snr');
+      const free = fb(num(p.freebet), p.freebetType) * chunked;
+      const parts = [{ label: 'Apuesta calificante cubierta', value: q(num(p.qualStake), odds) }];
+      if (share > 0 && share < 1) {
+        parts.push({ label: 'Freebets en apuestas simples', value: free * (1 - share) });
+        parts.push({ label: 'Freebets en combinadas', value: free * share * ACCA_FACTOR });
+      } else {
+        parts.push({ label: share >= 1 ? 'Freebets en combinadas' : 'Freebets cubiertas', value: free * (share >= 1 ? ACCA_FACTOR : 1) });
+      }
+      if (num(p.extra) > 0) parts.push({ label: 'Freebet extra', value: fb(num(p.extra), 'snr') });
+      return parts;
     }
     case 'refund': {
       const odds = Math.max(num(p.minOdds) || 0, a.refundOdds);
@@ -236,22 +257,44 @@ export function offerValue(offer, assumptions) {
         stake: num(p.stake), back: odds, lay: layFor(odds), commission: a.commission,
         type: 'refund', refund: num(p.refund), retention: a.refundRetention,
       });
-      return res.valid ? res.profit : 0;
+      return [{ label: 'Apuesta cubierta contando con el reembolso', value: res.valid ? res.profit : 0 }];
     }
     case 'freebet':
-      return fb(num(p.freebet), p.freebetType);
+      return [{ label: 'Freebets cubiertas', value: fb(num(p.freebet), p.freebetType) * chunked }];
     case 'rollover': {
+      const odds = Math.max(num(p.minOdds) || 0, a.qualOdds);
       const res = rollover({
         deposit: num(p.deposit), bonus: num(p.bonus), multiplier: num(p.multiplier), base: p.base,
-        avgRating: backLay({ stake: 10, back: Math.max(num(p.minOdds) || 0, a.qualOdds), lay: layFor(Math.max(num(p.minOdds) || 0, a.qualOdds)), commission: a.commission }).rating,
+        avgRating: backLay({ stake: 10, back: odds, lay: layFor(odds), commission: a.commission }).rating,
       });
-      return res.valid ? res.value : 0;
+      if (!res.valid) return [{ label: 'Bono', value: 0 }];
+      return [{ label: 'Bono', value: num(p.bonus) }, { label: `Coste de apostar ${Math.round(res.turnover)} €`, value: -res.cost }];
     }
     case 'boost': {
       const res = backLay({ stake: num(p.stake), back: num(p.boostedOdds), lay: num(p.layOdds), commission: a.commission });
-      return res.valid ? res.profit : 0;
+      return [{ label: 'Cuota mejorada cubierta', value: res.valid ? res.profit : 0 }];
     }
     default:
-      return num(p.manualValue) || 0;
+      return [{ label: 'Valor estimado', value: num(p.manualValue) || 0 }];
   }
+}
+
+/**
+ * Valor estimado de una promoción, con supuestos editables en Ajustes.
+ * Sirve para ordenar bonos por lo que valen y para el resumen de pendientes.
+ */
+export function offerValue(offer, assumptions) {
+  return offerBreakdown(offer, assumptions).reduce((sum, x) => sum + x.value, 0);
+}
+
+/**
+ * Horquilla del valor: con cuotas peores (low), con los supuestos (mid) y con cuotas
+ * algo mejores (high). El valor real depende de las cuotas que encuentres ese día.
+ */
+export function offerRange(offer, assumptions) {
+  const a = { ...DEFAULT_ASSUMPTIONS, ...assumptions };
+  const low = offerValue(offer, { ...a, spread: a.spread + 1, snrOdds: Math.max(2, a.snrOdds - 0.5), refundRetention: Math.max(0, a.refundRetention - 7) });
+  const high = offerValue(offer, { ...a, spread: Math.max(0.5, a.spread - 0.5), snrOdds: a.snrOdds + 0.5, refundRetention: Math.min(100, a.refundRetention + 5) });
+  const mid = offerValue(offer, a);
+  return { low: Math.min(low, mid), mid, high: Math.max(high, mid) };
 }

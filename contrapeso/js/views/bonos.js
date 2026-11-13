@@ -4,7 +4,7 @@
 import {
   state, C, n, nz, save, render, go, route, registerActions, field, select, money, pageHead, kpi, exampleBanner,
   flowBar, lockCard, content, can, plans, assumptions, runStep, offerSteps, offerTitle, offerFromSource, markFlowStep, bookieHome,
-  extLink, stepButton, DAY,
+  extLink, stepButton, DAY, rangeText, valueRange,
 } from '../core.js';
 import {
   fmt, esc, icon, toast, uid, isoDay, reviewedLabel,
@@ -43,29 +43,34 @@ function renderBonos() {
 function welcomeTab(c) {
   if (!c.access.guides) {
     return `${lockCard('guides.welcome', { text: `Cómo se hace, paso a paso, el bono de bienvenida de ${c.guides.map((g) => g.bookie).join(', ')}: lo que vale cada uno y botones que te llevan a la cuota y al cálculo exactos.` })}
-    <div class="teasers">${c.guides.map((g) => `<div class="teaser">${icon('lock', 14)}<b>${esc(g.bookie)}</b><span>${esc(g.title || kindOf(g.kind).label)}</span></div>`).join('')}</div>`;
+    <div class="teasers">${c.guides.map((g) => `<div class="teaser">${icon('lock', 14)}<b>${esc(g.bookie)}</b><span>${esc(g.title || kindOf(g.kind).label)}</span>${g.est?.mid ? `<span class="teaser-value">unos ${fmt.eur0(g.est.mid)}</span>` : ''}</div>`).join('')}</div>
+    <p class="muted small">Los valores son estimaciones prudentes: entre ${fmt.eur0(c.guides.reduce((s, g) => s + (g.est?.low || 0), 0))} y ${fmt.eur0(c.guides.reduce((s, g) => s + (g.est?.high || 0), 0))} entre los ${c.guides.length} bonos.</p>`;
   }
-  const guides = [...c.guides].sort((a, b) => Number(!!state.doneGuides[a.id]) - Number(!!state.doneGuides[b.id]) || value(b) - value(a));
+  const isDone = (g) => !!state.doneGuides[g.id] || startedFrom(g.id)?.status === 'done';
+  const guides = [...c.guides].sort((a, b) => Number(isDone(a)) - Number(isDone(b)) || value(b) - value(a));
   const pending = guides.filter((g) => !state.doneGuides[g.id] && !startedFrom(g.id));
   const total = pending.reduce((s, g) => s + value(g), 0);
+  const ranges = pending.map((g) => valueRange(g));
+  const low = ranges.reduce((s, r) => s + r.low, 0);
+  const high = ranges.reduce((s, r) => s + r.high, 0);
   return `<section class="summary-strip">
       <div><span class="eyebrow">Te quedan por hacer</span><b>${pending.length} bonos</b></div>
-      <div><span class="eyebrow">Valor estimado</span><b class="brass">${fmt.eur(total)}</b></div>
-      <p class="muted small">Ordenados por lo que valen. Empieza por arriba y haz uno cada vez.</p>
+      <div><span class="eyebrow">Valor estimado</span><b class="brass">${fmt.eur0(total)}</b>${pending.length ? `<span class="muted small">entre ${fmt.eur0(low)} y ${fmt.eur0(high)}</span>` : ''}</div>
+      <p class="muted small">Estimación prudente, con cuotas moderadas. Ordenados por lo que valen: empieza por arriba y haz uno cada vez.</p>
     </section>
     <div class="cards">${guides.map(guideCard).join('')}</div>`;
 }
 
 function guideCard(g) {
   const kind = kindOf(g.kind);
-  const done = !!state.doneGuides[g.id];
   const started = startedFrom(g.id);
+  const done = !!state.doneGuides[g.id] || started?.status === 'done';
   const steps = kind.steps(g.params || {}, g.bookie);
   const link = { href: g.url || bookieHome(g.bookie), exact: false };
   return `<article class="guide ${done ? 'is-done' : ''}">
     <header class="guide-head">
       <div><b class="guide-bookie">${esc(g.bookie)}</b><span class="muted small">${esc(kind.label)}</span>${g.example ? ' <span class="tag tag-example">Ejemplo</span>' : ''}</div>
-      <div class="guide-value"><span class="muted small">Valor estimado</span><b>${fmt.signedEur(value(g))}</b></div>
+      <div class="guide-value"><span class="muted small">Valor estimado</span><b>${fmt.signedEur(value(g))}</b><span class="muted small">${esc(rangeText(g))}</span></div>
     </header>
     <h3>${esc(g.title || kind.title(g.params || {}))}</h3>
     ${g.conditions ? `<details class="steps-preview"><summary>Condiciones${g.reviewed ? ` (revisadas en ${esc(reviewedLabel(g.reviewed))})` : ''}</summary><p class="cond">${esc(g.conditions)}</p></details>` : ''}

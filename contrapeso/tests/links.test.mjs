@@ -25,6 +25,11 @@ test('aprende el enlace de Betfair.es con el mercado o con el partido', () => {
   assert.equal(fillBetfair(e.template, { marketId: '1.999', eventId: '35123456' }).endsWith('-apuestas-35123456'), true);
   assert.equal(fillBetfair(m.template, { eventId: '35123456' }), null, 'sin mercado no hay enlace al mercado');
   assert.ok(validBetfairTemplate(m.template) && validBetfairTemplate(e.template));
+  // La dirección corta de un mercado vale para cualquier deporte.
+  const g = learnBetfair('https://www.betfair.es/exchange/plus/football/market/1.234567890');
+  assert.equal(g.template, 'https://www.betfair.es/exchange/plus/{sport}/market/{marketId}');
+  assert.equal(fillBetfair(g.template, { marketId: '1.9', sport: 'tennis' }), 'https://www.betfair.es/exchange/plus/tennis/market/1.9');
+  assert.equal(fillBetfair(g.template, { marketId: '1.9' }), 'https://www.betfair.es/exchange/plus/football/market/1.9');
   assert.ok(!validBetfairTemplate('https://www.betfair.es/exchange/plus/'));
 });
 

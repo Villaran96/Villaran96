@@ -8,7 +8,8 @@ import {
   canUse, effectivePlan, mergePlans, planRank,
 } from '../js/plans.js';
 import { DEFAULT_LESSONS, DEFAULT_GUIDES, DEFAULT_PROMOS } from '../js/content.js';
-import { offerValue } from '../js/calc.js';
+import { offerValue, offerRange, offerBreakdown } from '../js/calc.js';
+import { OFFER_KINDS } from '../js/data.js';
 
 test('markdown: títulos y listas sin línea en blanco entre ellos', () => {
   const html = markdown('## Lo esencial\n- uno\n- **dos**\n\nTexto con [enlace](https://example.com) y [interno](#guia).\n> nota');
@@ -73,4 +74,38 @@ test('contenido de ejemplo: todas las guías y promociones tienen valor positivo
     const v = offerValue(x, {});
     assert.ok(Number.isFinite(v) && v > 0, `${x.id}: ${v}`);
   }
+});
+
+test('el valor de las 5 casas es prudente: dentro de lo que publica NinjaBet', () => {
+  // Mínimo y máximo de su tabla de ganancias de bienvenida (España, 2026).
+  const REF = { bet365: [110, 130], winamax: [50, 70], daznbet: [110, 130], sportium: [110, 140], retabet: [100, 120] };
+  let total = 0;
+  for (const g of DEFAULT_GUIDES) {
+    const [min, max] = REF[g.id];
+    const r = offerRange(g, {});
+    assert.ok(r.mid >= min && r.mid <= max, `${g.id}: ${r.mid.toFixed(1)} fuera de ${min}–${max}`);
+    assert.ok(r.low <= r.mid && r.mid <= r.high);
+    assert.ok(Math.abs(offerBreakdown(g, {}).reduce((s, x) => s + x.value, 0) - offerValue(g, {})) < 1e-9, 'el desglose suma el valor');
+    assert.ok(!/Lo que vale:|sacas unos|75–8[05] %/.test(g.howto), `${g.id}: el valor sale del cálculo, no del texto`);
+    total += r.mid;
+  }
+  assert.ok(total > 490 && total < 590, `total ${total.toFixed(0)}`);
+});
+
+test('las 5 casas: pasos con botones, Sportium en dos depósitos y freebet con cuota máxima', () => {
+  assert.deepEqual(DEFAULT_GUIDES.map((g) => g.bookie), ['Bet365', 'Winamax', 'DAZN Bet', 'Sportium', 'Retabet']);
+  for (const g of DEFAULT_GUIDES) {
+    const steps = OFFER_KINDS[g.kind].steps(g.params, g.bookie);
+    assert.ok(steps.length >= 5, `${g.id}: pocos pasos`);
+    assert.ok(steps.some((s) => s.action?.kind === 'om' && s.action.om.bookie === g.bookie), `${g.id}: sin botón al oddsmatcher`);
+    assert.ok(steps.every((s) => !/undefined|NaN/.test(s.text)), `${g.id}: texto roto`);
+  }
+  const sp = OFFER_KINDS.bet_get.steps(DEFAULT_GUIDES.find((g) => g.id === 'sportium').params, 'Sportium');
+  assert.ok(sp.some((s) => /segundo depósito/.test(s.text)));
+  const fb = sp.find((s) => s.action?.kind === 'om' && s.action.om.mode === 'snr');
+  assert.equal(fb.action.om.maxOdds, 5);
+  assert.equal(fb.action.om.stake, 100);
+  assert.equal(sp.find((s) => s.action?.kind === 'om' && s.action.om.mode === 'normal').action.om.stake, 100);
+  const wx = OFFER_KINDS.refund.steps(DEFAULT_GUIDES.find((g) => g.id === 'winamax').params, 'Winamax');
+  assert.equal(wx.find((s) => s.action?.kind === 'om').action.om.mode, 'refund');
 });

@@ -41,19 +41,20 @@ export function defaults() {
       cacheMinutes: 10,
       defaultCommission: 2,
       commissions: { betfair_es: 2, betfair_ex_eu: 2, betfair_ex_uk: 2, matchbook: 2, smarkets: 2 },
-      assumptions: { qualOdds: 2.5, snrOdds: 5, srOdds: 3, spread: 2, refundRetention: 72 },
+      assumptions: { ...ASSUMPTION_DEFAULTS },
+      assumptionsV: 2,
       alertRating: 100,
       myBookies: [...MAIN_BOOKIES],
       betfairTemplate: '',
       previewPlan: 'metodo',
     },
     om: {
-      mode: 'normal', stake: 10, refund: 150, retention: 72, minOdds: 1.5, maxOdds: 12, minRatings: { normal: 90, snr: 65, sr: 85, refund: 40 }, window: '7d', q: '',
-      bookies: [], exchanges: [], leagues: [], families: [], myOnly: false, minSize: '', sort: 'rating', dir: 'desc', limit: 60, autoRefresh: 0,
+      mode: 'normal', stake: 10, refund: 150, retention: 65, minOdds: 1.5, maxOdds: 12, minRatings: { normal: 90, snr: 65, sr: 85, refund: 40 }, window: '7d', q: '',
+      bookies: [], exchanges: [], leagues: [], families: [], sports: [], myOnly: false, minSize: '', sort: 'rating', dir: 'desc', limit: 60, autoRefresh: 0,
       open: null, check: null,
     },
     calc: {
-      bl: { type: 'normal', stake: 10, back: 2.5, lay: 2.56, commission: 2, refund: 10, retention: 72, adjust: 0, context: null },
+      bl: { type: 'normal', stake: 10, back: 2.5, lay: 2.56, commission: 2, refund: 10, retention: 65, adjust: 0, context: null },
       acca: {
         stake: 10, type: 'normal', commission: 2,
         legs: [{ back: 1.8, lay: 1.84, status: 'pending' }, { back: 2.1, lay: 2.16, status: 'pending' }, { back: 1.65, lay: 1.69, status: 'pending' }],
@@ -72,6 +73,18 @@ export function defaults() {
   };
 }
 
+/** Supuestos para valorar bonos que se guardan en Ajustes (la comisión va aparte). */
+const ASSUMPTION_DEFAULTS = (() => { const { commission, ...rest } = C.DEFAULT_ASSUMPTIONS; return rest; })();
+// Los primeros supuestos eran demasiado optimistas (freebets al 77 %). Quien no los
+// había tocado pasa a los prudentes; quien los cambió conserva los suyos.
+const OLD_ASSUMPTIONS = { qualOdds: 2.5, snrOdds: 5, srOdds: 3, spread: 2, refundRetention: 72 };
+function migrateAssumptions(settings) {
+  const stored = settings?.assumptions || {};
+  if (settings?.assumptionsV === 2) return { ...ASSUMPTION_DEFAULTS, ...stored };
+  const untouched = Object.entries(OLD_ASSUMPTIONS).every(([k, v]) => stored[k] == null || Number(String(stored[k]).replace(',', '.')) === v);
+  return untouched ? { ...ASSUMPTION_DEFAULTS } : { ...ASSUMPTION_DEFAULTS, ...stored };
+}
+
 function loadState() {
   const d = defaults();
   let s = storage.get(STORE_KEY, null);
@@ -81,6 +94,7 @@ function loadState() {
   }
   if (!s || typeof s !== 'object') return d;
   const sc = s.calc || {};
+  const oldValuation = s.settings?.assumptionsV !== 2;
   const strip = (list, keys) => (Array.isArray(list) ? list.map((x) => { const y = { ...x }; keys.forEach((k) => delete y[k]); return y; }) : []);
   return {
     ...d,
@@ -88,12 +102,16 @@ function loadState() {
       ...d.settings,
       ...s.settings,
       commissions: { ...d.settings.commissions, ...(s.settings?.commissions || {}) },
-      assumptions: { ...d.settings.assumptions, ...(s.settings?.assumptions || {}) },
+      assumptions: migrateAssumptions(s.settings),
+      assumptionsV: 2,
       myBookies: Array.isArray(s.settings?.myBookies) && s.settings.myBookies.length ? s.settings.myBookies : [...MAIN_BOOKIES],
     },
-    om: { ...d.om, ...s.om, minRatings: { ...d.om.minRatings, ...(s.om?.minRatings || {}) }, open: null, check: null, mode: s.om?.mode === 'sr' ? 'normal' : (s.om?.mode || d.om.mode) },
+    om: {
+      ...d.om, ...s.om, minRatings: { ...d.om.minRatings, ...(s.om?.minRatings || {}) }, open: null, check: null, mode: s.om?.mode === 'sr' ? 'normal' : (s.om?.mode || d.om.mode),
+      ...(oldValuation && Number(s.om?.retention) === 72 ? { retention: d.om.retention } : {}),
+    },
     calc: {
-      bl: { ...d.calc.bl, ...sc.bl },
+      bl: { ...d.calc.bl, ...sc.bl, ...(oldValuation && Number(sc.bl?.retention) === 72 ? { retention: d.calc.bl.retention } : {}) },
       acca: { ...d.calc.acca, ...sc.acca },
       roll: { ...d.calc.roll, ...sc.roll },
     },
@@ -104,6 +122,7 @@ function loadState() {
     doneGuides: s.doneGuides || {},
     flow: s.flow || null,
     seeded: !!s.seeded,
+    seedV: Number(s.seedV) || 0,
     ui: { ...d.ui, ...(s.ui || {}), addOffer: false, betForm: null, adminEdit: null, confirmReset: false, confirmPlan: null, confirmCancel: false },
     local: { ...d.local, ...(s.local || {}) },
   };
@@ -162,7 +181,7 @@ export async function pullData() {
       state.bets = data.bets || [];
       state.offers = data.offers || [];
       const { apiKey } = state.settings;
-      if (data.settings) Object.assign(state.settings, data.settings, { apiKey });
+      if (data.settings) Object.assign(state.settings, data.settings, { apiKey, assumptions: migrateAssumptions(data.settings), assumptionsV: 2 });
       if (data.guide) {
         const { metodo, doneGuides, ...guide } = data.guide;
         Object.assign(state.guide, guide);
@@ -201,7 +220,10 @@ export function content() {
   if (session.backend) return session.content || { guides: [], promos: [], lessons: [], access: {} };
   const c = state.local.content || {};
   const access = { guides: can('guides.welcome'), promos: can('promos.recurring'), metodo: can('metodo') };
-  const teaser = (x) => ({ id: x.id, bookie: x.bookie, kind: x.kind, title: x.title, locked: true });
+  const teaser = (x) => {
+    const r = C.offerRange(x, {});
+    return { id: x.id, bookie: x.bookie, kind: x.kind, title: x.title, locked: true, est: { low: Math.round(r.low), mid: Math.round(r.mid), high: Math.round(r.high) } };
+  };
   const lessons = c.lessons || DEFAULT_LESSONS;
   return {
     guides: (c.guides || DEFAULT_GUIDES).filter((x) => x.active !== false).map((g) => (access.guides ? g : teaser(g))),
@@ -227,10 +249,20 @@ export async function refreshSession() {
   paintAccount();
 }
 
+/** Horquilla del valor de un bono con los supuestos de Ajustes: { low, mid, high }. Lo bloqueado trae la suya. */
+export const valueRange = (o) => (o.locked ? (o.est || { low: 0, mid: 0, high: 0 }) : C.offerRange(o, assumptions()));
+/** «entre 109 € y 132 €», o vacío si no hay horquilla. */
+export function rangeText(o) {
+  const r = valueRange(o);
+  return Math.round(r.low) === Math.round(r.high) ? '' : `entre ${fmt.eur0(r.low)} y ${fmt.eur0(r.high)}`;
+}
+
 export function assumptions() {
   const a = state.settings.assumptions;
+  const d = C.DEFAULT_ASSUMPTIONS;
   return {
-    qualOdds: nz(a.qualOdds, 2.5), snrOdds: nz(a.snrOdds, 5), srOdds: nz(a.srOdds, 3), spread: nz(a.spread, 2), refundRetention: nz(a.refundRetention, 72), commission: nz(state.settings.defaultCommission, 2),
+    qualOdds: nz(a.qualOdds, d.qualOdds), snrOdds: nz(a.snrOdds, d.snrOdds), srOdds: nz(a.srOdds, d.srOdds), refundOdds: nz(a.refundOdds, d.refundOdds),
+    spread: nz(a.spread, d.spread), refundRetention: nz(a.refundRetention, d.refundRetention), commission: nz(state.settings.defaultCommission, 2),
   };
 }
 
@@ -239,7 +271,7 @@ export function assumptions() {
 /* ======================================================================== */
 
 export const odds = {
-  events: [], source: 'demo', updated: null, remaining: null, error: null, loading: false, fallback: false, warnings: [], limited: false, betfairTemplate: '',
+  events: [], source: 'none', updated: null, remaining: null, error: null, loading: false, fallback: false, warnings: [], limited: false, betfairTemplate: '',
 };
 const seenAlerts = new Set();
 let firstOddsLoad = true;
@@ -249,7 +281,8 @@ function effectiveProvider() {
   if (p !== 'auto') return p;
   if (session.backend && session.config?.odds?.configured) return 'server';
   if (state.settings.apiKey) return 'api';
-  return 'demo';
+  // Sin fuente real no se inventan partidos: la simulación solo sale si se pide.
+  return 'none';
 }
 
 export async function loadOdds({ force = false } = {}) {
@@ -277,16 +310,20 @@ export async function loadOdds({ force = false } = {}) {
       Object.assign(odds, {
         events: res.events || [], updated: res.updated, remaining: res.remaining, source: 'server', warnings: res.errors || [], limited: !!res.limited, betfairTemplate: res.betfairTemplate || '',
       });
-    } else {
+    } else if (provider === 'demo') {
       Object.assign(odds, { events: O.demoEvents(Date.now()), updated: new Date().toISOString(), remaining: null, source: 'demo', warnings: [], limited: false });
+    } else {
+      // Sin fuente: si la web trae una instantánea de cuotas reales (assets/cuotas.json), se usa.
+      const snap = session.backend ? null : await O.fetchSnapshot();
+      if (snap) Object.assign(odds, { events: snap.events, updated: snap.updated || null, remaining: null, source: 'snapshot', warnings: snap.errors || [], limited: false });
+      else Object.assign(odds, { events: [], updated: null, remaining: null, source: 'none', warnings: [], limited: false });
     }
   } catch (e) {
     odds.error = e instanceof TypeError
       ? 'El navegador no pudo conectar con la fuente de cuotas. En la vista previa de claude.ai las conexiones externas están bloqueadas; en tu dominio funciona.'
       : e.message;
-    if (!odds.events.length || odds.source === 'demo') {
-      Object.assign(odds, { events: O.demoEvents(Date.now()), updated: new Date().toISOString(), source: 'demo', fallback: true, limited: false });
-    }
+    // Si falla la fuente no se rellena con partidos inventados: se conservan las últimas cuotas reales o nada.
+    if (odds.source === 'demo' || odds.source === 'none') Object.assign(odds, { events: [], updated: null, source: 'none', limited: false });
   }
   odds.loading = false;
   booksCache.events = null;
@@ -297,6 +334,7 @@ export async function loadOdds({ force = false } = {}) {
 }
 
 function checkAlerts() {
+  if (odds.source === 'demo' || odds.source === 'none') { firstOddsLoad = false; return; } // nunca se avisa de cuotas inventadas
   const threshold = n(state.settings.alertRating);
   if (!Number.isFinite(threshold) || !can('odds.alerts')) { firstOddsLoad = false; return; }
   const rows = O.findMatches(odds.events, {
@@ -330,7 +368,7 @@ export function available() {
     Object.assign(booksCache, {
       events: odds.events,
       data,
-      keys: { bookies: data.bookies.map(([k]) => k), exchanges: data.exchanges.map(([k]) => k), leagues: data.leagues, families: data.families.map(([k]) => k) },
+      keys: { bookies: data.bookies.map(([k]) => k), exchanges: data.exchanges.map(([k]) => k), leagues: data.leagues, families: data.families.map(([k]) => k), sports: data.sports.map(([k]) => k) },
     });
   }
   return booksCache;
@@ -361,11 +399,13 @@ export function bookieKeysFor(names) {
 export function sourceLabel() {
   if (odds.source === 'api') return 'The Odds API';
   if (odds.source === 'server') return session.config?.odds?.betfair ? 'Casas + Betfair.es' : 'Cuotas en directo';
-  return 'Demostración';
+  if (odds.source === 'snapshot') return 'Cuotas reales guardadas';
+  if (odds.source === 'demo') return 'Simulación';
+  return 'Sin cuotas reales';
 }
 
 export function statusHTML(compact = false) {
-  const live = odds.source !== 'demo';
+  const live = odds.source !== 'demo' && odds.source !== 'none';
   const dot = odds.loading ? 'loading' : odds.error ? 'warn' : live ? 'live' : 'demo';
   const parts = [`<span class="dot dot-${dot}"></span><b>${esc(sourceLabel())}</b>`];
   if (odds.updated) parts.push(`<span>${odds.loading ? 'Actualizando…' : fmt.ago(odds.updated)}</span>`);
@@ -402,16 +442,21 @@ export function searchLinkFor(keyOrName, team) {
  * Enlace a la apuesta a favor: la dirección exacta que da la fuente de cuotas, si no la
  * búsqueda del partido en la casa y, si tampoco, la portada.
  */
+/** En la simulación los partidos no existen: no hay adónde enlazar. */
+const SIM_LINK = { href: '', exact: false, kind: 'sim' };
+
 export function backLinkOf(row) {
+  if (odds.source === 'demo') return SIM_LINK;
   if (row.backLink) return { href: row.backLink, exact: true, kind: 'event' };
   return searchLinkFor(row.bookKey || row.bookTitle, row.event?.home)
     || { href: bookieHome(row.bookKey) || bookieHome(row.bookTitle), exact: false, kind: 'home' };
 }
 
 export function layLinkOf(row) {
+  if (odds.source === 'demo') return SIM_LINK;
   const tpl = odds.betfairTemplate || state.settings.betfairTemplate || site().betfairTemplate;
   if (row.exKey === 'betfair_es' && tpl) {
-    const href = fillBetfair(tpl, { marketId: row.layMarketId, eventId: row.layEventId });
+    const href = fillBetfair(tpl, { marketId: row.layMarketId, eventId: row.layEventId, sport: row.event?.sport });
     if (href) return { href, exact: true, kind: 'event' };
   }
   // Betfair internacional (betfair.com) no se puede usar desde España: se busca en Betfair.es.
@@ -431,7 +476,7 @@ export function extAttrs(link, label, copy) {
 
 /** Botón que abre la casa o el exchange; si no hay enlace al partido, copia el partido. */
 export function extLink(link, label, copy, cls = '') {
-  if (!link || !link.href) return `<span class="btn btn-sm btn-ext is-disabled ${cls}" title="Sin enlace">${esc(label)}</span>`;
+  if (!link || !link.href) return `<span class="btn btn-sm btn-ext is-disabled ${cls}" title="${link?.kind === 'sim' ? 'Partido simulado: no existe en la casa, no hay enlace' : 'Sin enlace'}">${esc(label)}${link?.kind === 'sim' ? '<span class="link-kind is-sim">simulado</span>' : ''}</span>`;
   const kind = link.kind || (link.exact ? 'event' : 'home');
   const tag = kind === 'event' ? '<span class="link-kind is-event">al partido</span>' : kind === 'search' ? '<span class="link-kind is-search">buscar</span>' : '';
   return `<a class="btn btn-sm btn-ext link-${kind} ${cls}" ${extAttrs(link, label, copy)}>${esc(label)}${tag}${icon(kind === 'search' ? 'search' : 'external', 13)}</a>`;
@@ -505,12 +550,14 @@ export function runStep(offer, idx) {
     });
     if (a.om.stake > 0) state.om.stake = a.om.stake;
     if (a.om.refund > 0) state.om.refund = a.om.refund;
+    if (a.om.mode === 'refund') state.om.retention = assumptions().refundRetention;
     if (a.om.mode === 'refund') state.om.sort = 'rating';
-    if (a.om.bookie && !keys.length) toast(`No hay cuotas de ${a.om.bookie} en la fuente actual. Abre un partido y escribe la cuota real de ${a.om.bookie} en «Comprobar cuota real»: el cálculo es el mismo.`, 'warn');
+    if (a.om.bookie && !keys.length && odds.source !== 'none') toast(`No hay cuotas de ${a.om.bookie} en la fuente actual. Abre un partido y escribe la cuota real de ${a.om.bookie} en «Comprobar cuota real»: el cálculo es el mismo.`, 'warn');
     save();
     go('oddsmatcher');
   } else if (a.kind === 'bl') {
     Object.assign(state.calc.bl, { ...a.bl, adjust: 0, context: null });
+    if (a.bl.type === 'refund') state.calc.bl.retention = assumptions().refundRetention;
     save();
     go('calculadora');
   } else if (a.kind === 'roll') {
@@ -847,33 +894,49 @@ export function logBet({ bookie = '', kind = 'qualifying', desc = '', profit }) 
   toast(msg, 'good');
 }
 
+/**
+ * Datos de ejemplo para ver la web con vida: alguien que ya ha hecho Bet365 y Winamax,
+ * va por la mitad de DAZN Bet y tiene Sportium y Retabet por empezar. Solo las 5 casas.
+ */
+const SEED_VERSION = 2;
 export function seedExamples() {
-  if (state.seeded) return;
+  if (state.seeded && state.seedV === SEED_VERSION) return;
+  const hadExamples = state.bets.some((b) => b.example) || state.offers.some((o) => o.example);
+  if (state.seeded && !hadExamples) { state.seedV = SEED_VERSION; save(); return; } // ya los borró: no vuelven
+  state.bets = state.bets.filter((b) => !b.example);
+  state.offers = state.offers.filter((o) => !o.example);
   const day = (offset) => isoDay(Date.now() - offset * DAY);
   const ex = [
-    [118, 'Bet365', 'welcome', 'Apuesta y recibe: calificante y freebet', 21.4],
-    [104, 'Codere', 'welcome', 'Reembolso de la primera apuesta', 33.85],
-    [97, 'Sportium', 'welcome', 'Bono de bienvenida en freebets', 18.2],
-    [83, 'Bwin', 'welcome', 'Reembolso de la primera apuesta', 26.1],
-    [70, 'William Hill', 'refund', 'Reembolso en Champions', 7.95],
-    [62, 'Luckia', 'welcome', 'Bono con rollover x5', 41.3],
-    [49, 'Retabet', 'welcome', 'Freebet de bienvenida', 7.6],
-    [41, 'Bet365', 'boost', 'Cuota mejorada', 4.2],
-    [33, 'Kirolbet', 'welcome', 'Apuesta y recibe', 22.75],
-    [26, 'Codere', 'reload', 'Freebet de los lunes', 3.9],
-    [18, 'Marca Apuestas', 'welcome', 'Reembolso de la primera apuesta', 29.5],
-    [11, 'Winamax', 'qualifying', 'Calificante en LaLiga', -0.42],
-    [6, 'Winamax', 'freebet', 'Freebet a cuota 6,0', 15.9],
-    [2, 'Betway', 'boost', 'Supercuota NBA', 3.1],
+    [40, 'Bet365', 'qualifying', 'Calificante de 200 € a cuota 2,10', -8.7],
+    [37, 'Bet365', 'freebet', 'Créditos de apuesta: 100 € a cuota 3,40', 66.9],
+    [36, 'Bet365', 'freebet', 'Créditos de apuesta: 100 € a cuota 3,60', 68.2],
+    [30, 'Winamax', 'refund', 'Apuesta de 100 € a cuota 3,10: pierde y llega el reembolso', -35.4],
+    [29, 'Winamax', 'freebet', 'Freebets del reembolso: 150 € a cuota 3,50', 98.6],
+    [21, 'Bet365', 'boost', 'Cuota mejorada en LaLiga', 4.2],
+    [14, 'Winamax', 'reload', 'Freebet de 5 € de los lunes', 3.3],
+    [12, 'DAZN Bet', 'qualifying', 'Primera apuesta de 200 € a cuota 1,95', -9.4],
+    [9, 'DAZN Bet', 'freebet', 'Freebet de 100 € a cuota 3,30', 64.8],
+    [7, 'Winamax', 'reload', 'Freebet de 5 € de los lunes', 3.2],
+    [3, 'Bet365', 'boost', 'Cuota mejorada en Champions', 3.9],
   ];
-  state.bets = ex.map(([d, bookie, kind, desc, profit]) => ({ id: uid(), date: day(d), bookie, kind, desc, profit, example: true }));
+  state.bets.push(...ex.map(([d, bookie, kind, desc, profit]) => ({ id: uid(), date: day(d), bookie, kind, desc, profit, example: true })));
   const now = Date.now();
-  state.offers = [
-    { id: uid(), bookie: 'Versus', kind: 'bet_get', params: { qualStake: 10, minOdds: 1.5, freebet: 25, freebetType: 'snr' }, status: 'active', done: [0, 1], deadline: isoDay(now + 9 * DAY), created: now, example: true },
-    { id: uid(), bookie: 'Paston', kind: 'refund', params: { stake: 50, refund: 50, minOdds: 1.5 }, status: 'todo', done: [], deadline: '', created: now, example: true },
-    { id: uid(), bookie: 'Bet365', kind: 'bet_get', params: { qualStake: 10, minOdds: 1.2, freebet: 30, freebetType: 'snr' }, status: 'done', done: [0, 1, 2, 3, 4, 5, 6], profit: 21.4, created: now - 118 * DAY, example: true },
-  ];
+  const fromGuide = (id, extra) => {
+    const g = DEFAULT_GUIDES.find((x) => x.id === id);
+    const steps = (OFFER_KINDS[g.kind] || OFFER_KINDS.other).steps(g.params, g.bookie);
+    return {
+      id: uid(), bookie: g.bookie, kind: g.kind, title: g.title, params: { ...g.params }, url: g.url, from: g.id, source: 'guides', deadline: '', example: true,
+      ...extra(steps.map((_, i) => i)),
+    };
+  };
+  state.offers.push(
+    fromGuide('bet365', (all) => ({ status: 'done', done: all, profit: 126.4, created: now - 41 * DAY })),
+    fromGuide('winamax', (all) => ({ status: 'done', done: all, profit: 63.2, created: now - 31 * DAY })),
+    fromGuide('daznbet', () => ({ status: 'active', done: [0, 1, 2, 3, 4, 5], deadline: isoDay(now + 5 * DAY), created: now - 13 * DAY })),
+  );
+  if (state.flow && !state.offers.some((o) => o.id === state.flow.offerId)) state.flow = null;
   state.seeded = true;
+  state.seedV = SEED_VERSION;
   save();
 }
 

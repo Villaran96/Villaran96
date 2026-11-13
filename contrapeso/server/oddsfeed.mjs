@@ -30,7 +30,7 @@ export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {
           const r = await io.fetchEvents();
           events = r.events;
           errors.push(...r.errors);
-          sources.push(`odds-api.io (${r.events.length} partidos)`);
+          sources.push(`odds-api.io (${r.events.length} partidos con cuota${r.total > r.events.length ? ` de ${r.total}` : ''})`);
         } catch (e) {
           errors.push(`odds-api.io: ${e.message}`);
         }
@@ -73,11 +73,16 @@ export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {
    * Lo que recibe cada plan. Sin plan de pago solo van los partidos de las mejores
    * filas, para que el oddsmatcher gratuito no pueda reconstruir el completo.
    */
+  let limited = { of: null, rows: 0, value: null };
   function forPlan(full, freeRows) {
     if (full) return cache;
-    const rows = findMatches(cache.events, { mode: 'normal', minOdds: 1.5, maxOdds: 10 }).sort((a, b) => b.rating - a.rating).slice(0, freeRows);
-    const ids = new Set(rows.map((r) => r.event.id));
-    return { ...cache, events: cache.events.filter((e) => ids.has(e.id)), limited: true };
+    // Se calcula una vez por descarga: con miles de partidos no se repite en cada petición.
+    if (limited.of !== cache || limited.rows !== freeRows) {
+      const rows = findMatches(cache.events, { mode: 'normal', minOdds: 1.5, maxOdds: 10 }).sort((a, b) => b.rating - a.rating).slice(0, freeRows);
+      const ids = new Set(rows.map((r) => r.event.id));
+      limited = { of: cache, rows: freeRows, value: { ...cache, events: cache.events.filter((e) => ids.has(e.id)), limited: true } };
+    }
+    return limited.value;
   }
 
   return { refresh, get: () => cache, forPlan, configured, hasBetfair: !!bf };

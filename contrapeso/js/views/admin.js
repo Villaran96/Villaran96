@@ -3,7 +3,7 @@
 
 import {
   state, session, C, nz, save, render, go, route, registerActions, pageHead, kpi, field, select, plans, site, isAdmin,
-  assumptions, refreshSession, paintAccount, api, brand, odds,
+  assumptions, refreshSession, paintAccount, api, brand, odds, O, backLinkOf, layLinkOf,
 } from '../core.js';
 import {
   fmt, esc, icon, toast, uid,
@@ -359,6 +359,28 @@ function sampleBetfairRow() {
   return null;
 }
 
+/** Cuántas filas del oddsmatcher van directas al partido, casa por casa, con las cuotas cargadas. */
+function linkCoverage() {
+  if (odds.source === 'none' || odds.source === 'demo') {
+    return `<p class="muted small">${odds.source === 'demo' ? 'Ahora mismo ves la simulación: sus partidos no existen y no tienen enlaces.' : 'No hay cuotas reales cargadas.'} Cuando el servidor reciba cuotas reales, aquí verás qué parte de los enlaces va directa al partido en cada casa y en Betfair.</p>`;
+  }
+  const rows = O.findMatches(odds.events, {});
+  if (!rows.length) return '<p class="muted small">Las cuotas cargadas no tienen todavía ninguna pareja casa–exchange.</p>';
+  const by = new Map();
+  for (const r of rows) {
+    const x = by.get(r.bookTitle) || { n: 0, back: 0, lay: 0 };
+    x.n += 1;
+    if (backLinkOf(r).exact) x.back += 1;
+    if (layLinkOf(r).exact) x.lay += 1;
+    by.set(r.bookTitle, x);
+  }
+  const pct = (a, b) => `${Math.round((a / b) * 100)} %`;
+  return `<div class="table-wrap"><table class="ledger admin-table">
+    <thead><tr><th>Casa</th><th class="num">Cuotas emparejadas</th><th class="num">Directo al partido en la casa</th><th class="num">Directo al mercado de Betfair</th></tr></thead>
+    <tbody>${[...by.entries()].sort((a, b) => b[1].n - a[1].n).map(([name, x]) => `<tr><td><b>${esc(name)}</b></td><td class="num">${x.n.toLocaleString('es-ES')}</td><td class="num">${pct(x.back, x.n)}</td><td class="num">${pct(x.lay, x.n)}</td></tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
 function linksTab(d) {
   const s = d.settings.site;
   if (!state.ui.adminLinks) state.ui.adminLinks = { betfairTemplate: s.betfairTemplate || '', betfairUrl: '', search: { ...(s.searchLinks || {}) }, raw: {} };
@@ -377,7 +399,13 @@ function linksTab(d) {
       </div>
     </li>`;
   };
+  const bfApi = session.backend && session.config?.odds?.betfair;
   return `<section class="panel">
+    <div class="panel-head"><h2>Enlaces directos ahora mismo</h2><span class="pill ${bfApi ? 'pill-done' : 'pill-todo'}">${bfApi ? 'API de Betfair.es conectada' : 'API de Betfair.es sin conectar'}</span></div>
+    ${linkCoverage()}
+    ${bfApi ? '' : '<p class="muted small">Para que el botón de Betfair abra el mercado exacto de cada partido, el servidor tiene que estar conectado a la API de Betfair.es (<code>BETFAIR_APP_KEY</code>, <code>BETFAIR_USERNAME</code> y <code>BETFAIR_PASSWORD</code>): es la que da el número de mercado de cada partido.</p>'}
+  </section>
+  <section class="panel">
     <div class="panel-head"><h2>Cómo funcionan los enlaces</h2></div>
     <ol class="setup-steps">
       <li><b>Al partido</b>: cuando la fuente de cuotas da la dirección exacta. odds-api.io la da para Bet365, Winamax y Retabet, y la API de Betfair.es da el número de mercado.</li>

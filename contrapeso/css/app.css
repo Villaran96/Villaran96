@@ -1400,3 +1400,18 @@ table.kv td { color: var(--fg); }
 .link-row-form .field { flex: 1 1 320px; min-width: 0; }
 .link-row-form .actions { margin: 0; }
 .link-tpl, .mono { font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; color: var(--fg-2); margin: 0; }
+.teaser { flex-wrap: wrap; }
+.teaser-value { margin-left: auto; font: 600 12.5px var(--font-mono); color: var(--brass); white-space: nowrap; }
+.guide-value .muted { text-align: right; }
+.multi-search { width: 100%; margin: 6px 0; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--input); color: var(--fg); font: inherit; font-size: 13.5px; }
+.multi-grid .check[hidden] { display: none; }
+
+/* Simulación y falta de cuotas reales: que no se confundan con partidos de verdad */
+.banner-sim { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--fg); font-size: 14px; }
+.banner-sim .ico { color: var(--warn); flex: none; }
+.tag-sim { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font: 700 10.5px var(--font-body); letter-spacing: 0.03em; text-transform: uppercase; background: var(--warn-bg); color: var(--warn); vertical-align: middle; }
+.link-kind.is-sim { background: var(--warn-bg); color: var(--warn); }
+.om-nosource { gap: 12px; border-color: var(--line-strong); }
+.om-nosource p { margin: 0; color: var(--fg-2); max-width: 78ch; }
+.om-nosource code { font-family: var(--font-mono); font-size: 0.9em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+.btn-ext.is-disabled { width: fit-content; }

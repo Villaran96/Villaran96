@@ -10,15 +10,17 @@ Plataforma de matched betting por suscripción, en español:
 
 Funciona de dos formas:
 - **Con el servidor** (`node server/server.mjs`): cuentas, pagos con Stripe, contenido de pago protegido, contrato firmado y cuotas centralizadas. Es la forma de venderla.
-- **Sin servidor** (cualquier hosting estático o la vista previa de claude.ai): todo funciona en el navegador con cuotas de demostración. Un selector deja ver la web como la vería cada plan.
+- **Sin servidor** (cualquier hosting estático o la vista previa de claude.ai): calculadoras, guía, bonos y beneficios funcionan en el navegador. Un selector deja ver la web como la vería cada plan.
+
+> **Los partidos del oddsmatcher solo son reales con una fuente de cuotas conectada.** Sin ella la web no inventa partidos: lo dice y explica qué falta. Hay una simulación opcional para ver cómo funciona; va marcada como «Simulado», sin enlaces, porque esos partidos no existen. Mira [Ver partidos reales](#ver-partidos-reales).
 
 ## Qué hace
 
 | Sección | Qué hace |
 |---|---|
 | Portada | Para visitantes: presentación, cómo funciona, planes y preguntas frecuentes. Para clientes: primeros pasos, **tus 5 casas** (hecha, en curso o por hacer, lo que vale cada bono y botones a su guía), siguiente paso de cada bono, beneficios y las mejores cuotas del momento. |
-| Oddsmatcher | Miles de parejas de cuotas en la demostración. Mercados 1X2, ganador, más/menos 1,5, 2,5 y 3,5 goles y ambos marcan. Tres modos: **calificante**, **freebet** (SNR) y **reembolso** (por ejemplo Winamax: rating con el valor del reembolso si pierdes). Filtros rápidos y detallados (cuotas, rating, liquidez, fechas, mercados, casas, exchanges y ligas). Cada fila tiene **enlace directo a la casa y a Betfair**. Al pulsar el partido se despliega el cálculo explicado. En **«Comprobar cuota real»** escribes la cuota que ves en la casa y en Betfair y se recalcula todo. Si tu fuente de cuotas no trae alguna de tus casas, te lo dice. |
-| Calculadoras | **Favor-contra** (calificante, SNR, SR, reembolso, underlay/overlay y sensibilidad a la cuota en contra). **Combinadas** cubiertas selección a selección (freebets de DAZN Bet en combinadas). **Rollover** (Sportium). Cada una dice para qué casa la usas y explica cómo calcula. |
+| Oddsmatcher | Todos los partidos de cada casa (fútbol, tenis y baloncesto) para los próximos 7 días. Mercados 1X2, ganador, más/menos 1,5, 2,5 y 3,5 goles y ambos marcan. Tres modos: **calificante**, **freebet** (SNR) y **reembolso** (por ejemplo Winamax: rating con el valor del reembolso si pierdes). Filtros rápidos y detallados (cuotas, rating, liquidez, fechas, deportes, mercados, casas, exchanges y ligas, con buscador de ligas). Cada fila tiene **enlace directo a la casa y a Betfair**. Al pulsar el partido se despliega el cálculo explicado. En **«Comprobar cuota real»** escribes la cuota que ves en la casa y en Betfair y se recalcula todo. Si tu fuente de cuotas no trae alguna de tus casas, te lo dice. |
+| Calculadoras | **Favor-contra** (calificante, SNR, SR, reembolso, underlay/overlay y sensibilidad a la cuota en contra). **Combinadas** cubiertas selección a selección (freebets de DAZN Bet en combinadas). **Rollover** (por si Sportium ofrece su versión con rollover). Cada una dice para qué casa la usas y explica cómo calcula. |
 | Bonos | Tres pestañas. **Bienvenida**: las 5 casas ordenadas por valor, con condiciones, fecha de revisión y enlace a «Cómo se hace». **Recurrentes**: calendario semanal de promociones. **Mis bonos**: tus bonos paso a paso. Cada paso tiene un botón que abre la casa, el oddsmatcher filtrado (casa, cuota mínima, importe y modo) o la calculadora ya rellena. Una barra arriba recuerda el bono en curso. |
 | Beneficios | Registro, gráficos, desglose por casa, tipo y año, exportación CSV y copias de seguridad. Con cuenta, se guarda en el servidor y se ve en cualquier dispositivo. |
 | Guía | Capítulo **Aprende**: 11 lecciones con ejemplos calculados en directo, tests y botones que abren la herramienta. La lección 4 explica a fondo las freebets SNR y SR. Capítulo **Tus 5 casas**: una lección por casa con lo que vale, la tabla de condiciones, cómo se hace, qué evitar y los pasos con botones. Al pulsar un botón, el bono se apunta en Mis bonos. |
@@ -32,13 +34,15 @@ Funciona de dos formas:
 
 Las guías vienen con las condiciones publicadas en noviembre de 2026. Las casas cambian sus ofertas a menudo: revísalas y edítalas en Administración → Bienvenida (cada guía guarda la fecha de revisión que ve el cliente).
 
-| Casa | Bono | Cómo se saca | Herramienta |
+| Casa | Bono | Cómo se saca | Valor estimado |
 |---|---|---|---|
-| Bet365 | Hasta 200 € en créditos de apuesta | Calificante a 1,50 o más, cubierta. Créditos SNR a cuota 4–8, cubiertos. | Oddsmatcher y favor-contra |
-| Winamax | Reembolso del 150 % de lo perdido (hasta 100 € apostados → 150 €) | Una apuesta de 100 € a cuota alta cubierta contando con el reembolso. Si pierde, freebets a cuota 4–8. | Oddsmatcher en modo reembolso |
-| DAZN Bet | 100 % de la primera apuesta en freebets, hasta 200 €, y 10 € extra | Calificante cubierta. La mitad de las freebets va en combinadas: se cubren selección a selección. | Combinadas |
-| Sportium | Bono de 200 € con rollover x8 | Calcula si sale a cuenta y libera el rollover con calificantes de cuota baja y buen rating. | Rollover y oddsmatcher |
-| Retabet | 100 % del primer depósito en freebets, hasta 200 € (en freebets de 25 €) | Calificante a 2,00 o más cubierta. Freebets SNR cubiertas una a una. | Oddsmatcher y favor-contra |
+| Bet365 | Hasta 200 € en créditos de apuesta | Calificante a 1,50 o más, cubierta. Créditos SNR cubiertos. | 123 € (109–132) |
+| Winamax | Reembolso del 150 % de lo perdido (hasta 100 € apostados → 150 €) | Una apuesta de 100 € cubierta contando con el reembolso (oddsmatcher en modo reembolso). | 62 € (54–67) |
+| DAZN Bet | 100 % de la primera apuesta en freebets, hasta 200 €, y 10 € extra | Calificante cubierta. La mitad de las freebets va en combinadas: se cubren selección a selección. | 124 € (110–133) |
+| Sportium | Hasta 200 € en apuestas gratis con los dos primeros depósitos | Dos calificantes de 100 € y dos apuestas gratis de 100 €, a cuota 5,00 como máximo. Algunas webs describen otra versión con rollover x8. | 123 € (109–132) |
+| Retabet | 100 % del primer depósito en freebets, hasta 200 € (en freebets de 25 €) | Calificante a 2,00 o más cubierta. Freebets SNR cubiertas una a una. | 116 € (103–125) |
+
+Los valores son **estimaciones prudentes**: cuentan con cuotas moderadas (freebets a cuota 3,25, calificantes al 95 %) para no necesitar mucho saldo en Betfair. Están calibrados con la tabla pública de ganancias de bienvenida de NinjaBet (Bet365 110–130 €, DAZN Bet 110–130 €, Sportium 120–140 €, Retabet 100–120 €, Winamax 50–70 €). Cada usuario cambia los supuestos en Ajustes, y cada guía enseña de dónde sale su cifra.
 
 ## Planes y qué desbloquean
 
@@ -88,12 +92,13 @@ Abre `http://localhost:8080`, crea una cuenta con ese correo y tendrás el panel
 | `STRIPE_METODO_MODE` | `payment` si el Método se cobra en un pago único (por defecto, suscripción). |
 | `RESEND_API_KEY`, `MAIL_FROM` | Correo con Resend: bienvenida, plan activo, cambio de plan, cancelación, reactivación, fin de la prueba, cobro fallido, contraseña y contrato. Sin clave, los correos salen en la consola del servidor. |
 | `ODDSAPIIO_KEY` | Clave de odds-api.io: cuotas de **Bet365, Winamax y Retabet** de España y, si quieres, Betfair Exchange. |
-| `ODDSAPIIO_BOOKMAKERS` | Casas con su nombre exacto en odds-api.io. Por defecto `Bet365 ES,Winamax ES,Retabet ES,Betfair Exchange`. |
-| `ODDSAPIIO_LEAGUES`, `ODDSAPIIO_MAX_EVENTS` | Ligas (por ejemplo `spain-laliga,england-premier-league`; vacío = todos los partidos de la primera casa) y número máximo de partidos (80). |
+| `ODDSAPIIO_BOOKMAKERS` | Casas con su nombre exacto en odds-api.io. Por defecto `Bet365 ES,Winamax ES,Retabet ES,Betfair ES,Betfair Exchange` (5, las que permite el plan Starter). |
+| `ODDSAPIIO_SPORTS`, `ODDSAPIIO_HOURS`, `ODDSAPIIO_MAX_EVENTS` | Deportes (`football,tennis,basketball`), horas por delante (168 = 7 días) y tope de partidos (2500). Por defecto se traen **todos los partidos con cuota en cada casa**. |
+| `ODDSAPIIO_LEAGUES` | Opcional: limita el fútbol a unas ligas (por ejemplo `spain-laliga,england-premier-league`). Vacío = todas. |
 | `ODDS_API_KEY` | Clave de The Odds API: más casas europeas y Betfair internacional. |
 | `SPORTS`, `REGIONS`, `MARKETS`, `REFRESH_MINUTES` | Ligas, regiones (`eu`), mercados (`h2h,totals`) y frecuencia de descarga (10 min) de The Odds API. |
 | `BETFAIR_APP_KEY`, `BETFAIR_USERNAME`, `BETFAIR_PASSWORD` | Cuotas en contra reales de **Betfair.es** con su liquidez y enlace directo al mercado. |
-| `BETFAIR_COMPETITIONS`, `BETFAIR_HOURS` | Competiciones de Betfair (por nombre, en inglés) y horas por delante (96). |
+| `BETFAIR_COMPETITIONS`, `BETFAIR_HOURS` | `all` (por defecto) trae **todas las competiciones**; o una lista de nombres en inglés para limitarlas. Horas por delante: 168. |
 
 ### Stripe
 
@@ -104,15 +109,46 @@ Abre `http://localhost:8080`, crea una cuenta con ese correo y tendrás el panel
 
 La web usa la versión `2024-06-20` de la API de Stripe, fijada en cada llamada.
 
+### Ver partidos reales
+
+Lo que hace falta para que el oddsmatcher enseñe partidos de verdad, con sus enlaces:
+
+| Para | Hace falta | Qué da |
+|---|---|---|
+| Bet365, Winamax y Retabet | Una clave de odds-api.io (de pago; sus planes empiezan en 49 £ al mes) | Todos sus partidos y cuotas, y el enlace directo al partido en la casa |
+| Betfair.es | Una clave de aplicación de la API de Betfair (se crea con tu cuenta de Betfair.es) | La cuota en contra y la liquidez reales del exchange español, y el número de mercado para el enlace directo |
+| DAZN Bet y Sportium | Nada disponible: ningún proveedor da sus cuotas | Se escribe su cuota en «Comprobar cuota real» de cada partido |
+
+Antes de publicar nada, comprueba tus claves desde tu ordenador (Node 18 o superior):
+
+```bash
+ODDSAPIIO_KEY=tu_clave node scripts/snapshot.mjs --check
+```
+
+Enseña cuántos partidos trae cada casa, cuántas cuotas se emparejan con el exchange, qué parte lleva enlace directo y las mejores calificantes del momento. Con las claves de Betfair.es, añade `BETFAIR_APP_KEY`, `BETFAIR_USERNAME` y `BETFAIR_PASSWORD` delante.
+
+Después arranca la web con las mismas variables y abre `http://localhost:8080`:
+
+```bash
+ODDSAPIIO_KEY=tu_clave ADMIN_EMAILS=tu@correo.es node server/server.mjs
+```
+
+Notas:
+
+- Betfair.es y casi todas las casas bloquean el acceso desde fuera de España. El servidor tiene que estar en España (o tu ordenador) para usar la API de Betfair.es.
+- Betfair pide una licencia comercial para enseñar sus datos a clientes de pago. Consúltalo con ellos antes de vender.
+- Sin servidor, `node scripts/snapshot.mjs` guarda las cuotas del momento en `assets/cuotas.json` y la web las enseña como «Cuotas reales guardadas», con su hora. No se actualizan solas.
+
 ### Cuotas
 
 - **odds-api.io** (`ODDSAPIIO_KEY`) es la fuente para tus casas españolas. Según su lista pública de casas (noviembre de 2026), da **Bet365 ES, Winamax ES y Retabet ES**. **DAZN Bet y Sportium solo están en su versión italiana**, que no sirve. Para esas dos casas, en el oddsmatcher se escribe la cuota real en «Comprobar cuota real».
-  - Las cuotas solo llegan de las casas **seleccionadas en tu cuenta** de odds-api.io. El servidor las selecciona solo la primera vez. Tu plan limita cuántas: Starter (5) basta para las tres casas y Betfair Exchange.
+  - Las cuotas solo llegan de las casas **seleccionadas en tu cuenta** de odds-api.io. El servidor las selecciona solo la primera vez. Tu plan limita cuántas: Starter (5) basta para las tres casas, Betfair ES y Betfair Exchange.
+  - Trae **todos los partidos** con cuota en cada casa para los próximos 7 días (fútbol, tenis y baloncesto), paginando y con 4 peticiones a la vez. Con unos 2.500 partidos son unas 270 peticiones por descarga; el plan de pago permite 5.000 a la hora.
   - Cada cuota trae su enlace directo a la apuesta en la casa cuando odds-api.io lo da; si no, el enlace al partido.
-  - **Betfair Exchange** (el internacional) trae cuota en contra y liquidez, así que el oddsmatcher funciona solo con odds-api.io. Si además conectas Betfair.es, manda Betfair.es, que es el que se usa en España. Si tu plan lo permite, prueba a añadir `Betfair ES`: si trae cuotas en contra, el servidor la usa como Betfair.es.
+  - **Betfair Exchange** (el internacional) trae cuota en contra y liquidez, así que el oddsmatcher funciona solo con odds-api.io. Si además conectas Betfair.es, manda Betfair.es, que es el que se usa en España. `Betfair ES` también se pide por defecto: si trae cuotas en contra, el servidor la usa como Betfair.es y su enlace va directo al partido; si no, sale como una casa más.
   - El conector sigue la documentación oficial y la especificación OpenAPI y tiene pruebas con respuestas de ese formato, pero **no se ha probado con una clave real**. Cualquier error de la API sale en Administración → Resumen → Cuotas.
 - **The Odds API** (`ODDS_API_KEY`) añade más casas europeas y Betfair internacional, con enlaces al partido cuando la casa los da. El servidor une las dos fuentes partido a partido aunque los nombres de los equipos no coincidan.
-- **Betfair.es** (`BETFAIR_*`) da las cuotas en contra del exchange español, que tiene su propio mercado y su propia liquidez. Necesitas una cuenta de Betfair.es, una clave de aplicación (App Key) y que la cuenta permita iniciar sesión por API.
+- **Betfair.es** (`BETFAIR_*`) da las cuotas en contra del exchange español, que tiene su propio mercado y su propia liquidez, y el número de mercado de cada partido, que es lo que permite **abrir Betfair directamente en ese mercado**. Trae todas las competiciones de fútbol, tenis y baloncesto de los próximos 7 días. Necesitas una cuenta de Betfair.es, una clave de aplicación (App Key, se crea en el portal de desarrolladores de Betfair) y que la cuenta permita iniciar sesión por API.
 
 ### Enlaces directos al partido
 
@@ -124,7 +160,8 @@ Cada botón de casa o de Betfair usa el mejor enlace que haya:
 
 Se configura en **Administración → Enlaces** pegando direcciones reales, sin escribir plantillas:
 
-- **Betfair.es**: abre cualquier partido en betfair.es, entra en «Cuotas de partido» y pega la dirección. La web cambia el número de mercado (`1.xxxxxxxxx`) por el de cada partido.
+- **Betfair.es**: abre cualquier partido en betfair.es, entra en «Cuotas de partido» y pega la dirección. La web cambia el número de mercado (`1.xxxxxxxxx`) por el de cada partido. Por defecto usa `https://www.betfair.es/exchange/plus/{sport}/market/{marketId}`.
+- La misma pestaña enseña qué parte de las cuotas cargadas va **directa al partido** en cada casa y en Betfair, para comprobarlo de un vistazo.
 - **Cada casa**: busca «Sevilla» en su web y pega la dirección de la página de resultados. Si la dirección no cambia al buscar, esa casa no permite enlazar la búsqueda.
 
 Desde fuera de España no se pueden abrir betfair.es ni la mayoría de casas (bloquean el acceso), así que estos formatos hay que tomarlos desde España. El de Betfair.es que viene por defecto está sin comprobar.
@@ -160,7 +197,8 @@ Esto no es asesoramiento legal. Antes de cobrar, revisa con un abogado:
 | `server/server.mjs` | Servidor: web, API, cuentas, pagos, contrato, administración y cuotas. |
 | `server/oddsapiio.mjs`, `server/betfair.mjs`, `server/merge.mjs`, `server/oddsfeed.mjs` | odds-api.io, Betfair.es, emparejado de partidos entre fuentes y descarga centralizada. |
 | `server/auth.mjs`, `server/billing.mjs`, `server/db.mjs`, `server/mail.mjs` | Contraseñas y sesiones, Stripe (alta automática, cambio de plan, cancelación y cupones), base de datos y correo. |
-| `tests/` | 61 pruebas: fórmulas, cuotas, emparejado de fuentes, odds-api.io, Betfair, contrato, permisos y el servidor de extremo a extremo con Stripe simulado (`npm test`). |
+| `scripts/snapshot.mjs` | Comprueba las fuentes de cuotas (`--check`) o guarda una instantánea de cuotas reales. |
+| `tests/` | 65 pruebas: fórmulas, cuotas, emparejado de fuentes, odds-api.io, Betfair, contrato, permisos y el servidor de extremo a extremo con Stripe simulado (`npm test`). |
 
 ## Fórmulas
 

@@ -186,13 +186,13 @@ export function normalizeTheOddsApi(events) {
  *   refund, retention: en modo reembolso, lo que devuelve la casa si pierdes y el %
  *     que esperas convertir en dinero. El rating es entonces el beneficio en % del importe.
  *   commissions: { claveExchange: % }, defaultCommission
- *   bookies, exchanges, leagues, families: Set de claves permitidas (null = todas)
+ *   bookies, exchanges, leagues, families, sports: Set de claves permitidas (null = todas)
  *   minOdds, maxOdds, minRating, maxLay, minSize, from, to (ms), q (texto), now (ms)
  */
 export function findMatches(events, opts = {}) {
   const {
     mode = 'normal', stake = 10, refund = 0, retention = 72, commissions = {}, defaultCommission = 2,
-    bookies = null, exchanges = null, leagues = null, families = null,
+    bookies = null, exchanges = null, leagues = null, families = null, sports = null,
     minOdds = 1.01, maxOdds = 1000, minRating = -Infinity, maxLay = Infinity, minSize = 0,
     from = -Infinity, to = Infinity, q = '', now = Date.now(), includeStarted = false,
   } = opts;
@@ -204,6 +204,7 @@ export function findMatches(events, opts = {}) {
     if (!includeStarted && t < now) continue;
     if (t < from || t > to) continue;
     if (leagues && !leagues.has(ev.league)) continue;
+    if (sports && !sports.has(sportGroup(ev))) continue;
     if (query && !normalizeText(`${ev.home} ${ev.away} ${ev.league}`).includes(query)) continue;
 
     const exBooks = ev.books.filter((b) => b.exchange && (!exchanges || exchanges.has(b.key)));
@@ -279,7 +280,9 @@ export function collectBooks(events) {
   const exchanges = new Map();
   const leagues = new Map();
   const families = new Set();
+  const sports = new Set();
   for (const ev of events) {
+    sports.add(sportGroup(ev));
     leagues.set(ev.league, (leagues.get(ev.league) || 0) + 1);
     Object.keys(ev.markets).forEach((mk) => families.add(family(mk)));
     for (const b of ev.books) (b.exchange ? exchanges : bookies).set(b.key, b.title);
@@ -290,8 +293,13 @@ export function collectBooks(events) {
     exchanges: sort(exchanges),
     leagues: [...leagues.keys()].sort((a, b) => a.localeCompare(b, 'es')),
     families: MARKET_FAMILIES.filter(([k]) => families.has(k)),
+    sports: SPORT_NAMES.filter(([k]) => sports.has(k)),
   };
 }
+
+/** Deportes del modelo, en el orden en que se enseñan. */
+export const SPORT_NAMES = [['soccer', 'Fútbol'], ['tennis', 'Tenis'], ['basketball', 'Baloncesto'], ['other', 'Otros']];
+const sportGroup = (ev) => (!ev.sport ? 'soccer' : ['soccer', 'tennis', 'basketball'].includes(ev.sport) ? ev.sport : 'other');
 
 /* ------------------------------------------------------------------------ */
 /* Fuentes                                                                   */
@@ -363,6 +371,21 @@ export async function fetchFromServer(baseUrl = '', fetchImpl = fetch) {
     throw new Error(msg);
   }
   return res.json();
+}
+
+/**
+ * Instantánea de cuotas reales publicada junto a la web (assets/cuotas.json), para
+ * alojamientos sin servidor. La genera `node scripts/snapshot.mjs`. Devuelve null si no hay.
+ */
+export async function fetchSnapshot(fetchImpl = fetch) {
+  try {
+    const res = await fetchImpl('assets/cuotas.json', { cache: 'no-store' });
+    if (!res.ok || !String(res.headers.get('content-type') || '').includes('json')) return null;
+    const data = await res.json();
+    return data && Array.isArray(data.events) && data.events.length ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 /* ------------------------------------------------------------------------ */

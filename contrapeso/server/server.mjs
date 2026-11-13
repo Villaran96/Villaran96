@@ -9,6 +9,8 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { gzip } from 'node:zlib';
+import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { loadConfig, ROOT } from './config.mjs';
 import { openDb } from './db.mjs';
@@ -31,6 +33,7 @@ import {
   DEFAULT_SITE, DEFAULT_GUIDES, DEFAULT_PROMOS, DEFAULT_LESSONS,
 } from '../js/content.js';
 import { cleanSearchLinks, validBetfairTemplate } from '../js/links.js';
+import { offerRange } from '../js/calc.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -113,6 +116,16 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     res.end(body);
   }
   const json = (res, status, body, headers = {}) => send(res, status, JSON.stringify(body), { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-store', ...headers });
+  const gzipAsync = promisify(gzip);
+  /** Respuestas grandes (miles de cuotas) comprimidas si el navegador lo admite. */
+  async function jsonCompressed(req, res, body, headers = {}) {
+    const text = JSON.stringify(body);
+    const base = { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-store', Vary: 'Accept-Encoding', ...headers };
+    if (text.length > 16384 && /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      return send(res, 200, await gzipAsync(text), { ...base, 'Content-Encoding': 'gzip' });
+    }
+    return send(res, 200, text, base);
+  }
 
   function readBody(req, limit) {
     return new Promise((resolveBody, reject) => {
@@ -366,7 +379,11 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     const plan = effectivePlan(ctx.user);
     const { guides, promos, lessons } = db.data.content;
     const active = (list) => list.filter((x) => x.active !== false);
-    const teaser = (x) => ({ id: x.id, bookie: x.bookie, kind: x.kind, title: x.title, locked: true });
+    // Lo bloqueado enseña qué es y cuánto vale (estimación prudente), pero no cómo se hace.
+    const teaser = (x) => {
+      const r = offerRange(x, {});
+      return { id: x.id, bookie: x.bookie, kind: x.kind, title: x.title, locked: true, est: { low: Math.round(r.low), mid: Math.round(r.mid), high: Math.round(r.high) } };
+    };
     const guidesOk = canUse(plan, 'guides.welcome');
     const promosOk = canUse(plan, 'promos.recurring');
     const metodoOk = metodoAccess(ctx.user);
@@ -731,8 +748,8 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     const { user, session } = sessionUser(req);
     const ctx = { req, res, url, params, user, session };
     const result = await match.fn(ctx);
-    const headers = cfg.allowOrigin ? { 'Access-Control-Allow-Origin': cfg.allowOrigin, Vary: 'Origin' } : {};
-    json(res, 200, result, headers);
+    const headers = cfg.allowOrigin ? { 'Access-Control-Allow-Origin': cfg.allowOrigin } : {};
+    await jsonCompressed(req, res, result, headers);
   }
 
   async function serveStatic(req, res, url) {

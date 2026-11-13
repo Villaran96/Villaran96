@@ -28,6 +28,12 @@ const NUMERIC_SET = new Set(['om.autoRefresh']);
 
 main.addEventListener('input', (e) => {
   const el = e.target;
+  if (el.dataset.multiSearch) {
+    // Buscador dentro de una lista larga de filtros (ligas): oculta lo que no coincide.
+    const q = O.normalizeText(el.value);
+    el.closest('.multi-body')?.querySelectorAll('.multi-grid .check').forEach((lab) => { lab.hidden = !!q && !O.normalizeText(lab.textContent).includes(q); });
+    return;
+  }
   if (el.dataset.multiItem || el.dataset.complete) return;
   const k = el.dataset.k;
   if (!k) return;
@@ -69,7 +75,7 @@ main.addEventListener('change', (e) => {
     const checked = boxes.filter((b) => b.checked).map((b) => b.value);
     set(k, checked.length === boxes.length ? [] : checked.length ? checked : ['__none__']);
     const lab = main.querySelector(`[data-multi-label="${k}"]`);
-    if (lab) lab.textContent = checked.length === boxes.length ? (k === 'om.families' || k === 'om.exchanges' ? 'Todos' : 'Todas') : !checked.length ? 'Ninguna' : `${checked.length} de ${boxes.length}`;
+    if (lab) lab.textContent = checked.length === boxes.length ? (k === 'om.families' || k === 'om.exchanges' || k === 'om.sports' ? 'Todos' : 'Todas') : !checked.length ? 'Ninguna' : `${checked.length} de ${boxes.length}`;
     if (k === 'om.bookies') state.om.myOnly = false;
     state.om.limit = 60;
     view?.refresh?.();
@@ -144,8 +150,7 @@ async function boot() {
   seedExamples();
   applyTheme();
   mountShell();
-  odds.events = O.demoEvents(Date.now());
-  odds.updated = new Date().toISOString();
+  if (state.settings.provider === 'demo') Object.assign(odds, { events: O.demoEvents(Date.now()), updated: new Date().toISOString(), source: 'demo' });
   render();
   paintStatus();
   paintAccount();

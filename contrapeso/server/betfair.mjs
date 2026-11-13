@@ -109,9 +109,10 @@ export function mapBetfair(catalogue, books, now = new Date()) {
 }
 
 /** Enlace a un mercado de Betfair.es a partir de una plantilla con {marketId} y {eventId}. */
-export function betfairLink(template, { marketId, eventId }) {
+export function betfairLink(template, { marketId, eventId, sport }) {
   if (!template || !marketId) return null;
-  return template.replace('{marketId}', encodeURIComponent(marketId)).replace('{eventId}', encodeURIComponent(eventId || ''));
+  const slug = { soccer: 'football', tennis: 'tennis', basketball: 'basketball' }[sport] || 'football';
+  return template.split('{sport}').join(slug).replace('{marketId}', encodeURIComponent(marketId)).replace('{eventId}', encodeURIComponent(eventId || ''));
 }
 
 export function createBetfairClient({
@@ -157,18 +158,48 @@ export function createBetfairClient({
     return JSON.parse(text);
   }
 
+  const PROJECTION = ['EVENT', 'EVENT_TYPE', 'COMPETITION', 'MARKET_START_TIME', 'MARKET_DESCRIPTION', 'RUNNER_DESCRIPTION'];
+
   /**
-   * Descarga los mercados de las competiciones pedidas para las próximas `hours`
-   * horas, con la mejor cuota en contra y su liquidez.
+   * Descarga los mercados de las próximas `hours` horas con la mejor cuota en contra y
+   * su liquidez. Con competitions = ['all'] trae TODAS las competiciones de cada
+   * deporte; con una lista de nombres, solo esas.
    */
-  async function fetchEvents({ sports = ['soccer', 'basketball', 'tennis'], competitions = DEFAULT_COMPETITIONS, hours = 96, now = new Date() } = {}) {
+  async function fetchEvents({
+    sports = ['soccer', 'basketball', 'tennis'], competitions = ['all'], hours = 168, now = new Date(), maxMarkets = 8000,
+  } = {}) {
     const from = now.toISOString();
     const to = new Date(now.getTime() + hours * 3600000).toISOString();
+    const everything = competitions.some((c) => /^(\*|all|todas?)$/i.test(String(c).trim()));
     const wanted = new Set(competitions.map((c) => normalizeText(c)));
     const catalogue = [];
+    const seen = new Set();
+    const add = (list) => { for (const m of list || []) if (m && !seen.has(m.marketId)) { seen.add(m.marketId); catalogue.push(m); } };
     for (const sport of sports) {
       const def = BETFAIR_SPORTS[sport];
       if (!def) continue;
+      if (everything) {
+        // Todas las competiciones: se pagina por hora de inicio, tipo de mercado a tipo de
+        // mercado (200 por página es lo que deja pedir Betfair con la descripción).
+        for (const type of def.marketTypes) {
+          let cursor = from;
+          for (let page = 0; page < 80 && catalogue.length < maxMarkets; page += 1) {
+            const res = await call('listMarketCatalogue', {
+              filter: { eventTypeIds: [def.eventTypeId], marketTypeCodes: [type], marketStartTime: { from: cursor, to }, inPlayOnly: false },
+              marketProjection: PROJECTION,
+              sort: 'FIRST_TO_START',
+              maxResults: 200,
+              locale: 'en',
+            });
+            add(res);
+            if (!Array.isArray(res) || res.length < 200) break;
+            const last = res[res.length - 1].marketStartTime;
+            // Si toda la página empieza a la misma hora, se avanza un segundo para no repetirla.
+            cursor = last && last > cursor ? last : new Date(Date.parse(cursor) + 1000).toISOString();
+          }
+        }
+        continue;
+      }
       const comps = await call('listCompetitions', { filter: { eventTypeIds: [def.eventTypeId], marketStartTime: { from, to } } });
       const ids = comps.map((c) => c.competition).filter((c) => sport === 'tennis' || wanted.has(normalizeText(c.name)) || wanted.has(String(c.id))).map((c) => String(c.id));
       // Tenis: las competiciones cambian cada semana; se piden todas las del periodo.
@@ -177,24 +208,31 @@ export function createBetfairClient({
         if (!group.length) continue;
         const res = await call('listMarketCatalogue', {
           filter: { eventTypeIds: [def.eventTypeId], competitionIds: group, marketTypeCodes: def.marketTypes, marketStartTime: { from, to }, inPlayOnly: false },
-          marketProjection: ['EVENT', 'EVENT_TYPE', 'COMPETITION', 'MARKET_START_TIME', 'MARKET_DESCRIPTION', 'RUNNER_DESCRIPTION'],
+          marketProjection: PROJECTION,
           sort: 'FIRST_TO_START',
           maxResults: 200,
           locale: 'en',
         });
-        catalogue.push(...res);
+        add(res);
       }
     }
-    const books = [];
     const ids = catalogue.map((m) => m.marketId);
-    for (let i = 0; i < ids.length; i += 40) {
-      const res = await call('listMarketBook', {
-        marketIds: ids.slice(i, i + 40),
-        priceProjection: { priceData: ['EX_BEST_OFFERS'], exBestOffersOverrides: { bestPricesDepth: 1 } },
-      });
-      books.push(...res);
-    }
-    return mapBetfair(catalogue, books, new Date());
+    const groups = [];
+    for (let i = 0; i < ids.length; i += 40) groups.push(ids.slice(i, i + 40));
+    const results = new Array(groups.length);
+    // Hasta 4 peticiones a la vez: con miles de mercados, una a una tardaría demasiado.
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, groups.length) }, async () => {
+      while (next < groups.length) {
+        const i = next;
+        next += 1;
+        results[i] = await call('listMarketBook', {
+          marketIds: groups[i],
+          priceProjection: { priceData: ['EX_BEST_OFFERS'], exBestOffersOverrides: { bestPricesDepth: 1 } },
+        });
+      }
+    }));
+    return mapBetfair(catalogue, results.flat().filter(Boolean), new Date());
   }
 
   return { login, call, fetchEvents };

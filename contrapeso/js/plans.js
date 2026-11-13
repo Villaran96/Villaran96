@@ -21,9 +21,9 @@ export const DEFAULT_PLANS = {
     tagline: 'Para aprender y hacer tus primeros números.',
     features: [
       'Calculadoras de calificantes, freebets, reembolsos, combinadas y rollover',
-      'Guía completa paso a paso',
+      'Guía para aprender desde cero: 11 lecciones con ejemplos',
       'Seguimiento de tus bonos y beneficios',
-      `Oddsmatcher con las ${FREE_ODDS_ROWS} mejores cuotas`,
+      `Oddsmatcher con las ${FREE_ODDS_ROWS} mejores cuotas del momento`,
     ],
   },
   bienvenida: {
@@ -35,8 +35,9 @@ export const DEFAULT_PLANS = {
     trialDays: 7,
     tagline: 'Saca todo el dinero de los bonos de bienvenida.',
     features: [
-      'Cómo se hace cada bono: Bet365, Winamax, DAZN Bet, Sportium y Retabet',
-      'Oddsmatcher completo con todos los partidos y mercados',
+      'Cómo se hace, paso a paso, el bono de Bet365, Winamax, DAZN Bet, Sportium y Retabet',
+      'Unos 550 € entre los cinco bonos (estimación prudente)',
+      'Oddsmatcher completo: todos los partidos, mercados y filtros',
       'Enlaces directos al partido en la casa y en Betfair',
       'Avisos de cuotas con buen rating',
     ],

@@ -44,7 +44,11 @@ export function learnBetfair(url) {
   const u = String(url || '').trim();
   if (!isHttps(u) || !/betfair/i.test(u)) return null;
   const market = u.match(/1\.\d{6,}/);
-  if (market) return { template: u.replace(market[0], '{marketId}'), kind: 'market' };
+  if (market) {
+    // «…/exchange/plus/football/market/1.234» vale para cualquier deporte cambiando el nombre.
+    const generic = u.replace(market[0], '{marketId}').replace(/\/exchange\/plus\/(football|tennis|basketball)\/market\//i, '/exchange/plus/{sport}/market/');
+    return { template: generic, kind: 'market' };
+  }
   const nums = [...u.matchAll(/\d{6,}/g)];
   if (nums.length) {
     const last = nums[nums.length - 1];
@@ -66,8 +70,10 @@ export function fillSearch(template, query) {
   return String(template).split('{query}').join(encodeURIComponent(query));
 }
 
-export function fillBetfair(template, { marketId, eventId }) {
-  const t = String(template || '');
+const BETFAIR_SPORT = { soccer: 'football', tennis: 'tennis', basketball: 'basketball' };
+
+export function fillBetfair(template, { marketId, eventId, sport }) {
+  const t = String(template || '').split('{sport}').join(BETFAIR_SPORT[sport] || 'football');
   if (t.includes('{marketId}')) return marketId ? t.split('{marketId}').join(encodeURIComponent(marketId)).split('{eventId}').join(encodeURIComponent(eventId || '')) : null;
   if (t.includes('{eventId}')) return eventId ? t.split('{eventId}').join(encodeURIComponent(eventId)) : null;
   return null;

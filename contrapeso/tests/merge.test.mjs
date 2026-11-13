@@ -124,13 +124,54 @@ test('cliente de Betfair: inicia sesión en .es, reintenta al caducar la sesión
     return json(404, {});
   };
   const client = createBetfairClient({ appKey: 'APP', username: 'u', password: 'p', fetchImpl: fakeFetch });
-  const events = await client.fetchEvents({ sports: ['soccer'] });
+  const events = await client.fetchEvents({ sports: ['soccer'], competitions: ['Spanish La Liga'] });
   assert.ok(calls[0].startsWith('https://identitysso.betfair.es/api/login'));
   assert.ok(calls.some((u) => u.startsWith('https://api.betfair.com/exchange/betting/rest/v1.0/listMarketBook/')));
   assert.equal(sessions, 2, 'debe volver a iniciar sesión tras INVALID_SESSION_INFORMATION');
   assert.equal(calls.filter((u) => u.includes('listMarketCatalogue')).length, 1, 'solo la competición pedida');
   assert.equal(events.length, 1);
   assert.equal(events[0].books[0].m.h2h.draw.lay, 3.4);
+});
+
+test('cliente de Betfair: con «all» trae todas las competiciones paginando por hora de inicio', async () => {
+  const requests = [];
+  const mk = (i, type, t) => ({
+    marketId: `1.${type === 'MATCH_ODDS' ? 1 : 2}${String(i).padStart(4, '0')}`, marketStartTime: t, description: { marketType: type },
+    event: { id: String(9000 + i), name: `Local ${i} v Visitante ${i}`, openDate: t }, eventType: { id: '1' }, competition: { name: `Liga ${i % 7}` },
+    runners: type === 'MATCH_ODDS'
+      ? [{ selectionId: 1, runnerName: `Local ${i}`, sortPriority: 1 }, { selectionId: 2, runnerName: `Visitante ${i}`, sortPriority: 2 }, { selectionId: 3, runnerName: 'The Draw', sortPriority: 3 }]
+      : [{ selectionId: 4, runnerName: 'Under 2.5 Goals', sortPriority: 1 }, { selectionId: 5, runnerName: 'Over 2.5 Goals', sortPriority: 2 }],
+  });
+  const t0 = Date.now() + 3600000;
+  const all = [];
+  for (let i = 0; i < 250; i += 1) all.push(mk(i, 'MATCH_ODDS', new Date(t0 + i * 600000).toISOString()));
+  for (let i = 0; i < 30; i += 1) all.push(mk(i, 'OVER_UNDER_25', new Date(t0 + i * 600000).toISOString()));
+  const fakeFetch = async (url, opts) => {
+    const json = (status, body) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) });
+    if (url.endsWith('/login')) return json(200, { token: 'T', status: 'SUCCESS' });
+    const body = JSON.parse(opts.body);
+    requests.push([url.split('/').filter(Boolean).pop(), body]);
+    if (url.includes('listMarketCatalogue')) {
+      const [type] = body.filter.marketTypeCodes;
+      const from = body.filter.marketStartTime.from;
+      return json(200, all.filter((m) => m.description.marketType === type && m.marketStartTime >= from).slice(0, body.maxResults));
+    }
+    if (url.includes('listMarketBook')) {
+      return json(200, body.marketIds.map((id) => ({
+        marketId: id, status: 'OPEN', inplay: false,
+        runners: [1, 2, 3, 4, 5].map((s) => ({ selectionId: s, status: 'ACTIVE', ex: { availableToLay: [{ price: 2 + s / 10, size: 100 }], availableToBack: [{ price: 2, size: 50 }] } })),
+      })));
+    }
+    return json(404, {});
+  };
+  const client = createBetfairClient({ appKey: 'APP', username: 'u', password: 'p', fetchImpl: fakeFetch });
+  const events = await client.fetchEvents({ sports: ['soccer'], competitions: ['all'] });
+  assert.ok(!requests.some(([m]) => m === 'listCompetitions'), 'no hace falta listar competiciones');
+  assert.ok(requests.filter(([m, b]) => m === 'listMarketCatalogue' && b.filter.marketTypeCodes[0] === 'MATCH_ODDS').length >= 2, 'pagina cuando hay más de 200');
+  assert.equal(events.length, 250, 'todos los partidos, sin repetir');
+  assert.equal(events.filter((e) => e.books[0].ids['tot:2.5']).length, 30);
+  assert.ok(events.every((e) => /^1\.1\d{4}$/.test(e.books[0].ids.h2h) && e.books[0].eventId), 'cada partido lleva su mercado y su evento para el enlace');
+  assert.ok(requests.filter(([m]) => m === 'listMarketBook').every(([, b]) => b.marketIds.length <= 40));
 });
 
 /* ------------------------------------------------------------ odds-api.io */
@@ -172,7 +213,8 @@ const ioOdds = {
 };
 
 test('odds-api.io: lee la respuesta oficial (casas españolas, enlaces y mercados exactos)', () => {
-  assert.deepEqual(normEvent(ioEvent), { id: '123', home: 'Sevilla', away: 'Real Betis', start, league: 'Spain - LaLiga' });
+  assert.deepEqual(normEvent(ioEvent), { id: '123', home: 'Sevilla', away: 'Real Betis', start, league: 'Spain - LaLiga', sport: 'soccer' });
+  assert.equal(normEvent({ ...ioEvent, sport: { name: 'Tennis', slug: 'tennis' } }).sport, 'tennis');
   assert.equal(normEvent({ eventId: 'x', homeTeam: { name: 'A' }, awayTeam: { name: 'B' }, startTime: Date.parse(start) / 1000 }).home, 'A');
   assert.equal(normEvent({ id: 1 }), null);
   const books = parseBooks(ioOdds);
@@ -263,6 +305,58 @@ test('odds-api.io: cliente con selección de casas, mercados, ligas y vuelta a u
   res = await denied.fetchEvents();
   assert.equal(res.events.length, 0);
   assert.match(res.errors[0], /401/);
+});
+
+test('odds-api.io: sin ligas trae TODOS los partidos de cada casa, paginando y por deporte', async () => {
+  const calls = [];
+  const soon = (h) => new Date(Date.now() + h * 3600000).toISOString();
+  const evs = {
+    football: {
+      'Bet365 ES': [1, 2, 3, 4, 5].map((id) => ({ id, home: `Local ${id}`, away: `Visitante ${id}`, date: soon(id), league: { name: `Liga ${id % 2}` }, sport: { slug: 'football' } })),
+      'Retabet ES': [4, 5, 6].map((id) => ({ id, home: `Local ${id}`, away: `Visitante ${id}`, date: soon(id), league: { name: `Liga ${id % 2}` }, sport: { slug: 'football' } })),
+    },
+    tennis: { 'Bet365 ES': [{ id: 20, home: 'Alcaraz', away: 'Sinner', date: soon(0.5), league: { name: 'ATP Finals' }, sport: { slug: 'tennis' } }], 'Retabet ES': [] },
+  };
+  const fakeFetch = async (url) => {
+    calls.push(url);
+    const u = new URL(url);
+    const json = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+    if (u.pathname.endsWith('/bookmakers/selected')) return json(200, ['Bet365 ES', 'Retabet ES', 'Betfair Exchange']);
+    if (u.pathname.endsWith('/events')) {
+      const list = evs[u.searchParams.get('sport')]?.[u.searchParams.get('bookmaker')] || [];
+      const skip = Number(u.searchParams.get('skip'));
+      return json(200, list.slice(skip, skip + Number(u.searchParams.get('limit'))));
+    }
+    if (u.pathname.endsWith('/odds/multi')) {
+      return json(200, u.searchParams.get('eventIds').split(',').map((id) => ({
+        id: Number(id), status: 'pending',
+        bookmakers: {
+          'Bet365 ES': [{ name: 'ML', odds: [Number(id) === 20 ? { home: '1.80', away: '2.05' } : { home: '2.10', draw: '3.30', away: '3.50' }] }],
+          'Betfair Exchange': [{ name: 'ML', odds: [{ home: '2.08', layHome: '2.12', depthLayHome: '300', away: '3.4', layAway: '3.6' }] }],
+        },
+      })));
+    }
+    return json(404, {});
+  };
+  const client = createOddsApiIo({
+    key: 'K', base: 'https://api.test/v3', bookmakers: ['Bet365 ES', 'Retabet ES', 'Betfair Exchange'], sports: ['football', 'tennis'], pageSize: 2, maxEvents: 5, fetchImpl: fakeFetch,
+  });
+  const res = await client.fetchEvents();
+  const eventCalls = calls.filter((u) => u.includes('/events?'));
+  assert.ok(eventCalls.some((u) => u.includes('bookmaker=Bet365+ES') && u.includes('skip=2')), 'pagina los partidos de cada casa');
+  assert.ok(eventCalls.some((u) => u.includes('bookmaker=Retabet+ES')));
+  assert.ok(!eventCalls.some((u) => u.includes('Betfair')), 'el exchange no se usa para listar partidos');
+  assert.ok(eventCalls.every((u) => u.includes('status=pending') && u.includes('from=') && u.includes('to=')));
+  assert.equal(res.total, 7, '6 de fútbol sin repetir y 1 de tenis');
+  assert.equal(res.events.length, 5, 'los 5 que empiezan antes');
+  assert.ok(res.errors.some((e) => /hay 7 partidos y se cargan los 5/.test(e)), 'avisa de que hay más');
+  const tennis = res.events.find((e) => e.id === 'oaio-20');
+  assert.equal(tennis.sport, 'tennis');
+  assert.deepEqual(tennis.markets.h2h, ['home', 'away']);
+  const rows = findMatches(res.events, {});
+  assert.ok(rows.some((r) => r.event.sport === 'tennis' && r.exKey === 'betfair_ex_eu'));
+  assert.equal(findMatches(res.events, { sports: new Set(['tennis']) }).every((r) => r.event.sport === 'tennis'), true);
+  assert.ok(findMatches(res.events, { sports: new Set(['soccer']) }).length > 0);
 });
 
 test('une dos fuentes de casas sin duplicar casas ni partidos', () => {

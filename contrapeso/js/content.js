@@ -9,7 +9,7 @@ export const DEFAULT_SITE = {
   address: '',
   email: '',
   supportUrl: '',
-  betfairTemplate: 'https://www.betfair.es/exchange/plus/football/market/{marketId}',
+  betfairTemplate: 'https://www.betfair.es/exchange/plus/{sport}/market/{marketId}',
   // Búsqueda de cada casa con {query}; se aprende en Administración → Enlaces.
   searchLinks: {},
   contractReviewed: false,
@@ -28,11 +28,9 @@ export const DEFAULT_GUIDES = [
     kind: 'bet_get',
     params: { qualStake: 200, minOdds: 1.5, freebet: 200, freebetType: 'snr', minDeposit: 5, claimDays: 30, expiryDays: 7 },
     conditions: 'Condiciones publicadas en noviembre de 2026: 100 % de tu primer depósito en créditos de apuesta, hasta 200 €. Depósito mínimo 5 €. Para recibirlos, apuesta el importe del depósito a cuota 1,50 o más. Pide la oferta en los 30 días siguientes al registro. Los créditos caducan a los 7 días y las ganancias no incluyen su importe (funcionan como freebets SNR).',
-    howto: `**Lo que vale:** con un depósito de 200 € sacas unos 150 €: la calificante cubierta te cuesta unos euros y los créditos se convierten en dinero al 75–80 %.
-
-## Antes de empezar
+    howto: `## Antes de empezar
 - El bono es el 100 % de **tu primer depósito**: si depositas 100 €, recibes 100 € en créditos. Deposita lo que vayas a usar.
-- Necesitas saldo en Betfair para la responsabilidad de la calificante: con 200 € a cuota 2,00 son unos 205 €.
+- Necesitas saldo en Betfair para cubrir la calificante: con 200 € a cuota 2,00 son unos 205 €.
 
 ## La apuesta calificante
 - Apuesta el importe del depósito a cuota **1,50 o más**. Puede ser una apuesta o varias que sumen ese importe.
@@ -41,7 +39,8 @@ export const DEFAULT_GUIDES = [
 
 ## Los créditos de apuesta
 - Funcionan como freebets **SNR**: si aciertas cobras solo la ganancia.
-- Puedes repartirlos. Con 200 €, haz 2 a 4 apuestas de 50–100 € a cuota 4–8: necesitas menos saldo en Betfair (unos 160 € de responsabilidad por cada 50 € a cuota 5) y es más fácil que haya liquidez.
+- Puedes repartirlos en varias apuestas de 50–100 €.
+- **Qué cuota elegir:** a cuota 3–3,5 conviertes en dinero un 63–68 % y necesitas poco saldo en Betfair (unos 90 € por cada 50 € a cuota 3,5). A cuota 5–6 llegas al 73–78 %, pero hace falta más saldo (unos 160 € por cada 50 € a cuota 5) y que haya liquidez.
 - Caducan a los **7 días**: úsalos pronto.
 
 ## Cuidado con
@@ -57,17 +56,19 @@ export const DEFAULT_GUIDES = [
     kind: 'refund',
     params: { stake: 100, refund: 150, minOdds: 1.01, minDeposit: 15, days: 30 },
     conditions: 'Condiciones publicadas en noviembre de 2026: si tus apuestas pierden, te devuelven el 150 % en freebets, hasta 150 €. Cuentan las apuestas perdidas hasta el importe de tu primer depósito y como máximo 100 €, durante los 30 días siguientes al depósito. Depósito mínimo 15 €. Sin cuota mínima. Valen simples y combinadas; no cuentan las apuestas con freebets, las de sistema ni las cerradas con cash out. Las freebets llegan en unas 2 horas.',
-    howto: `**Lo que vale:** unos 75–90 € con una apuesta de 100 € a cuota alta.
-
-## La idea
-Si pierdes, te devuelven 150 € por cada 100 € perdidos. Por eso conviene **una sola apuesta de 100 €** (lo máximo que cuenta) a cuota alta: cuanto más alta, más probable es que pierda en la casa y más vale el reembolso.
+    howto: `## La idea
+Si pierdes, te devuelven 150 € en freebets por cada 100 € perdidos. Por eso conviene **una sola apuesta de 100 €** (lo máximo que cuenta), cubierta en Betfair contando con lo que vale ese reembolso.
 
 ## Paso a paso
 - Deposita **100 €**: el reembolso cuenta hasta el importe del depósito.
-- En el oddsmatcher, modo **Reembolso** con 100 € de apuesta y 150 € de reembolso. Ordena por rating y elige una cuota entre 3 y 8.
+- En el oddsmatcher, modo **Reembolso** con 100 € de apuesta y 150 € de reembolso. Ordena por rating y elige una cuota entre 3 y 6.
 - Apuesta los 100 € a favor y cúbrelos en Betfair con lo que diga la calculadora, que ya cuenta con el reembolso.
 - Si **gana** la apuesta a favor, el bono acaba ahí con el beneficio asegurado.
-- Si **pierde**, te llegan 150 € en freebets en unas horas: juégalas a cuota 4–8 y cúbrelas.
+- Si **pierde**, te llegan 150 € en freebets en unas horas: juégalas a cuota 3 o más y cúbrelas.
+
+## Qué cuota elegir
+- A cuota 3 necesitas unos 140 € de saldo en Betfair; a cuota 5, unos 330 €.
+- El beneficio final es parecido con cualquier cuota de ese rango: elige la de mejor rating que puedas cubrir.
 
 ## Cuidado con
 - No cierres la apuesta con cash out: deja de contar.
@@ -82,16 +83,15 @@ Si pierdes, te devuelven 150 € por cada 100 € perdidos. Por eso conviene **u
     kind: 'bet_get',
     params: { qualStake: 200, minOdds: 1.5, freebet: 200, freebetType: 'snr', minDeposit: 5, expiryDays: 7, accaShare: 50, extra: 10 },
     conditions: 'Condiciones publicadas en noviembre de 2026: recibes en freebets el 100 % de tu primera apuesta, hasta 200 €, y 10 € más si esa apuesta es de fútbol y de 10 € o más. La mitad de las freebets se juega en cualquier mercado y la otra mitad en combinadas o creador de apuestas. Caducan a los 7 días. Promoción hasta el 31/12/2026. Algunas webs la describen como reembolso solo si pierdes y con cuota mínima 2,00: confírmalo en daznbet.es antes de apostar.',
-    howto: `**Lo que vale:** unos 155 € con una primera apuesta de 200 €.
-
-## La apuesta calificante
+    howto: `## La apuesta calificante
 - Tu **primera apuesta** marca el tamaño del bono: 200 € dan 200 € en freebets.
 - Hazla en **fútbol** y de 10 € o más para llevarte también los 10 € extra.
 - Respeta la cuota mínima (1,50 según las condiciones publicadas; si la web dice 2,00, usa 2,00) y cúbrela en Betfair.
 
 ## Las freebets
-- **100 € para cualquier mercado:** juégalas a cuota 4–8 y cúbrelas como freebet SNR.
+- **100 € para cualquier mercado:** juégalas a cuota 3 o más y cúbrelas como freebet SNR.
 - **100 € para combinadas:** haz una combinada de 2 partidos distintos con cuota total entre 4 y 8 y cúbrela selección a selección con la calculadora de **Combinadas** en modo freebet SNR. Cubre la primera antes de que empiece y la segunda cuando acierte la primera.
+- Las de combinadas rinden algo menos: se cubren en dos pasos y pagas dos diferencias de cuota.
 - Caducan a los **7 días**.
 
 ## Cuidado con
@@ -102,24 +102,23 @@ Si pierdes, te devuelven 150 € por cada 100 € perdidos. Por eso conviene **u
   {
     id: 'sportium',
     bookie: 'Sportium',
-    title: '100 % de tu primer depósito hasta 200 €, con rollover x8',
-    kind: 'rollover',
-    params: { deposit: 200, bonus: 200, multiplier: 8, base: 'bonus', minOdds: 1.5, minDeposit: 10, days: 30 },
-    conditions: 'Condiciones publicadas en noviembre de 2026: bono del 100 % de tu primer depósito, hasta 200 €. Depósito mínimo 10 €. Hay que apostarlo 8 veces a cuota 1,50 o más en 30 días. Algunas webs describen otra versión en dos depósitos de 100 € con freebets: mira la vigente en sportium.es.',
-    howto: `**Lo que vale:** unos 150 € con 200 € de bono, si liberas el rollover con buen rating.
+    title: 'Hasta 200 € en apuestas gratis con tus dos primeros depósitos',
+    kind: 'bet_get',
+    params: { qualStake: 200, minOdds: 1.5, freebet: 200, freebetType: 'snr', minDeposit: 20, claimDays: 30, expiryDays: 7, chunk: 100, parts: 2, fbMaxOdds: 5 },
+    conditions: 'Condiciones publicadas en noviembre de 2026 (las webs no coinciden del todo: compruébalas en sportium.es antes de depositar): 100 % en apuestas gratis hasta 200 €, repartido en tus dos primeros depósitos, hasta 100 € con cada uno. La segunda parte se activa al completar la primera. Los dos depósitos tienen que hacerse en los 30 días siguientes al registro. Para recibir cada apuesta gratis hay que apostar el importe a cuota 1,50 o más. Cada apuesta gratis caduca a los 7 días y admite una cuota máxima de 5,00. Depósito mínimo de 10 o 20 € según la fuente. Algunas webs describen otra versión: un bono de 200 € con rollover x8.',
+    howto: `## Cómo va
+- El bono se reparte en **dos depósitos**: hasta 100 € en apuestas gratis con el primero y hasta otros 100 € con el segundo.
+- La segunda parte solo se activa cuando completas la primera.
+- Tienes **30 días** desde el registro para hacer los dos depósitos.
 
-## Antes de empezar
-- Abre la **calculadora de Rollover**: con 200 € de bono y x8 hay que apostar 1.600 €. Con un rating medio del 97 % cuesta unos 48 €.
-- Lee si el rollover se calcula sobre el bono o sobre depósito + bono: cambia mucho lo que hay que apostar.
-
-## Liberar el rollover
-- Haz calificantes a cuota **1,50–2,50**: cuanto más baja la cuota, menos saldo necesitas en Betfair.
-- Elige rating del 96 % o más y liquidez suficiente.
-- Anota cada apuesta: así sabes cuánto llevas.
-- Tienes **30 días**: reparte las apuestas.
+## Cada parte
+- Deposita 100 € y apuéstalos a cuota **1,50 o más**, cubriendo en Betfair con un rating del 95 % o más.
+- Al liquidarse recibes una apuesta gratis de 100 €. Es **SNR** y caduca a los **7 días**.
+- La apuesta gratis no admite cuotas de más de **5,00**: busca entre 3 y 5.
 
 ## Cuidado con
-- Cuando una apuesta a favor pierde, el saldo de la casa baja y el dinero queda en Betfair. Si la casa se queda sin saldo antes de completar el rollover, pierdes el bono, aunque lo cubierto en Betfair compensa esa apuesta.`,
+- Las webs describen este bono de formas distintas. Lee las condiciones en sportium.es antes de depositar.
+- Si lo que ves es un bono con **rollover x8** en vez de apuestas gratis, calcula primero lo que vale con la calculadora de **Rollover**: con 200 € de bono hay que apostar 1.600 € y sale por unos 125 €.`,
     url: 'https://www.sportium.es',
     reviewed: '2026-11',
   },
@@ -130,15 +129,14 @@ Si pierdes, te devuelven 150 € por cada 100 € perdidos. Por eso conviene **u
     kind: 'bet_get',
     params: { qualStake: 200, minOdds: 2, freebet: 200, freebetType: 'snr', minDeposit: 20, claimDays: 7, chunk: 25 },
     conditions: 'Condiciones publicadas en noviembre de 2026: 100 % del primer depósito en freebets, hasta 200 €. Depósito mínimo 20 € (según algunas webs, sin PayPal). Apuesta el importe depositado a cuota 2,00 o más en los 7 días siguientes. Las freebets son de 25 € como máximo cada una y no valen para apuestas de sistema.',
-    howto: `**Lo que vale:** unos 150 € con un depósito de 200 €.
-
-## La apuesta calificante
+    howto: `## La apuesta calificante
 - Deposita con tarjeta o transferencia (algunas webs indican que PayPal no vale).
 - Apuesta el importe del depósito a cuota **2,00 o más** en los **7 días** siguientes y cúbrelo en Betfair.
 
 ## Las freebets
 - Llegan en freebets de **25 €** como máximo: con 200 € son 8.
-- Juega cada una a cuota 4–8 y cúbrela como SNR. Hazlas de una en una: con 25 € a cuota 5 necesitas unos 80 € de saldo en Betfair.
+- Juega cada una a cuota 3 o más y cúbrela como SNR. Hazlas de una en una: con 25 € a cuota 5 necesitas unos 80 € de saldo en Betfair.
+- Al ser tantas apuestas pequeñas, rinden algo menos que una freebet grande: por eso este bono vale un poco menos que otros de 200 €.
 
 ## Cuidado con
 - No uses las freebets en apuestas de sistema.`,
