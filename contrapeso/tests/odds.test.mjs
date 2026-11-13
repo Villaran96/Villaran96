@@ -143,14 +143,14 @@ test('cliente de The Odds API: pide enlaces, lee la cuota restante y normaliza',
   const res = await fetchTheOddsApi({ apiKey: 'k', sports: ['soccer_spain_la_liga'], markets: 'h2h,totals', fetchImpl: fakeFetch });
   assert.equal(res.remaining, 480);
   assert.equal(res.events.length, 1);
-  assert.match(calls[0], /markets=h2h%2Ctotals&oddsFormat=decimal/);
+  assert.match(calls[0], /markets=h2h%2Ch2h_lay%2Ctotals%2Ctotals_lay&oddsFormat=decimal/, 'con las cuotas en contra');
   assert.match(calls[0], /regions=eu/);
   assert.match(calls[0], /includeLinks=true/);
 });
 
 test('cliente de The Odds API: clave inválida corta la descarga', async () => {
   const fakeFetch = async () => ({ ok: false, status: 401, headers: new Map(), json: async () => ({ message: 'API key is not valid' }) });
-  await assert.rejects(fetchTheOddsApi({ apiKey: 'x', sports: ['a', 'b'], fetchImpl: fakeFetch }), /not valid/);
+  await assert.rejects(fetchTheOddsApi({ apiKey: 'x', sports: ['a', 'b'], fetchImpl: fakeFetch }), /no es válida/);
 });
 
 test('modo reembolso: el rating es el beneficio en % del importe y favorece cuotas altas', () => {

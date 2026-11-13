@@ -1,14 +1,39 @@
 // Configuración del servidor a partir de variables de entorno. Ver README.
 
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_SPORTS } from '../js/odds.js';
+import { THE_ODDS_BOOKMAKERS } from '../js/odds.js';
 
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 const list = (v, d) => (v ? String(v).split(',').map((s) => s.trim()).filter(Boolean) : d);
 
-export function loadConfig(env = process.env) {
+/**
+ * Lee un archivo .env (CLAVE=valor por línea; # comentarios; comillas opcionales).
+ * No sobrescribe lo que ya esté en el entorno. Si no existe, devuelve {}.
+ */
+export function readDotEnv(file) {
+  let text;
+  try { text = readFileSync(file, 'utf8'); } catch { return {}; }
+  const out = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!m) continue;
+    let v = m[2].trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    else v = v.replace(/\s+#.*$/, '');
+    out[m[1]] = v;
+  }
+  return out;
+}
+
+/** Entorno del proceso más el archivo .env de la raíz del proyecto (manda el entorno). */
+export const envWithDotEnv = (env = process.env) => ({ ...readDotEnv(join(ROOT, '.env')), ...env });
+
+export function loadConfig(env = envWithDotEnv()) {
   const port = Number(env.PORT || 8080);
   const siteUrl = String(env.SITE_URL || `http://localhost:${port}`).replace(/\/$/, '');
   return {
@@ -19,10 +44,15 @@ export function loadConfig(env = process.env) {
     adminEmails: list(env.ADMIN_EMAILS, []).map((e) => e.toLowerCase()),
     allowOrigin: env.ALLOW_ORIGIN || '',
     odds: {
-      key: env.ODDS_API_KEY || '',
-      sports: list(env.SPORTS, DEFAULT_SPORTS),
+      // The Odds API. La clave nunca sale del servidor, aunque se llame NEXT_PUBLIC_.
+      key: env.NEXT_PUBLIC_ODDS_API_KEY || env.ODDS_API_KEY || '',
+      // Por defecto, La Liga: con el plan gratuito (500 créditos al mes) cada liga cuenta.
+      sports: list(env.SPORTS, ['soccer_spain_la_liga']),
       regions: env.REGIONS || 'eu',
-      markets: env.MARKETS || 'h2h,totals',
+      // Mercados a favor; los «en contra» de Betfair (h2h_lay…) se piden solos.
+      markets: env.MARKETS || 'h2h',
+      // «regions» para pedir por región en vez de por casa.
+      bookmakers: /^regions?$/i.test(String(env.ODDS_API_BOOKMAKERS || '').trim()) ? [] : list(env.ODDS_API_BOOKMAKERS, THE_ODDS_BOOKMAKERS),
       refreshMinutes: Math.max(1, Number(env.REFRESH_MINUTES || 10)),
       apiBase: env.ODDS_API_BASE || 'https://api.the-odds-api.com/v4',
     },

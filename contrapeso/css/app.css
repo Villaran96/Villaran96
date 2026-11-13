@@ -1415,3 +1415,29 @@ table.kv td { color: var(--fg); }
 .om-nosource p { margin: 0; color: var(--fg-2); max-width: 78ch; }
 .om-nosource code { font-family: var(--font-mono); font-size: 0.9em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 .btn-ext.is-disabled { width: fit-content; }
+
+/* Oddsmatcher: vista por partido (1X2 de cada casa) */
+.om-view { display: flex; justify-content: flex-start; }
+.match-grid-wrap { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.match-grid { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.match-grid th, .match-grid td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+.match-grid thead th { background: var(--surface-2); font-size: 12px; font-weight: 600; color: var(--muted); position: sticky; top: 0; }
+.match-grid .mg-book { color: var(--fg); font-size: 12.5px; border-left: 1px solid var(--line); }
+.match-grid .mg-book span { display: block; font-size: 10.5px; font-weight: 600; color: var(--lay-ink); text-transform: uppercase; letter-spacing: 0.04em; }
+.match-grid .mg-sub th:nth-child(3n+1) { border-left: 1px solid var(--line); }
+.match-grid .is-ex { background: var(--lay-bg); }
+.match-grid thead th.is-ex { background: var(--lay-bg); }
+.match-grid .mg-when, .match-grid .mg-event { text-align: left; }
+.match-grid td.mg-when { display: table-cell; }
+.match-grid td.mg-when span { display: block; font-size: 12px; color: var(--muted); }
+.match-grid td.mg-event { white-space: normal; min-width: 190px; }
+.match-grid td.mg-event .link { text-align: left; padding: 0; color: var(--fg); }
+.match-grid td.mg-event .muted { display: block; }
+.match-grid .mg-odd { font: 500 13.5px var(--font-mono); color: var(--fg-2); }
+.match-grid tbody tr td.mg-odd:nth-child(3n) { border-left: 1px solid var(--line); }
+.match-grid .mg-odd.is-best { color: var(--pos); font-weight: 700; background: var(--pos-bg); }
+.match-grid .mg-lay { color: var(--lay-ink); background: var(--lay-bg); }
+.match-grid .mg-lay.is-best { color: var(--lay-ink); background: var(--lay-bg); box-shadow: inset 0 0 0 1px var(--lay-line); }
+.match-grid .is-empty { color: var(--muted); }
+.match-grid tbody tr:hover td { background-color: color-mix(in srgb, var(--raise) 60%, transparent); }
+.om-problem { border-color: var(--warn); }

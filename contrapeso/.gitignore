@@ -5,3 +5,8 @@ data/
 
 # Instantánea de cuotas generada con scripts/snapshot.mjs.
 assets/cuotas.json
+
+# Claves locales: nunca se suben al repositorio.
+.env
+.env.*
+!.env.example

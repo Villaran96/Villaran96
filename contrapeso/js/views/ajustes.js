@@ -62,14 +62,15 @@ function sourceSection() {
     ${s.provider === 'api' || (s.provider === 'auto' && !serverOdds) ? `<div class="form-grid">
       <label class="field" for="f-settings-apiKey"><span class="field-label">Clave de The Odds API</span><span class="field-input"><input id="f-settings-apiKey" data-k="settings.apiKey" type="password" value="${esc(s.apiKey)}" autocomplete="off" spellcheck="false"></span>
         <span class="field-hint">Se guarda solo en este navegador. Tiene plan gratuito de 500 créditos al mes en the-odds-api.com.</span></label>
-      ${select('settings.regions', 'Casas de', [['eu', 'Europa'], ['eu,uk', 'Europa y Reino Unido'], ['uk', 'Reino Unido']])}
+      ${field('settings.bookmakers', 'Casas (claves de The Odds API)', { mode: 'text', hint: 'Bet365 no está en The Odds API para La Liga y Winamax solo como winamax_fr. Vacío = todas las casas de la región.' })}
+      ${select('settings.regions', 'Región (si no pones casas)', [['eu', 'Europa'], ['eu,uk', 'Europa y Reino Unido'], ['uk', 'Reino Unido']])}
       ${select('settings.markets', 'Mercados', [['h2h', '1X2 / ganador'], ['h2h,totals', '1X2 y más/menos goles']])}
       ${field('settings.cacheMinutes', 'Reutilizar cuotas durante', { unit: 'min' })}
     </div>
     <fieldset class="checks"><legend class="field-label">Ligas</legend>
       ${sports.map((k) => `<label class="check"><input type="checkbox" data-act-change="sport-toggle" value="${k}" ${s.sports.includes(k) ? 'checked' : ''}><span>${esc(SPORT_NAMES[k] || k)}</span></label>`).join('')}
     </fieldset>
-    <p class="field-hint">Cada actualización gasta <b>${s.sports.length * s.regions.split(',').length * String(s.markets || 'h2h').split(',').length}</b> créditos.</p>
+    <p class="field-hint">Cada actualización gasta <b>${O.oddsApiCost({ sports: s.sports, markets: s.markets || 'h2h', bookmakers: String(s.bookmakers || '').split(',').map((x) => x.trim()).filter(Boolean), regions: s.regions })}</b> créditos (las cuotas en contra de Betfair cuentan como un mercado más).</p>
     <div class="actions"><button class="btn" data-act="test-api">${icon('bolt', 16)} Probar la clave</button><button class="btn btn-primary" data-act="apply-source">${icon('refresh', 16)} Cargar cuotas</button></div>
     <p id="api-test" class="field-hint" aria-live="polite"></p>` : `<div class="actions"><button class="btn btn-primary" data-act="apply-source">${icon('refresh', 16)} Cargar cuotas</button></div>`}
   </section>`;

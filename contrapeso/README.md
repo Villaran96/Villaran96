@@ -95,8 +95,9 @@ Abre `http://localhost:8080`, crea una cuenta con ese correo y tendrás el panel
 | `ODDSAPIIO_BOOKMAKERS` | Casas con su nombre exacto en odds-api.io. Por defecto `Bet365 ES,Winamax ES,Retabet ES,Betfair ES,Betfair Exchange` (5, las que permite el plan Starter). |
 | `ODDSAPIIO_SPORTS`, `ODDSAPIIO_HOURS`, `ODDSAPIIO_MAX_EVENTS` | Deportes (`football,tennis,basketball`), horas por delante (168 = 7 días) y tope de partidos (2500). Por defecto se traen **todos los partidos con cuota en cada casa**. |
 | `ODDSAPIIO_LEAGUES` | Opcional: limita el fútbol a unas ligas (por ejemplo `spain-laliga,england-premier-league`). Vacío = todas. |
-| `ODDS_API_KEY` | Clave de The Odds API: más casas europeas y Betfair internacional. |
-| `SPORTS`, `REGIONS`, `MARKETS`, `REFRESH_MINUTES` | Ligas, regiones (`eu`), mercados (`h2h,totals`) y frecuencia de descarga (10 min) de The Odds API. |
+| `NEXT_PUBLIC_ODDS_API_KEY` (o `ODDS_API_KEY`) | Clave de The Odds API. Puede ir en el archivo `.env`. Solo la usa el servidor. |
+| `SPORTS`, `MARKETS`, `ODDS_API_BOOKMAKERS` | Ligas (`soccer_spain_la_liga`), mercados (`h2h`; los «en contra» se añaden solos) y casas (`bet365,winamax_fr,betfair_ex_eu`; `regions` para pedir por región). |
+| `REGIONS`, `REFRESH_MINUTES` | Región si no se piden casas (`eu`) y tiempo mínimo entre descargas (10 min); el servidor espera más si hace falta para no agotar los créditos del mes. |
 | `BETFAIR_APP_KEY`, `BETFAIR_USERNAME`, `BETFAIR_PASSWORD` | Cuotas en contra reales de **Betfair.es** con su liquidez y enlace directo al mercado. |
 | `BETFAIR_COMPETITIONS`, `BETFAIR_HOURS` | `all` (por defecto) trae **todas las competiciones**; o una lista de nombres en inglés para limitarlas. Horas por delante: 168. |
 
@@ -108,6 +109,28 @@ Abre `http://localhost:8080`, crea una cuenta con ese correo y tendrás el panel
 4. Si quieres, crea códigos de descuento en Administración → Pagos (por ejemplo LANZAMIENTO al 30 % durante 3 meses). Se escriben en la página de pago.
 
 La web usa la versión `2024-06-20` de la API de Stripe, fijada en cada llamada.
+
+### The Odds API (conectada)
+
+La web ya descarga cuotas reales de **La Liga** con The Odds API.
+
+1. Copia `.env.example` como `.env` y pon tu clave en `NEXT_PUBLIC_ODDS_API_KEY`. El archivo `.env` no se sube al repositorio.
+2. Arranca el servidor: `node server/server.mjs`. Lee la clave del `.env` y la usa **solo en el servidor**: el navegador recibe las cuotas ya descargadas, nunca la clave (aunque el nombre lleve `NEXT_PUBLIC_`).
+3. El oddsmatcher enseña los partidos en dos vistas: **Oddsmatcher** (cada selección con su cuota a favor, la cuota en contra de Betfair y el rating) y **Por partido (1X2)** (el 1, X y 2 de cada casa en columnas).
+
+Qué se pide y por qué:
+
+| Parámetro | Valor | Motivo |
+|---|---|---|
+| `oddsFormat` | `decimal` | `eu` no existe: la API responde 422 «Invalid odds format» |
+| `bookmakers` | `bet365,winamax_fr,betfair_ex_eu` | Winamax solo está como `winamax_fr` y `winamax_de`. Bet365 no está para La Liga (comprobado el 13/11/2026); se pide igual por si la añaden |
+| `markets` | `h2h,h2h_lay` | Sin `h2h_lay` no llega la cuota **en contra** de Betfair y no se puede cubrir nada |
+
+Créditos: cada descarga gasta 2 (1X2 a favor y en contra). El plan gratuito trae 500 al mes, así que el servidor **reparte los que quedan hasta fin de mes** (con 497 créditos, una descarga cada hora y media o dos horas, nunca menos de `REFRESH_MINUTES`). Si la clave no vale (401), se acaban los créditos o la API frena las peticiones (429), la web enseña un mensaje claro en vez de romperse y conserva las últimas cuotas buenas, con su hora.
+
+Lo que The Odds API **no** puede dar para tus 5 casas: Bet365, DAZN Bet, Sportium, Retabet ni Winamax España (solo Winamax Francia, cuyas cuotas son parecidas pero no iguales). Para tus casas españolas, odds-api.io y la API de Betfair.es (más abajo).
+
+Si el servidor está detrás de un proxy, Node necesita `NODE_USE_ENV_PROXY=1` (Node 22.21 o superior) para salir a internet con `fetch`.
 
 ### Ver partidos reales
 
@@ -198,7 +221,7 @@ Esto no es asesoramiento legal. Antes de cobrar, revisa con un abogado:
 | `server/oddsapiio.mjs`, `server/betfair.mjs`, `server/merge.mjs`, `server/oddsfeed.mjs` | odds-api.io, Betfair.es, emparejado de partidos entre fuentes y descarga centralizada. |
 | `server/auth.mjs`, `server/billing.mjs`, `server/db.mjs`, `server/mail.mjs` | Contraseñas y sesiones, Stripe (alta automática, cambio de plan, cancelación y cupones), base de datos y correo. |
 | `scripts/snapshot.mjs` | Comprueba las fuentes de cuotas (`--check`) o guarda una instantánea de cuotas reales. |
-| `tests/` | 65 pruebas: fórmulas, cuotas, emparejado de fuentes, odds-api.io, Betfair, contrato, permisos y el servidor de extremo a extremo con Stripe simulado (`npm test`). |
+| `tests/` | 71 pruebas: fórmulas, cuotas, emparejado de fuentes, odds-api.io, Betfair, contrato, permisos y el servidor de extremo a extremo con Stripe simulado (`npm test`). |
 
 ## Fórmulas
 

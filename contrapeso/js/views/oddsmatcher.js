@@ -119,16 +119,18 @@ function presetOn(id) {
 }
 
 function omStatusHTML() {
-  const warn = odds.error ? `<div class="banner banner-warn">${icon('info', 16)}<span>${esc(odds.error)}</span>${/clave/i.test(odds.error) ? '<a class="btn btn-ghost btn-sm" href="#ajustes">Ajustes</a>' : ''}</div>` : '';
+  const stale = odds.problem && odds.events.length
+    ? `<div class="banner banner-warn">${icon('info', 16)}<span><b>${esc(PROBLEM_TITLE[odds.problem.code] || 'La fuente de cuotas ha fallado')}.</b> Se enseñan las últimas cuotas buenas${odds.updated ? `, de ${esc(fmt.ago(odds.updated))}` : ''}: comprueba cada cuota antes de apostar. ${esc(odds.problem.message)}</span></div>` : '';
+  const warn = odds.error && odds.events.length ? `<div class="banner banner-warn">${icon('info', 16)}<span>${esc(odds.error)}</span>${/clave/i.test(odds.error) ? '<a class="btn btn-ghost btn-sm" href="#ajustes">Ajustes</a>' : ''}</div>` : '';
   const demo = odds.source === 'demo'
     ? `<div class="banner banner-sim" role="alert">${icon('info', 18)}<span><b>Simulación: estos partidos y cuotas son inventados.</b> No existen en las casas ni en Betfair, no los busques. Sirven solo para ver cómo funciona la herramienta.</span><button class="btn btn-sm" data-act="om-sim-off">Quitar la simulación</button></div>` : '';
   const snap = odds.source === 'snapshot'
     ? `<div class="banner">${icon('clock', 16)}<span>Cuotas reales guardadas ${odds.updated ? fmt.ago(odds.updated) : ''}. No se actualizan solas: comprueba siempre la cuota en la casa y en Betfair antes de apostar.</span></div>` : '';
-  const missing = odds.source !== 'demo' && odds.source !== 'none' ? missingBookies() : [];
+  const missing = odds.events.length && odds.source !== 'demo' && odds.source !== 'none' ? missingBookies() : [];
   const miss = missing.length
     ? `<div class="banner banner-warn">${icon('info', 16)}<span>Tu fuente de cuotas no trae ${esc(missing.join(', '))}. Para verlas aquí hace falta un proveedor que las cubra (Ajustes → Fuente de cuotas). Mientras, abre cualquier partido y escribe la cuota real de la casa: el cálculo se hace igual.</span></div>` : '';
   const warnings = odds.warnings && odds.warnings.length ? `<details class="warn-list"><summary>${odds.warnings.length} avisos de la fuente de cuotas</summary><ul>${odds.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></details>` : '';
-  return `${warn}${demo}${snap}${miss}${warnings}`;
+  return `${stale}${warn}${demo}${snap}${miss}${odds.problem ? '' : warnings}`;
 }
 
 const MODE_HINT = {
@@ -297,6 +299,88 @@ export function rowDetail(r, mode) {
   </div>`;
 }
 
+const PROBLEM_TITLE = {
+  invalid_key: 'La clave de The Odds API no es válida',
+  quota: 'Se han acabado los créditos de The Odds API de este mes',
+  rate_limit: 'The Odds API ha recibido demasiadas peticiones (error 429)',
+  network: 'No se ha podido conectar con The Odds API',
+  other: 'La fuente de cuotas ha devuelto un error',
+};
+const PROBLEM_HELP = {
+  invalid_key: 'Revisa la variable NEXT_PUBLIC_ODDS_API_KEY del servidor (archivo .env) y reinícialo. Si la clave se ha filtrado, pide otra en the-odds-api.com.',
+  quota: 'El plan gratuito trae 500 créditos al mes; cada descarga de La Liga gasta 2 (cuotas a favor y en contra). Vuelven el día 1, o puedes subir de plan en the-odds-api.com.',
+  rate_limit: 'Es un freno temporal. El servidor espera unos minutos y lo vuelve a intentar solo.',
+  network: 'El servidor no llega a internet o a api.the-odds-api.com. Se reintenta solo.',
+  other: 'Mira el detalle en Administración → Resumen → Cuotas.',
+};
+
+/** Panel limpio cuando la fuente falla y no hay ninguna cuota buena guardada. */
+function problemPanel(p) {
+  const code = p.code || 'other';
+  return `<section class="panel om-nosource om-problem" role="alert">
+    <div class="panel-head"><h2>${icon('info', 18)} ${esc(PROBLEM_TITLE[code] || PROBLEM_TITLE.other)}</h2>${p.status ? `<span class="pill pill-skip">Error ${esc(String(p.status))}</span>` : ''}</div>
+    <p>${esc(p.message || '')}</p>
+    <p class="muted small">${esc(PROBLEM_HELP[code] || PROBLEM_HELP.other)}</p>
+    <div class="actions"><button class="btn" data-act="refresh-odds">${icon('refresh', 15)} Volver a intentarlo</button><a class="btn btn-ghost" href="#calculadora">${icon('calc', 15)} Calcular con mis propias cuotas</a></div>
+  </section>`;
+}
+
+const fmtOdd = (x) => (x ? fmt.odds(x) : '—');
+
+const WINDOW_NAME = { today: 'hoy', '24h': 'las próximas 24 horas', '48h': 'las próximas 48 horas', '7d': 'los próximos 7 días' };
+/** Si el filtro «Cuándo» deja partidos fuera, lo dice con un botón para verlos. */
+function laterHint() {
+  const o = state.om;
+  if (!o.window || o.window === 'all') return '';
+  const end = windowEnd(o.window);
+  const later = odds.events.filter((e) => Date.parse(e.start) > end).length;
+  return later ? `<p class="muted small">Hay <b>${later}</b> ${later === 1 ? 'partido' : 'partidos'} después de ${WINDOW_NAME[o.window] || 'esa fecha'}.</p><button class="btn btn-sm btn-primary" data-set="om.window" data-v="all">Ver todos los partidos</button>` : '';
+}
+
+/** Vista «Por partido»: 1, X y 2 de cada casa y la cuota en contra de Betfair. */
+function matchView() {
+  const o = state.om;
+  const av = available().keys;
+  const grid = O.matchGrid(odds.events, {
+    bookies: bookieFilter(),
+    exchanges: filterSet(o.exchanges, av.exchanges),
+    leagues: filterSet(o.leagues, av.leagues),
+    sports: filterSet(o.sports, av.sports),
+    to: windowEnd(o.window),
+    q: o.q,
+  });
+  const full = can('odds.full');
+  const limit = full ? nz(o.limit, 60) : FREE_ODDS_ROWS;
+  const shown = grid.rows.slice(0, limit);
+  const head = `<div class="results-head"><span><b>${grid.rows.length.toLocaleString('es-ES')}</b> ${grid.rows.length === 1 ? 'partido' : 'partidos'}${grid.rows.length > shown.length ? `, se muestran ${shown.length}` : ''}</span>
+    <span class="muted small">Cuotas 1 · X · 2 de cada casa. En los exchanges, la cuota <b class="lay-ink">en contra</b>. ${grid.cols.filter((c) => !c.exchange).length > 1 ? ' En verde, la mejor de cada resultado.' : ''}</span></div>`;
+  if (!grid.rows.length) return `${head}<div class="empty panel"><p>Ningún partido cumple los filtros.</p>${laterHint()}<button class="btn btn-sm" data-act="om-reset">Quitar filtros</button></div>`;
+  const cell = (row, col, ok) => {
+    const c = row.cells[col.key]?.[ok];
+    if (!c) return '<td class="mg-odd is-empty">—</td>';
+    if (col.exchange) {
+      const best = c.lay && c.lay === row.best[ok].lay;
+      return `<td class="mg-odd mg-lay ${best ? 'is-best' : ''}" title="${c.back ? `A favor ${fmt.odds(c.back)}` : ''}">${fmtOdd(c.lay)}</td>`;
+    }
+    const best = c.back && c.back === row.best[ok].back;
+    return `<td class="mg-odd ${best ? 'is-best' : ''}">${fmtOdd(c.back)}</td>`;
+  };
+  return `${head}
+  <div class="table-wrap match-grid-wrap"><table class="match-grid" aria-label="Cuotas 1X2 por partido">
+    <thead>
+      <tr><th rowspan="2" class="mg-when">Fecha</th><th rowspan="2" class="mg-event">Partido</th>${grid.cols.map((c) => `<th colspan="3" class="mg-book ${c.exchange ? 'is-ex' : ''}">${esc(c.title)}${c.exchange ? '<span>en contra</span>' : ''}</th>`).join('')}</tr>
+      <tr class="mg-sub">${grid.cols.map((c) => `<th class="${c.exchange ? 'is-ex' : ''}">1</th><th class="${c.exchange ? 'is-ex' : ''}">X</th><th class="${c.exchange ? 'is-ex' : ''}">2</th>`).join('')}</tr>
+    </thead>
+    <tbody>${shown.map((r) => `<tr>
+      <td class="mg-when"><span>${esc(fmt.date(r.start))}</span><b>${esc(fmt.time(r.start))}</b></td>
+      <td class="mg-event"><button class="link" data-act="om-match-open" data-q="${esc(r.event.home)}"><b>${esc(r.event.home)} – ${esc(r.event.away)}</b></button><span class="muted small">${esc(r.event.league)}${odds.source === 'demo' ? ' · <span class="tag tag-sim">Simulado</span>' : ''}</span></td>
+      ${grid.cols.map((c) => ['home', 'draw', 'away'].map((ok) => cell(r, c, ok)).join('')).join('')}
+    </tr>`).join('')}</tbody>
+  </table></div>
+  ${!full && grid.rows.length > shown.length ? `<div class="om-lock">${icon('lock', 18)}<span><b>${(grid.rows.length - shown.length).toLocaleString('es-ES')} partidos más</b>. Desbloquéalos todos con el plan ${esc(plans().bienvenida.name)}.</span><a class="btn btn-primary btn-sm" href="#planes">Ver planes</a></div>` : ''}
+  ${full && grid.rows.length > limit ? `<div class="more"><button class="btn" data-act="om-more">Mostrar ${Math.min(60, grid.rows.length - limit)} más</button></div>` : ''}`;
+}
+
 /** Qué hace falta para ver partidos reales: se enseña cuando no hay ninguna fuente de cuotas. */
 function noSourcePanel() {
   const server = session.backend;
@@ -317,7 +401,16 @@ function noSourcePanel() {
 }
 
 function omResults() {
-  if (odds.source === 'none' && !odds.events.length) return odds.loading ? '<div class="empty panel"><p>Cargando cuotas…</p></div>' : noSourcePanel();
+  if (!odds.events.length && odds.loading) return '<div class="empty panel"><p>Cargando cuotas…</p></div>';
+  if (!odds.events.length && odds.problem) return problemPanel(odds.problem);
+  if (odds.source === 'none' && !odds.events.length) return noSourcePanel();
+  const o = state.om;
+  const tabs = `<div class="om-view">${seg('om.view', [['rows', 'Oddsmatcher'], ['match', 'Por partido (1X2)']])}</div>`;
+  if (o.view === 'match') return `${tabs}${matchView()}`;
+  return `${tabs}${omRowsView()}`;
+}
+
+function omRowsView() {
   const o = state.om;
   const rows = omRows();
   const full = can('odds.full');
@@ -328,7 +421,7 @@ function omResults() {
     <span class="muted small">Beneficio con ${fmt.eur(nz(o.stake, 10))} ${unit} · pulsa un partido para ver el cálculo</span></div>`;
   if (!rows.length) {
     const noMine = o.myOnly && !bookieKeysFor(state.settings.myBookies).length;
-    return `${head}<div class="empty panel"><p>${noMine ? 'La fuente de cuotas no trae ninguna de tus casas.' : 'Ninguna cuota cumple los filtros.'}</p><p class="muted small">${noMine ? 'Quita «Solo mis casas» o conecta un proveedor que las cubra.' : 'Baja el rating mínimo, amplía el rango de cuotas o quita el filtro de casas.'}</p><button class="btn btn-sm" data-act="om-reset">Quitar filtros</button></div>`;
+    return `${head}<div class="empty panel"><p>${noMine ? 'La fuente de cuotas no trae ninguna de tus casas.' : 'Ninguna cuota cumple los filtros.'}</p><p class="muted small">${noMine ? 'Quita «Solo mis casas» o conecta un proveedor que las cubra.' : 'Baja el rating mínimo, amplía el rango de cuotas o quita el filtro de casas.'}</p>${laterHint()}<button class="btn btn-sm" data-act="om-reset">Quitar filtros</button></div>`;
   }
   const lockRow = !full && rows.length > shown.length
     ? `<div class="om-lock">${icon('lock', 18)}<span><b>${(rows.length - shown.length).toLocaleString('es-ES')} cuotas más</b> con tus filtros. ${odds.limited ? 'Tu plan recibe solo los mejores partidos.' : ''} Desbloquéalas todas con el plan ${esc(plans().bienvenida.name)}.</span><a class="btn btn-primary btn-sm" href="#planes">Ver planes</a></div>`
@@ -426,11 +519,12 @@ registerActions({
   },
   'om-reset': () => {
     Object.assign(state.om, {
-      minOdds: 1.01, maxOdds: 1000, minRatings: { normal: 80, snr: 50, sr: 70, refund: 0 }, window: 'all', q: '', bookies: [], exchanges: [], leagues: [], families: [], myOnly: false, minSize: '', limit: 60,
+      minOdds: 1.01, maxOdds: 1000, minRatings: { normal: 80, snr: 50, sr: 70, refund: 0 }, window: 'all', q: '', bookies: [], exchanges: [], leagues: [], families: [], sports: [], myOnly: false, minSize: '', limit: 60,
     });
     save();
     render();
   },
+  'om-match-open': (b) => { Object.assign(state.om, { view: 'rows', q: b.dataset.q || '', open: null, limit: 60 }); save(); render(); },
   'om-sim-on': () => { state.settings.provider = 'demo'; save(); loadOdds({ force: true }).then(render); },
   'om-sim-off': () => { state.settings.provider = 'auto'; save(); loadOdds({ force: true }).then(render); },
   'multi-all': (b) => { set(b.dataset.k, []); render(); },

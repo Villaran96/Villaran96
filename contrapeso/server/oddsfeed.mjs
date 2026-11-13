@@ -1,13 +1,22 @@
 // Descarga centralizada de cuotas: casas desde odds-api.io y The Odds API y, si hay
 // credenciales, cuotas en contra reales de Betfair.es, unidas partido a partido.
 
-import { fetchTheOddsApi, findMatches } from '../js/odds.js';
+import { fetchTheOddsApi, findMatches, oddsApiCost } from '../js/odds.js';
 import { createBetfairClient } from './betfair.mjs';
 import { mergeExchange, mergeBookmakers } from './merge.mjs';
 import { createOddsApiIo } from './oddsapiio.mjs';
 
-export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {}) {
-  let cache = { updated: null, events: [], remaining: null, errors: [], sources: [] };
+/** Milisegundos hasta el día 1 del mes siguiente (UTC), cuando vuelven los créditos. */
+export function msToNextMonth(now = Date.now()) {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) - now;
+}
+
+export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log, now: clock = () => Date.now() } = {}) {
+  let cache = { updated: null, events: [], remaining: null, errors: [], sources: [], problem: null };
+  // The Odds API se descarga solo cuando toca (para no gastar los créditos del mes);
+  // entre medias se reutilizan sus últimas cuotas al unirlas con las otras fuentes.
+  let theOdds = { events: [], at: 0, dueAt: 0, problem: null };
   let refreshing = null;
   const bf = cfg.betfair.appKey && cfg.betfair.username && cfg.betfair.password
     ? createBetfairClient({ ...cfg.betfair, fetchImpl })
@@ -36,16 +45,25 @@ export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {
         }
       }
       if (cfg.odds.key) {
-        try {
-          const r = await fetchTheOddsApi({
-            apiKey: cfg.odds.key, sports: cfg.odds.sports, regions: cfg.odds.regions, markets: cfg.odds.markets, includeLinks: true, fetchImpl, base: cfg.odds.apiBase,
-          });
-          events = events.length ? mergeBookmakers(events, r.events) : r.events;
-          remaining = r.remaining;
-          errors.push(...r.errors);
-          sources.push(`The Odds API (${r.events.length} partidos)`);
-        } catch (e) {
-          errors.push(`The Odds API: ${e.message}`);
+        const t = clock();
+        if (t >= theOdds.dueAt || !theOdds.at) {
+          try {
+            const r = await fetchTheOddsApi({
+              apiKey: cfg.odds.key, sports: cfg.odds.sports, regions: cfg.odds.regions, markets: cfg.odds.markets, bookmakers: cfg.odds.bookmakers || [], includeLinks: true, fetchImpl, base: cfg.odds.apiBase,
+            });
+            theOdds = { events: r.events, at: t, dueAt: 0, problem: null };
+            remaining = r.remaining;
+            errors.push(...r.errors);
+          } catch (e) {
+            errors.push(`The Odds API: ${e.message}`);
+            if (e.remaining != null) remaining = e.remaining;
+            theOdds = { ...theOdds, problem: { source: 'The Odds API', code: e.code || 'other', status: e.status || null, message: e.message, at: new Date(t).toISOString() } };
+          }
+          theOdds.dueAt = t + theOddsDelay(remaining, t);
+        }
+        if (theOdds.events.length) {
+          events = events.length ? mergeBookmakers(events, theOdds.events) : theOdds.events;
+          sources.push(`The Odds API (${theOdds.events.length} partidos)`);
         }
       }
       if (bf) {
@@ -58,10 +76,11 @@ export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {
           errors.push(`Betfair: ${e.message}`);
         }
       }
+      const problem = theOdds.problem;
       if (events.length || !cache.events.length) {
-        cache = { updated: new Date().toISOString(), events, remaining, errors, sources };
+        cache = { updated: new Date().toISOString(), events, remaining, errors, sources, problem };
       } else {
-        cache = { ...cache, errors }; // si falla la descarga, se conservan las últimas cuotas buenas
+        cache = { ...cache, errors, problem, remaining: remaining ?? cache.remaining }; // si falla la descarga, se conservan las últimas cuotas buenas
       }
       log(`[cuotas] ${cache.events.length} partidos · ${sources.join(' · ') || 'sin fuentes'}${errors.length ? ` · avisos: ${errors.join('; ')}` : ''}`);
       return cache;
@@ -85,5 +104,35 @@ export function createOddsFeed(cfg, { fetchImpl = fetch, log = console.log } = {
     return limited.value;
   }
 
-  return { refresh, get: () => cache, forPlan, configured, hasBetfair: !!bf };
+  /**
+   * Cuánto esperar hasta la próxima descarga de The Odds API: reparte los créditos que
+   * quedan hasta fin de mes, nunca menos de REFRESH_MINUTES. Si la clave no vale o se han
+   * acabado los créditos, no se insiste.
+   */
+  function theOddsDelay(remaining, t = clock()) {
+    const min = cfg.odds.refreshMinutes * 60000;
+    const code = theOdds.problem?.code;
+    if (code === 'invalid_key') return Math.max(min, 6 * 3600000);
+    if (code === 'rate_limit') return Math.max(min, 5 * 60000);
+    if (code === 'quota') return Math.max(min, Math.min(msToNextMonth(t), 12 * 3600000));
+    if (remaining == null) return min;
+    const cost = oddsApiCost({ sports: cfg.odds.sports, markets: cfg.odds.markets, bookmakers: cfg.odds.bookmakers || [], regions: cfg.odds.regions });
+    const calls = Math.floor(remaining / cost);
+    if (calls <= 0) return Math.max(min, Math.min(msToNextMonth(t), 12 * 3600000));
+    return Math.max(min, Math.ceil(msToNextMonth(t) / calls));
+  }
+
+  /** Cuándo volver a llamar a refresh(): lo que tarde la próxima fuente que toque. */
+  function nextDelayMs(t = clock()) {
+    const min = cfg.odds.refreshMinutes * 60000;
+    if (io || bf) return min;
+    if (cfg.odds.key) return Math.max(60000, theOdds.dueAt - t);
+    return min;
+  }
+
+  const status = () => ({ remaining: cache.remaining, nextAt: cfg.odds.key ? new Date(theOdds.dueAt || clock()).toISOString() : null, problem: cache.problem });
+
+  return {
+    refresh, get: () => cache, forPlan, configured, hasBetfair: !!bf, nextDelayMs, status,
+  };
 }

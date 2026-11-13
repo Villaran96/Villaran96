@@ -297,6 +297,58 @@ export function collectBooks(events) {
   };
 }
 
+/**
+ * Cuotas 1X2 por partido y casa, para la vista «Por partido».
+ * Devuelve { cols: [{ key, title, exchange }], rows: [{ event, start, cells, best }] }:
+ * cells[clave][home|draw|away] = { back, lay, link }; best = mejor a favor de las casas
+ * y mejor (más baja) en contra de los exchanges, por resultado.
+ */
+export function matchGrid(events, {
+  bookies = null, exchanges = null, leagues = null, sports = null, to = Infinity, q = '', now = Date.now(),
+} = {}) {
+  const query = normalizeText(q);
+  const cols = new Map();
+  const rows = [];
+  for (const ev of events) {
+    const t = Date.parse(ev.start);
+    if (!(t >= now) || t > to) continue;
+    if (!ev.markets?.h2h) continue;
+    if (leagues && !leagues.has(ev.league)) continue;
+    if (sports && !sports.has(sportGroup(ev))) continue;
+    if (query && !normalizeText(`${ev.home} ${ev.away} ${ev.league}`).includes(query)) continue;
+    const cells = {};
+    for (const b of ev.books) {
+      if (b.exchange ? (exchanges && !exchanges.has(b.key)) : (bookies && !bookies.has(b.key))) continue;
+      const m = b.m?.h2h;
+      if (!m) continue;
+      const pick = (ok) => ({ back: m[ok]?.back > 1 ? m[ok].back : null, lay: m[ok]?.lay > 1 ? m[ok].lay : null, link: m[ok]?.link || null });
+      const cell = { home: pick('home'), draw: pick('draw'), away: pick('away') };
+      const has = (x) => (b.exchange ? x.lay || x.back : x.back);
+      if (!has(cell.home) && !has(cell.draw) && !has(cell.away)) continue;
+      cells[b.key] = cell;
+      if (!cols.has(b.key)) cols.set(b.key, { key: b.key, title: b.title, exchange: !!b.exchange });
+    }
+    if (!Object.keys(cells).length) continue;
+    // La mejor de cada resultado solo tiene sentido si hay al menos dos casas que comparar.
+    const best = {};
+    for (const ok of ['home', 'draw', 'away']) {
+      let back = null;
+      let lay = null;
+      let nBack = 0;
+      let nLay = 0;
+      for (const [k, c] of Object.entries(cells)) {
+        if (!cols.get(k).exchange && c[ok].back) { nBack += 1; if (!back || c[ok].back > back) back = c[ok].back; }
+        if (cols.get(k).exchange && c[ok].lay) { nLay += 1; if (!lay || c[ok].lay < lay) lay = c[ok].lay; }
+      }
+      best[ok] = { back: nBack > 1 ? back : null, lay: nLay > 1 ? lay : null };
+    }
+    rows.push({ event: ev, start: ev.start, cells, best });
+  }
+  rows.sort((x, y) => Date.parse(x.start) - Date.parse(y.start));
+  const order = [...cols.values()].sort((x, y) => Number(x.exchange) - Number(y.exchange) || String(x.title).localeCompare(String(y.title), 'es'));
+  return { cols: order, rows };
+}
+
 /** Deportes del modelo, en el orden en que se enseñan. */
 export const SPORT_NAMES = [['soccer', 'Fútbol'], ['tennis', 'Tenis'], ['basketball', 'Baloncesto'], ['other', 'Otros']];
 const sportGroup = (ev) => (!ev.sport ? 'soccer' : ['soccer', 'tennis', 'basketball'].includes(ev.sport) ? ev.sport : 'other');
@@ -315,33 +367,73 @@ export async function fetchSportsList(apiKey, fetchImpl = fetch, base = API) {
 }
 
 /**
- * Cuotas de varias ligas. Las cuotas en contra de los exchanges llegan solas
- * (mercados *_lay). Cada liga gasta 1 crédito por mercado y región.
+ * Casas que se piden por defecto a The Odds API. Sus claves no son las españolas:
+ * Winamax solo está como «winamax_fr» y «winamax_de», y Bet365 no está para La Liga
+ * (se pide igualmente por si la API lo añade). Betfair Exchange es «betfair_ex_eu».
+ */
+export const THE_ODDS_BOOKMAKERS = ['bet365', 'winamax_fr', 'betfair_ex_eu'];
+
+/**
+ * Añade a cada mercado su versión «en contra» (h2h → h2h, h2h_lay): sin ella The Odds
+ * API solo da la cuota a favor de Betfair y no se puede cubrir nada.
+ */
+export function withLayMarkets(markets = 'h2h') {
+  const list = String(markets).split(',').map((m) => m.trim()).filter(Boolean);
+  const out = [];
+  for (const m of list) {
+    const base = m.replace(/_lay$/, '');
+    for (const x of [base, `${base}_lay`]) if (!out.includes(x)) out.push(x);
+  }
+  return out.join(',');
+}
+
+/** Créditos que gasta una descarga: 1 por liga, mercado y grupo de 10 casas (o región). */
+export function oddsApiCost({ sports = [], markets = 'h2h', bookmakers = [], regions = 'eu', lay = true } = {}) {
+  const nMarkets = String(lay ? withLayMarkets(markets) : markets).split(',').filter(Boolean).length || 1;
+  const groups = bookmakers.length ? Math.ceil(bookmakers.length / 10) : String(regions).split(',').filter(Boolean).length || 1;
+  return Math.max(1, sports.length) * nMarkets * groups;
+}
+
+/**
+ * Cuotas de varias ligas. Con `bookmakers` se piden esas casas (y no una región);
+ * las cuotas en contra de los exchanges llegan con los mercados *_lay.
+ * Si la clave no vale, se acaban los créditos o hay demasiadas peticiones, lanza
+ * un error con `code` (invalid_key, quota, rate_limit) y un mensaje para enseñar.
  */
 export async function fetchTheOddsApi({
-  apiKey, sports = DEFAULT_SPORTS, regions = 'eu', markets = 'h2h', includeLinks = true, fetchImpl = fetch, base = API,
+  apiKey, sports = DEFAULT_SPORTS, regions = 'eu', markets = 'h2h', bookmakers = [], lay = true, includeLinks = true, fetchImpl = fetch, base = API,
 }) {
+  const mk = lay ? withLayMarkets(markets) : markets;
+  if (!apiKey) throw Object.assign(new Error(ODDS_API_TEXT.missing_key), { code: 'invalid_key', fatal: true });
   const all = [];
   let remaining = null;
   let used = null;
   const errors = [];
+  const who = bookmakers.length ? `bookmakers=${encodeURIComponent(bookmakers.join(','))}` : `regions=${encodeURIComponent(regions)}`;
   for (const sport of sports) {
-    const url = `${base}/sports/${encodeURIComponent(sport)}/odds/?apiKey=${encodeURIComponent(apiKey)}&regions=${encodeURIComponent(regions)}&markets=${encodeURIComponent(markets)}&oddsFormat=decimal&dateFormat=iso${includeLinks ? '&includeLinks=true' : ''}`;
+    const url = `${base}/sports/${encodeURIComponent(sport)}/odds/?apiKey=${encodeURIComponent(apiKey)}&${who}&markets=${encodeURIComponent(mk)}&oddsFormat=decimal&dateFormat=iso${includeLinks ? '&includeLinks=true' : ''}`;
+    let res;
     try {
-      const res = await fetchImpl(url);
-      remaining = res.headers.get('x-requests-remaining') ?? remaining;
-      used = res.headers.get('x-requests-used') ?? used;
-      if (!res.ok) {
-        const err = await apiError(res);
-        // Una clave inválida o sin cuota no va a funcionar con las demás ligas.
-        if (err.fatal) throw err;
-        errors.push(`${sport}: ${err.message}`);
-        continue;
+      res = await fetchImpl(url);
+    } catch {
+      throw Object.assign(new Error(ODDS_API_TEXT.network), { code: 'network', fatal: true });
+    }
+    remaining = res.headers.get('x-requests-remaining') ?? remaining;
+    used = res.headers.get('x-requests-used') ?? used;
+    if (!res.ok) {
+      const err = await apiError(res);
+      // Una clave inválida, sin créditos o frenada no va a funcionar con las demás ligas.
+      if (err.fatal) {
+        err.remaining = remaining != null ? Number(remaining) : null;
+        throw err;
       }
+      errors.push(`${sport}: ${err.message}`);
+      continue;
+    }
+    try {
       all.push(...normalizeTheOddsApi(await res.json()));
     } catch (e) {
-      if (e.fatal) throw e;
-      errors.push(`${sport}: ${e.message}`);
+      errors.push(`${sport}: respuesta no válida (${e.message})`);
     }
   }
   return {
@@ -349,15 +441,29 @@ export async function fetchTheOddsApi({
   };
 }
 
+/** Mensajes para el usuario según el error de The Odds API. */
+export const ODDS_API_TEXT = {
+  missing_key: 'Falta la clave de The Odds API (variable NEXT_PUBLIC_ODDS_API_KEY).',
+  invalid_key: 'La clave de The Odds API no es válida o está desactivada. Revisa NEXT_PUBLIC_ODDS_API_KEY.',
+  quota: 'Se han acabado los créditos de The Odds API de este mes. Vuelven con el nuevo mes o con un plan mayor.',
+  rate_limit: 'The Odds API ha frenado las peticiones por llegar demasiadas seguidas (error 429). Se vuelve a intentar en unos minutos.',
+  network: 'No se ha podido conectar con The Odds API. Comprueba la conexión a internet del servidor.',
+};
+
 async function apiError(res) {
-  let msg = `Error ${res.status}`;
-  try {
-    const body = await res.json();
-    if (body && body.message) msg = body.message;
-  } catch { /* cuerpo vacío */ }
-  const err = new Error(msg);
+  let body = null;
+  try { body = await res.json(); } catch { /* cuerpo vacío */ }
+  const apiCode = String(body?.error_code || '');
+  let code = 'other';
+  if (res.status === 429 || apiCode === 'EXCEEDED_FREQ_LIMIT') code = 'rate_limit';
+  else if (apiCode === 'OUT_OF_USAGE_CREDITS' || (res.status === 401 && /quota|credits/i.test(body?.message || ''))) code = 'quota';
+  else if (res.status === 401) code = 'invalid_key';
+  const message = ODDS_API_TEXT[code] || `The Odds API respondió ${res.status}${body?.message ? `: ${body.message}` : ''}`;
+  const err = new Error(message);
   err.status = res.status;
-  err.fatal = res.status === 401 || res.status === 429;
+  err.code = code;
+  err.apiCode = apiCode || null;
+  err.fatal = code !== 'other';
   return err;
 }
 

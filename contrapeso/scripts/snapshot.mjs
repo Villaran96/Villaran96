@@ -34,7 +34,8 @@ console.log(`Partidos por casa:\n${table(count(cache.events.flatMap((e) => e.boo
 console.log(`Cuotas emparejadas con el exchange (filas del oddsmatcher): ${rows.length}`);
 if (rows.length) {
   console.log(`Filas por casa:\n${table(count(rows, (r) => r.bookTitle))}`);
-  const exactBack = rows.filter((r) => r.backLink).length;
+  // Los enlaces de versiones de otros países (winamax_fr…) no sirven en España.
+  const exactBack = rows.filter((r) => r.backLink && !/_(fr|de|it|uk|se|nl|pt|dk|au|us)$/i.test(r.bookKey)).length;
   const exactLay = rows.filter((r) => r.layMarketId || (r.layLink && r.exKey !== 'betfair_ex_eu')).length;
   console.log(`Con enlace directo al partido en la casa: ${Math.round((exactBack / rows.length) * 100)} %`);
   console.log(`Con enlace directo al mercado del exchange: ${Math.round((exactLay / rows.length) * 100)} %`);

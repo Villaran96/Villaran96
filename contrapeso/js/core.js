@@ -35,8 +35,9 @@ export function defaults() {
       provider: 'auto',
       apiKey: '',
       regions: 'eu',
-      sports: [...O.DEFAULT_SPORTS],
-      markets: 'h2h,totals',
+      sports: ['soccer_spain_la_liga'],
+      markets: 'h2h',
+      bookmakers: O.THE_ODDS_BOOKMAKERS.join(','),
       serverUrl: '',
       cacheMinutes: 10,
       defaultCommission: 2,
@@ -49,7 +50,7 @@ export function defaults() {
       previewPlan: 'metodo',
     },
     om: {
-      mode: 'normal', stake: 10, refund: 150, retention: 65, minOdds: 1.5, maxOdds: 12, minRatings: { normal: 90, snr: 65, sr: 85, refund: 40 }, window: '7d', q: '',
+      view: 'rows', mode: 'normal', stake: 10, refund: 150, retention: 65, minOdds: 1.5, maxOdds: 12, minRatings: { normal: 90, snr: 65, sr: 85, refund: 40 }, window: 'all', windowV: 2, q: '',
       bookies: [], exchanges: [], leagues: [], families: [], sports: [], myOnly: false, minSize: '', sort: 'rating', dir: 'desc', limit: 60, autoRefresh: 0,
       open: null, check: null,
     },
@@ -109,6 +110,8 @@ function loadState() {
     om: {
       ...d.om, ...s.om, minRatings: { ...d.om.minRatings, ...(s.om?.minRatings || {}) }, open: null, check: null, mode: s.om?.mode === 'sr' ? 'normal' : (s.om?.mode || d.om.mode),
       ...(oldValuation && Number(s.om?.retention) === 72 ? { retention: d.om.retention } : {}),
+      // Antes venía «Próximos 7 días» y escondía la jornada siguiente: pasa a «Todo» una vez.
+      ...(s.om?.windowV !== 2 ? { window: 'all', windowV: 2 } : {}),
     },
     calc: {
       bl: { ...d.calc.bl, ...sc.bl, ...(oldValuation && Number(sc.bl?.retention) === 72 ? { retention: d.calc.bl.retention } : {}) },
@@ -271,7 +274,7 @@ export function assumptions() {
 /* ======================================================================== */
 
 export const odds = {
-  events: [], source: 'none', updated: null, remaining: null, error: null, loading: false, fallback: false, warnings: [], limited: false, betfairTemplate: '',
+  events: [], source: 'none', updated: null, remaining: null, error: null, problem: null, nextAt: null, loading: false, fallback: false, warnings: [], limited: false, betfairTemplate: '',
 };
 const seenAlerts = new Set();
 let firstOddsLoad = true;
@@ -290,6 +293,7 @@ export async function loadOdds({ force = false } = {}) {
   const provider = effectiveProvider();
   odds.loading = true;
   odds.error = null;
+  odds.problem = null;
   odds.fallback = false;
   paintStatus();
   try {
@@ -301,7 +305,8 @@ export async function loadOdds({ force = false } = {}) {
       if (!force && fresh) {
         Object.assign(odds, { events: cached.events, updated: cached.updated, remaining: cached.remaining, source: 'api', warnings: cached.errors || [], limited: false });
       } else {
-        const res = await O.fetchTheOddsApi({ apiKey: s.apiKey, sports: s.sports, regions: s.regions, markets: s.markets || 'h2h' });
+        const books = String(s.bookmakers || '').split(',').map((x) => x.trim()).filter(Boolean);
+        const res = await O.fetchTheOddsApi({ apiKey: s.apiKey, sports: s.sports, regions: s.regions, markets: s.markets || 'h2h', bookmakers: books });
         Object.assign(odds, { events: res.events, updated: res.updated, remaining: res.remaining, source: 'api', warnings: res.errors, limited: false });
         storage.set(ODDS_CACHE_KEY, { sig, ...res });
       }
@@ -309,6 +314,7 @@ export async function loadOdds({ force = false } = {}) {
       const res = await O.fetchFromServer(s.serverUrl);
       Object.assign(odds, {
         events: res.events || [], updated: res.updated, remaining: res.remaining, source: 'server', warnings: res.errors || [], limited: !!res.limited, betfairTemplate: res.betfairTemplate || '',
+        problem: res.problem || null, nextAt: res.nextAt || null,
       });
     } else if (provider === 'demo') {
       Object.assign(odds, { events: O.demoEvents(Date.now()), updated: new Date().toISOString(), remaining: null, source: 'demo', warnings: [], limited: false });
@@ -322,6 +328,7 @@ export async function loadOdds({ force = false } = {}) {
     odds.error = e instanceof TypeError
       ? 'El navegador no pudo conectar con la fuente de cuotas. En la vista previa de claude.ai las conexiones externas están bloqueadas; en tu dominio funciona.'
       : e.message;
+    if (e.code) odds.problem = { code: e.code, status: e.status || null, message: e.message, source: 'The Odds API' };
     // Si falla la fuente no se rellena con partidos inventados: se conservan las últimas cuotas reales o nada.
     if (odds.source === 'demo' || odds.source === 'none') Object.assign(odds, { events: [], updated: null, source: 'none', limited: false });
   }
@@ -447,7 +454,9 @@ const SIM_LINK = { href: '', exact: false, kind: 'sim' };
 
 export function backLinkOf(row) {
   if (odds.source === 'demo') return SIM_LINK;
-  if (row.backLink) return { href: row.backLink, exact: true, kind: 'event' };
+  // «winamax_fr», «unibet_uk»…: su enlace va a la web de otro país, que no sirve en España.
+  const foreign = /_(fr|de|it|uk|se|nl|pt|dk|au|us)$/i.test(row.bookKey || '');
+  if (row.backLink && !foreign) return { href: row.backLink, exact: true, kind: 'event' };
   return searchLinkFor(row.bookKey || row.bookTitle, row.event?.home)
     || { href: bookieHome(row.bookKey) || bookieHome(row.bookTitle), exact: false, kind: 'home' };
 }

@@ -372,7 +372,9 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     if (!feed.configured()) throw new HttpError(503, 'El servidor no tiene ninguna fuente de cuotas configurada.');
     if (!feed.get().updated) await feed.refresh();
     const plan = effectivePlan(ctx.user);
-    return { ...feed.forPlan(canUse(plan, 'odds.full'), FREE_ODDS_ROWS), plan, betfairTemplate: site().betfairTemplate || cfg.betfair.linkTemplate };
+    return {
+      ...feed.forPlan(canUse(plan, 'odds.full'), FREE_ODDS_ROWS), nextAt: feed.status().nextAt, plan, betfairTemplate: site().betfairTemplate || cfg.betfair.linkTemplate,
+    };
   });
 
   route('GET', '/api/content', (ctx) => {
@@ -797,6 +799,8 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
   }
 
   const server = createServer(handler);
+  let oddsTimer = null;
+  let closed = false;
 
   function cleanup() {
     const now = Date.now();
@@ -813,8 +817,14 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
     listen(port = cfg.port) {
       return new Promise((ok) => server.listen(port, () => {
         if (feed.configured()) {
-          feed.refresh();
-          timers.push(setInterval(() => feed.refresh(), cfg.odds.refreshMinutes * 60000));
+          // Cada descarga programa la siguiente: The Odds API reparte sus créditos del mes.
+          const loop = async () => {
+            await feed.refresh().catch((e) => log(`[cuotas] ${e.message}`));
+            if (closed) return;
+            oddsTimer = setTimeout(loop, feed.nextDelayMs());
+            oddsTimer.unref?.();
+          };
+          loop();
         }
         timers.push(setInterval(cleanup, 6 * 3600000));
         timers.forEach((t) => t.unref?.());
@@ -822,6 +832,8 @@ export async function createApp(cfg = loadConfig(), { fetchImpl = fetch, log = c
       }));
     },
     async close() {
+      closed = true;
+      clearTimeout(oddsTimer);
       timers.forEach(clearInterval);
       await new Promise((ok) => server.close(ok));
       await db.flush();
